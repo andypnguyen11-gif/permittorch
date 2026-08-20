@@ -202,6 +202,22 @@ IPermitSourceProvider
 
 The ingestion job asks a provider for new raw records for a source; everything downstream (normalize → dedupe → classify → score) is provider-agnostic. Raw Apify run IDs and dataset structures never appear outside `Infrastructure/`.
 
+### 6.1 Scraper Output Contract (as implemented)
+
+The scraper repo already guarantees its output shape — `ApifyPermitProvider` consumes three things per run:
+
+| Artifact | Where | Contents |
+| --- | --- | --- |
+| **Dataset records** | Apify dataset | Zod-validated against `PermitLeadSchema` before push (guaranteed shape, not best-effort). Most fields are `string \| null` — never absent. Dates are ISO strings. Sorted by `leadScore` desc, capped at **5,000 records per run**. Full field table + example: scraper README §4–5. |
+| **Run status & stats** | Apify Run object (Actor API) | `status`, `startedAt`, `finishedAt`, `stats.itemCount` — read from the Apify API; the scraper does not emit these itself. |
+| **`COVERAGE_REPORT`** | Run's key-value store | `requestedJurisdictions`, `supportedJurisdictions`, `successfulJurisdictions`, `failedJurisdictions`, `unsupportedJurisdictions`, `recordsFound`, `unsupportedDetails[]`, `failedDetails[]`, `sourceStats[]` (per-source ok/error/counts/duration + coverage/truncation). |
+
+**Ingestion rules derived from this contract:**
+
+- **Completeness comes from `COVERAGE_REPORT`, not run status.** A run can report `SUCCEEDED` while individual jurisdictions failed or truncated — source health (§7) must be driven by per-source results in `sourceStats[]`/`failedDetails[]`, mapping failed jurisdictions to `WARNING`/`FAILED` even when the run itself succeeded.
+- **The 5,000-record cap means truncation is possible.** Ingestion should detect truncation via the coverage report and flag the affected sources rather than assume a full window was captured.
+- The scraper already computes a `leadScore`; PermitTorch treats it as a raw input signal at most — the canonical, explainable 0–100 score is computed by PermitTorch's own scoring engine (§3) so weights stay configurable and signals stay persisted.
+
 ---
 
 ## 7. Source Health & Data Freshness

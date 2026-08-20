@@ -11,8 +11,9 @@ Ordering within a phase is roughly dependency order. Every PR includes tests (se
 
 - [ ] Fire permit extraction working for first market (Houston)
 - [ ] Actor deployed to Apify with scheduled runs
-- [ ] Stable dataset output shape documented (contract for `ApifyPermitProvider`)
-- [ ] Run metadata available (status, record counts, timestamps)
+- [x] Stable dataset output shape documented — Zod-validated `PermitLeadSchema`, README §4–5 (see Architecture.md §6.1)
+- [x] Run metadata available — status/timestamps/counts from the Apify Run object; per-source quality from `COVERAGE_REPORT` in the run key-value store
+- [ ] `COVERAGE_REPORT` field-level shape documented in scraper README (requested on scraper side)
 
 ---
 
@@ -34,6 +35,7 @@ Ordering within a phase is roughly dependency order. Every PR includes tests (se
 - [ ] EF Core schema + migrations: `sources`, `permits`, `permit_participants`, `scraper_runs`
 - [ ] `IPermitSourceProvider` interface + `ApifyPermitProvider` implementation
 - [ ] Ingestion job (`IHostedService`): poll/webhook Apify runs, pull new records
+- [ ] Read `COVERAGE_REPORT` per run; drive per-source health from `sourceStats[]`/`failedDetails[]`, detect truncation (5,000-record cap)
 - [ ] Normalization: map source fields → canonical Permit model
 - [ ] Deduplication: `source_id + external_id` primary, fingerprint fallback
 - [ ] Classification engine: keyword rules → regex rules → (later) LLM fallback
