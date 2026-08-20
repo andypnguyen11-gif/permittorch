@@ -202,21 +202,21 @@ IPermitSourceProvider
 
 The ingestion job asks a provider for new raw records for a source; everything downstream (normalize → dedupe → classify → score) is provider-agnostic. Raw Apify run IDs and dataset structures never appear outside `Infrastructure/`.
 
-### 6.1 Scraper Output Contract (as implemented)
+### 6.1 Scraper Output Contract (verified against a real run)
 
-The scraper repo already guarantees its output shape — `ApifyPermitProvider` consumes three things per run:
+The scraper repo guarantees its output shape (Zod-validated before push) — `ApifyPermitProvider` consumes three things per run. The shapes below were verified against real run `40Atzgu9WPoPC10YU` (2026-08-20); a captured sample lives at `docs/superpowers/plans/2026-08-19-permittorch-mvp/scraper-sample.json`.
 
 | Artifact | Where | Contents |
 | --- | --- | --- |
-| **Dataset records** | Apify dataset | Zod-validated against `PermitLeadSchema` before push (guaranteed shape, not best-effort). Most fields are `string \| null` — never absent. Dates are ISO strings. Sorted by `leadScore` desc, capped at **5,000 records per run**. Full field table + example: scraper README §4–5. |
+| **Dataset records** | Apify dataset | One object per permit, keyed by `recordId` (`"{sourceId}:{permitNumber}"`). Nested objects: `jurisdiction{city,county,state}`, `address{street,city,state,zip,latitude,longitude}`, `owner{name,company}`, `contractor{name,company,licenseNumber}`, `source{sourceId,jurisdiction,provider,url}`. Scalars: `recordType`, `fireSystemType` (scraper's classification, e.g. `fire_alarm`), `workType`, `permitNumber`, `permitStatus`, `applicationDate`/`issuedDate`/`expirationDate`/`inspectionDate` (ISO), `inspectionStatus`, `violations[]`, `description`, `projectValue` (number), `propertyType`, `businessName`, `projectName`, `leadScore` (number), `leadSignals[]` (e.g. `RECENTLY_ISSUED`), `scrapedAt`. Unknown values are `null`, never absent. Sorted by `leadScore` desc, capped at **5,000 records per run**. |
 | **Run status & stats** | Apify Run object (Actor API) | `status`, `startedAt`, `finishedAt`, `stats.itemCount` — read from the Apify API; the scraper does not emit these itself. |
-| **`COVERAGE_REPORT`** | Run's key-value store | `requestedJurisdictions`, `supportedJurisdictions`, `successfulJurisdictions`, `failedJurisdictions`, `unsupportedJurisdictions`, `recordsFound`, `unsupportedDetails[]`, `failedDetails[]`, `sourceStats[]` (per-source ok/error/counts/duration + coverage/truncation). |
+| **`COVERAGE_REPORT`** | Run's key-value store | Integer counts: `requestedJurisdictions`, `supportedJurisdictions`, `successfulJurisdictions`, `failedJurisdictions`, `unsupportedJurisdictions`, `skippedJurisdictions`, `recordsFound`. Detail arrays: `unsupportedDetails[]`, `failedDetails[]`, `skippedDetails[]`. Per-source `sourceStats[]`: `sourceId`, `jurisdictionKey`, `ok`, `rawCount`, `emittedCount`, `requestCount`, `durationMs`, `error`, `addressShortfall`, `coverage{held, heldUnknownTypes, delivered, outcome, truncatedBy[], typesSearched, typesTotal}` — `outcome: "max-records"` means the result cap truncated output. |
 
 **Ingestion rules derived from this contract:**
 
 - **Completeness comes from `COVERAGE_REPORT`, not run status.** A run can report `SUCCEEDED` while individual jurisdictions failed or truncated — source health (§7) must be driven by per-source results in `sourceStats[]`/`failedDetails[]`, mapping failed jurisdictions to `WARNING`/`FAILED` even when the run itself succeeded.
-- **The 5,000-record cap means truncation is possible.** Ingestion should detect truncation via the coverage report and flag the affected sources rather than assume a full window was captured.
-- The scraper already computes a `leadScore`; PermitTorch treats it as a raw input signal at most — the canonical, explainable 0–100 score is computed by PermitTorch's own scoring engine (§3) so weights stay configurable and signals stay persisted.
+- **The 5,000-record cap means truncation is possible.** Ingestion should detect truncation via the coverage report (`sourceStats[].coverage.outcome`/`truncatedBy`) and flag the affected sources rather than assume a full window was captured.
+- The scraper already computes a `leadScore`, emits `leadSignals`, and classifies `fireSystemType`; PermitTorch treats all three as raw input signals at most — the canonical, explainable 0–100 score is computed by PermitTorch's own scoring engine (§3) so weights stay configurable and signals stay persisted, and the canonical `FireCategory` comes from PermitTorch's classifier (which may use `fireSystemType` as a high-confidence hint before falling back to description rules).
 
 ---
 

@@ -1,0 +1,117 @@
+{
+  "_comment": "Real output captured from Apify run 40Atzgu9WPoPC10YU (2026-08-20, actor build 0.1.5, input: Tulsa OK, maxResults 50). This is the authoritative shape for RawPermitRecord and CoverageReport deserialization. Fields observed null in this run (businessName, projectName, latitude/longitude, inspection*, owner.*, contractor.*, projectValue, propertyType) are still part of the schema — string|number|null, never absent.",
+  "datasetItems": [
+    {
+      "recordId": "tulsa-fire-permits:FIRE-255161-2026",
+      "jurisdiction": { "city": "Tulsa", "county": "Tulsa", "state": "OK" },
+      "businessName": null,
+      "projectName": null,
+      "address": {
+        "street": "4239 S 74TH AVE E",
+        "city": "Tulsa",
+        "state": "OK",
+        "zip": "74145",
+        "latitude": null,
+        "longitude": null
+      },
+      "recordType": "permit",
+      "fireSystemType": "other_fire_protection",
+      "workType": "unknown",
+      "permitNumber": "FIRE-255161-2026",
+      "permitStatus": "Issued",
+      "applicationDate": "2026-08-05",
+      "issuedDate": "2026-08-13",
+      "expirationDate": "2026-09-13",
+      "inspectionDate": null,
+      "inspectionStatus": null,
+      "violations": [],
+      "description": "Fire Suppression | Fire Suppression",
+      "projectValue": null,
+      "propertyType": null,
+      "owner": { "name": null, "company": null },
+      "contractor": { "name": null, "company": null, "licenseNumber": null },
+      "leadScore": 75,
+      "leadSignals": ["RECENTLY_ISSUED", "NO_CONTRACTOR_LISTED", "EXPIRING_CERTIFICATION"],
+      "source": {
+        "sourceId": "tulsa-fire-permits",
+        "jurisdiction": "Tulsa, OK",
+        "provider": "energov",
+        "url": "https://tulsaok-energovweb.tylerhost.net/apps/selfservice#/search"
+      },
+      "scrapedAt": "2026-08-20T15:51:00.227Z"
+    },
+    {
+      "recordId": "tulsa-fire-permits:FIRE-255412-2026",
+      "jurisdiction": { "city": "Tulsa", "county": "Tulsa", "state": "OK" },
+      "businessName": null,
+      "projectName": null,
+      "address": {
+        "street": "1661 E VIRGIN ST N",
+        "city": "Tulsa",
+        "state": "OK",
+        "zip": "74110",
+        "latitude": null,
+        "longitude": null
+      },
+      "recordType": "permit",
+      "fireSystemType": "fire_alarm",
+      "workType": "unknown",
+      "permitNumber": "FIRE-255412-2026",
+      "permitStatus": "Issued",
+      "applicationDate": "2026-08-07",
+      "issuedDate": "2026-08-19",
+      "expirationDate": "2027-08-19",
+      "inspectionDate": null,
+      "inspectionStatus": null,
+      "violations": [],
+      "description": "Fire Alarm | Fire Alarm",
+      "projectValue": null,
+      "propertyType": null,
+      "owner": { "name": null, "company": null },
+      "contractor": { "name": null, "company": null, "licenseNumber": null },
+      "leadScore": 60,
+      "leadSignals": ["RECENTLY_ISSUED", "NO_CONTRACTOR_LISTED"],
+      "source": {
+        "sourceId": "tulsa-fire-permits",
+        "jurisdiction": "Tulsa, OK",
+        "provider": "energov",
+        "url": "https://tulsaok-energovweb.tylerhost.net/apps/selfservice#/search"
+      },
+      "scrapedAt": "2026-08-20T15:51:00.227Z"
+    }
+  ],
+  "coverageReport": {
+    "requestedJurisdictions": 1,
+    "supportedJurisdictions": 1,
+    "successfulJurisdictions": 1,
+    "failedJurisdictions": 0,
+    "unsupportedJurisdictions": 0,
+    "skippedJurisdictions": 0,
+    "recordsFound": 50,
+    "unsupportedDetails": [],
+    "failedDetails": [],
+    "skippedDetails": [],
+    "sourceStats": [
+      {
+        "sourceId": "tulsa-fire-permits",
+        "jurisdictionKey": "ok/tulsa",
+        "ok": true,
+        "rawCount": 150,
+        "emittedCount": 150,
+        "requestCount": 20,
+        "durationMs": 99318,
+        "error": null,
+        "addressShortfall": null,
+        "coverage": {
+          "held": 171,
+          "heldUnknownTypes": 0,
+          "delivered": 150,
+          "outcome": "max-records",
+          "truncatedBy": [],
+          "typesSearched": 3,
+          "typesTotal": 7
+        }
+      }
+    ]
+  }
+}

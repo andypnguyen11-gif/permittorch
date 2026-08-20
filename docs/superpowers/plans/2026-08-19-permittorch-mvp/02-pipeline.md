@@ -63,10 +63,12 @@ WS1-specific constraints:
 
 **Interfaces:**
 - Consumes: nothing (leaf task).
-- Produces (LOCKED shapes from master §4, plus two WS1-local helper records):
-  - `record RawPermitRecord(string Id, string? Jurisdiction, string? PermitNumber, string? PermitType, string? Description, string? Status, string? Address, string? City, string? State, string? Zip, string? Latitude, string? Longitude, string? FiledDate, string? IssuedDate, string? EstimatedValue, string? SquareFootage, string? OwnerName, string? ContractorName, string? SourceUrl, string? LeadScore)`
-  - `record CoverageReport(string[] RequestedJurisdictions, string[] SupportedJurisdictions, string[] SuccessfulJurisdictions, string[] FailedJurisdictions, string[] UnsupportedJurisdictions, int RecordsFound, JsonElement[] UnsupportedDetails, JsonElement[] FailedDetails, SourceStat[] SourceStats)`
-  - `record SourceStat(string Jurisdiction, string Status, int RecordCount, double DurationSeconds, bool Truncated)`
+- Produces (LOCKED shapes from master §4 — verified against real run `40Atzgu9WPoPC10YU`, see `scraper-sample.json` — plus two WS1-local helper records):
+  - `record RawPermitRecord(string RecordId, RawJurisdiction? Jurisdiction, string? BusinessName, string? ProjectName, RawAddress? Address, string? RecordType, string? FireSystemType, string? WorkType, string? PermitNumber, string? PermitStatus, string? ApplicationDate, string? IssuedDate, string? ExpirationDate, string? InspectionDate, string? InspectionStatus, JsonElement[]? Violations, string? Description, decimal? ProjectValue, string? PropertyType, RawParty? Owner, RawContractor? Contractor, int? LeadScore, string[]? LeadSignals, RawSource? Source, string? ScrapedAt)`
+  - `record RawJurisdiction(string? City, string? County, string? State)` · `record RawAddress(string? Street, string? City, string? State, string? Zip, double? Latitude, double? Longitude)` · `record RawParty(string? Name, string? Company)` · `record RawContractor(string? Name, string? Company, string? LicenseNumber)` · `record RawSource(string? SourceId, string? Jurisdiction, string? Provider, string? Url)`
+  - `record CoverageReport(int RequestedJurisdictions, int SupportedJurisdictions, int SuccessfulJurisdictions, int FailedJurisdictions, int UnsupportedJurisdictions, int SkippedJurisdictions, int RecordsFound, JsonElement[] UnsupportedDetails, JsonElement[] FailedDetails, JsonElement[] SkippedDetails, SourceStat[] SourceStats)`
+  - `record SourceStat(string SourceId, string JurisdictionKey, bool Ok, int RawCount, int EmittedCount, int RequestCount, long DurationMs, string? Error, JsonElement? AddressShortfall, SourceCoverage? Coverage)`
+  - `record SourceCoverage(int Held, int HeldUnknownTypes, int Delivered, string? Outcome, string[] TruncatedBy, int TypesSearched, int TypesTotal)`
   - `record ApifyRun(string Id, string Status, DateTime StartedAt, DateTime? FinishedAt, string DefaultDatasetId, string DefaultKeyValueStoreId)` (WS1 helper — Apify run object)
   - `record ApifyRunEnvelope(ApifyRun Data)` (WS1 helper — Apify wraps responses in `{ "data": ... }`)
 
@@ -86,64 +88,122 @@ public class ApifyModelsTests
 {
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
 
+    // Real dataset record from Apify run 40Atzgu9WPoPC10YU (scraper-sample.json), embedded verbatim.
     [Fact]
-    public void RawPermitRecord_DeserializesFromScraperJson()
+    public void RawPermitRecord_DeserializesFromRealScraperJson()
     {
         const string json = """
         {
-          "id": "houston-2026-000123",
-          "jurisdiction": "houston-tx",
-          "permitNumber": "P2026-000123",
-          "permitType": "Fire Sprinkler",
-          "description": "Install NFPA 13 sprinkler system",
-          "status": "Issued",
-          "address": "100 Main St",
-          "city": "Houston",
-          "state": "TX",
-          "zip": "77002",
-          "latitude": "29.7604",
-          "longitude": "-95.3698",
-          "filedDate": "2026-08-18T14:30:00.000Z",
-          "issuedDate": null,
-          "estimatedValue": "750000",
-          "squareFootage": "25000",
-          "ownerName": "Acme Holdings LLC",
-          "contractorName": null,
-          "sourceUrl": "https://permits.houstontx.gov/p/P2026-000123",
-          "leadScore": "88"
+          "recordId": "tulsa-fire-permits:FIRE-255161-2026",
+          "jurisdiction": { "city": "Tulsa", "county": "Tulsa", "state": "OK" },
+          "businessName": null,
+          "projectName": null,
+          "address": {
+            "street": "4239 S 74TH AVE E",
+            "city": "Tulsa",
+            "state": "OK",
+            "zip": "74145",
+            "latitude": null,
+            "longitude": null
+          },
+          "recordType": "permit",
+          "fireSystemType": "other_fire_protection",
+          "workType": "unknown",
+          "permitNumber": "FIRE-255161-2026",
+          "permitStatus": "Issued",
+          "applicationDate": "2026-08-05",
+          "issuedDate": "2026-08-13",
+          "expirationDate": "2026-09-13",
+          "inspectionDate": null,
+          "inspectionStatus": null,
+          "violations": [],
+          "description": "Fire Suppression | Fire Suppression",
+          "projectValue": null,
+          "propertyType": null,
+          "owner": { "name": null, "company": null },
+          "contractor": { "name": null, "company": null, "licenseNumber": null },
+          "leadScore": 75,
+          "leadSignals": ["RECENTLY_ISSUED", "NO_CONTRACTOR_LISTED", "EXPIRING_CERTIFICATION"],
+          "source": {
+            "sourceId": "tulsa-fire-permits",
+            "jurisdiction": "Tulsa, OK",
+            "provider": "energov",
+            "url": "https://tulsaok-energovweb.tylerhost.net/apps/selfservice#/search"
+          },
+          "scrapedAt": "2026-08-20T15:51:00.227Z"
         }
         """;
 
         var record = JsonSerializer.Deserialize<RawPermitRecord>(json, Web);
 
         Assert.NotNull(record);
-        Assert.Equal("houston-2026-000123", record!.Id);
-        Assert.Equal("houston-tx", record.Jurisdiction);
-        Assert.Equal("P2026-000123", record.PermitNumber);
-        Assert.Equal("Install NFPA 13 sprinkler system", record.Description);
-        Assert.Equal("Issued", record.Status);
-        Assert.Equal("29.7604", record.Latitude);
-        Assert.Null(record.IssuedDate);
-        Assert.Null(record.ContractorName);
-        Assert.Equal("88", record.LeadScore);
+        Assert.Equal("tulsa-fire-permits:FIRE-255161-2026", record!.RecordId);
+        Assert.Equal("Tulsa", record.Jurisdiction!.City);
+        Assert.Equal("OK", record.Jurisdiction.State);
+        Assert.Null(record.BusinessName);
+        Assert.Equal("4239 S 74TH AVE E", record.Address!.Street);
+        Assert.Equal("74145", record.Address.Zip);
+        Assert.Null(record.Address.Latitude);
+        Assert.Equal("permit", record.RecordType);
+        Assert.Equal("other_fire_protection", record.FireSystemType);
+        Assert.Equal("unknown", record.WorkType);
+        Assert.Equal("FIRE-255161-2026", record.PermitNumber);
+        Assert.Equal("Issued", record.PermitStatus);
+        Assert.Equal("2026-08-05", record.ApplicationDate);
+        Assert.Equal("2026-08-13", record.IssuedDate);
+        Assert.Equal("2026-09-13", record.ExpirationDate);
+        Assert.Null(record.InspectionDate);
+        Assert.Empty(record.Violations!);
+        Assert.Equal("Fire Suppression | Fire Suppression", record.Description);
+        Assert.Null(record.ProjectValue);
+        Assert.Null(record.Owner!.Name);
+        Assert.Null(record.Contractor!.LicenseNumber);
+        Assert.Equal(75, record.LeadScore);
+        Assert.Equal(3, record.LeadSignals!.Length);
+        Assert.Equal("RECENTLY_ISSUED", record.LeadSignals[0]);
+        Assert.Equal("tulsa-fire-permits", record.Source!.SourceId);
+        Assert.Equal("energov", record.Source.Provider);
+        Assert.Equal("https://tulsaok-energovweb.tylerhost.net/apps/selfservice#/search", record.Source.Url);
+        Assert.Equal("2026-08-20T15:51:00.227Z", record.ScrapedAt);
     }
 
+    // Real COVERAGE_REPORT from the same run (scraper-sample.json), embedded verbatim.
     [Fact]
-    public void CoverageReport_DeserializesFromScraperJson()
+    public void CoverageReport_DeserializesFromRealScraperJson()
     {
         const string json = """
         {
-          "requestedJurisdictions": ["houston-tx", "dallas-tx"],
-          "supportedJurisdictions": ["houston-tx", "dallas-tx"],
-          "successfulJurisdictions": ["houston-tx"],
-          "failedJurisdictions": ["dallas-tx"],
-          "unsupportedJurisdictions": [],
-          "recordsFound": 4200,
+          "requestedJurisdictions": 1,
+          "supportedJurisdictions": 1,
+          "successfulJurisdictions": 1,
+          "failedJurisdictions": 0,
+          "unsupportedJurisdictions": 0,
+          "skippedJurisdictions": 0,
+          "recordsFound": 50,
           "unsupportedDetails": [],
-          "failedDetails": [{ "jurisdiction": "dallas-tx", "error": "timeout" }],
+          "failedDetails": [],
+          "skippedDetails": [],
           "sourceStats": [
-            { "jurisdiction": "houston-tx", "status": "ok", "recordCount": 4200, "durationSeconds": 51.2, "truncated": true },
-            { "jurisdiction": "dallas-tx", "status": "error", "recordCount": 0, "durationSeconds": 12.0, "truncated": false }
+            {
+              "sourceId": "tulsa-fire-permits",
+              "jurisdictionKey": "ok/tulsa",
+              "ok": true,
+              "rawCount": 150,
+              "emittedCount": 150,
+              "requestCount": 20,
+              "durationMs": 99318,
+              "error": null,
+              "addressShortfall": null,
+              "coverage": {
+                "held": 171,
+                "heldUnknownTypes": 0,
+                "delivered": 150,
+                "outcome": "max-records",
+                "truncatedBy": [],
+                "typesSearched": 3,
+                "typesTotal": 7
+              }
+            }
           ]
         }
         """;
@@ -151,17 +211,31 @@ public class ApifyModelsTests
         var report = JsonSerializer.Deserialize<CoverageReport>(json, Web);
 
         Assert.NotNull(report);
-        Assert.Equal(new[] { "houston-tx", "dallas-tx" }, report!.RequestedJurisdictions);
-        Assert.Equal(new[] { "dallas-tx" }, report.FailedJurisdictions);
-        Assert.Equal(4200, report.RecordsFound);
-        Assert.Single(report.FailedDetails);
-        Assert.Equal(2, report.SourceStats.Length);
-        Assert.Equal("houston-tx", report.SourceStats[0].Jurisdiction);
-        Assert.Equal("ok", report.SourceStats[0].Status);
-        Assert.Equal(4200, report.SourceStats[0].RecordCount);
-        Assert.Equal(51.2, report.SourceStats[0].DurationSeconds);
-        Assert.True(report.SourceStats[0].Truncated);
-        Assert.Equal("error", report.SourceStats[1].Status);
+        Assert.Equal(1, report!.RequestedJurisdictions);
+        Assert.Equal(1, report.SupportedJurisdictions);
+        Assert.Equal(1, report.SuccessfulJurisdictions);
+        Assert.Equal(0, report.FailedJurisdictions);
+        Assert.Equal(0, report.UnsupportedJurisdictions);
+        Assert.Equal(0, report.SkippedJurisdictions);
+        Assert.Equal(50, report.RecordsFound);
+        Assert.Empty(report.FailedDetails);
+        var stat = Assert.Single(report.SourceStats);
+        Assert.Equal("tulsa-fire-permits", stat.SourceId);
+        Assert.Equal("ok/tulsa", stat.JurisdictionKey);
+        Assert.True(stat.Ok);
+        Assert.Equal(150, stat.RawCount);
+        Assert.Equal(150, stat.EmittedCount);
+        Assert.Equal(20, stat.RequestCount);
+        Assert.Equal(99318, stat.DurationMs);
+        Assert.Null(stat.Error);
+        Assert.NotNull(stat.Coverage);
+        Assert.Equal(171, stat.Coverage!.Held);
+        Assert.Equal(0, stat.Coverage.HeldUnknownTypes);
+        Assert.Equal(150, stat.Coverage.Delivered);
+        Assert.Equal("max-records", stat.Coverage.Outcome);
+        Assert.Empty(stat.Coverage.TruncatedBy);
+        Assert.Equal(3, stat.Coverage.TypesSearched);
+        Assert.Equal(7, stat.Coverage.TypesTotal);
     }
 
     [Fact]
@@ -209,24 +283,53 @@ using System.Text.Json;
 
 namespace PermitTorch.Api.Infrastructure.Apify;
 
-// LOCKED shape — master plan §4. Do not rename or reorder.
+// LOCKED shape — master plan §4 (verified against real run output). Do not rename or reorder.
 public record RawPermitRecord(
-    string Id, string? Jurisdiction, string? PermitNumber, string? PermitType,
-    string? Description, string? Status, string? Address, string? City, string? State,
-    string? Zip, string? Latitude, string? Longitude, string? FiledDate, string? IssuedDate,
-    string? EstimatedValue, string? SquareFootage, string? OwnerName, string? ContractorName,
-    string? SourceUrl, string? LeadScore);
+    string RecordId,                    // "{sourceId}:{permitNumber}", e.g. "tulsa-fire-permits:FIRE-255161-2026"
+    RawJurisdiction? Jurisdiction,
+    string? BusinessName, string? ProjectName,
+    RawAddress? Address,
+    string? RecordType,                 // "permit" observed; treat as open string
+    string? FireSystemType,             // scraper's own classification, e.g. "fire_alarm", "other_fire_protection"
+    string? WorkType,                   // "unknown" observed; treat as open string
+    string? PermitNumber, string? PermitStatus,
+    string? ApplicationDate, string? IssuedDate, string? ExpirationDate,
+    string? InspectionDate, string? InspectionStatus,
+    JsonElement[]? Violations,
+    string? Description,
+    decimal? ProjectValue,
+    string? PropertyType,
+    RawParty? Owner, RawContractor? Contractor,
+    int? LeadScore,                     // scraper's score — raw input at most, never surfaced
+    string[]? LeadSignals,              // scraper's signals, e.g. "RECENTLY_ISSUED" — raw input at most
+    RawSource? Source,
+    string? ScrapedAt);
+
+public record RawJurisdiction(string? City, string? County, string? State);
+public record RawAddress(string? Street, string? City, string? State, string? Zip,
+    double? Latitude, double? Longitude);
+public record RawParty(string? Name, string? Company);
+public record RawContractor(string? Name, string? Company, string? LicenseNumber);
+public record RawSource(string? SourceId, string? Jurisdiction, string? Provider, string? Url);
 
 // LOCKED shape — master plan §4.
 public record CoverageReport(
-    string[] RequestedJurisdictions, string[] SupportedJurisdictions,
-    string[] SuccessfulJurisdictions, string[] FailedJurisdictions, string[] UnsupportedJurisdictions,
-    int RecordsFound, JsonElement[] UnsupportedDetails, JsonElement[] FailedDetails,
+    int RequestedJurisdictions, int SupportedJurisdictions, int SuccessfulJurisdictions,
+    int FailedJurisdictions, int UnsupportedJurisdictions, int SkippedJurisdictions,
+    int RecordsFound,
+    JsonElement[] UnsupportedDetails, JsonElement[] FailedDetails, JsonElement[] SkippedDetails,
     SourceStat[] SourceStats);
 
 // LOCKED shape — master plan §4.
-public record SourceStat(string Jurisdiction, string Status, int RecordCount,
-    double DurationSeconds, bool Truncated);
+public record SourceStat(
+    string SourceId, string JurisdictionKey,          // e.g. "tulsa-fire-permits", "ok/tulsa"
+    bool Ok, int RawCount, int EmittedCount, int RequestCount, long DurationMs,
+    string? Error, JsonElement? AddressShortfall, SourceCoverage? Coverage);
+
+// LOCKED shape — master plan §4.
+public record SourceCoverage(int Held, int HeldUnknownTypes, int Delivered,
+    string? Outcome,                    // e.g. "max-records" when the result cap truncated output
+    string[] TruncatedBy, int TypesSearched, int TypesTotal);
 
 // WS1 helper: subset of the Apify Run object (GET /v2/acts/{actorId}/runs/last).
 public record ApifyRun(string Id, string Status, DateTime StartedAt, DateTime? FinishedAt,
@@ -372,24 +475,34 @@ public class ApifyClientTests
     [Fact]
     public async Task GetDatasetItemsAsync_DeserializesRecords()
     {
+        // Trimmed real record from scraper-sample.json plus a null-heavy record.
         var handler = new FakeHttpMessageHandler(_ => Json("""
         [
           {
-            "id": "houston-1", "jurisdiction": "houston-tx", "permitNumber": "P-1",
-            "permitType": "Fire Sprinkler", "description": "Install sprinklers", "status": "Issued",
-            "address": "100 Main St", "city": "Houston", "state": "TX", "zip": "77002",
-            "latitude": null, "longitude": null, "filedDate": "2026-08-18T00:00:00.000Z",
-            "issuedDate": null, "estimatedValue": "10000", "squareFootage": null,
-            "ownerName": null, "contractorName": null,
-            "sourceUrl": "https://permits.houstontx.gov/p/P-1", "leadScore": "70"
+            "recordId": "tulsa-fire-permits:FIRE-255412-2026",
+            "jurisdiction": { "city": "Tulsa", "county": "Tulsa", "state": "OK" },
+            "address": { "street": "1661 E VIRGIN ST N", "city": "Tulsa", "state": "OK", "zip": "74110", "latitude": null, "longitude": null },
+            "recordType": "permit", "fireSystemType": "fire_alarm", "workType": "unknown",
+            "permitNumber": "FIRE-255412-2026", "permitStatus": "Issued",
+            "applicationDate": "2026-08-07", "issuedDate": "2026-08-19", "expirationDate": "2027-08-19",
+            "inspectionDate": null, "inspectionStatus": null, "violations": [],
+            "description": "Fire Alarm | Fire Alarm", "projectValue": null, "propertyType": null,
+            "owner": { "name": null, "company": null },
+            "contractor": { "name": null, "company": null, "licenseNumber": null },
+            "leadScore": 60, "leadSignals": ["RECENTLY_ISSUED", "NO_CONTRACTOR_LISTED"],
+            "source": { "sourceId": "tulsa-fire-permits", "jurisdiction": "Tulsa, OK", "provider": "energov", "url": "https://tulsaok-energovweb.tylerhost.net/apps/selfservice#/search" },
+            "scrapedAt": "2026-08-20T15:51:00.227Z"
           },
           {
-            "id": "houston-2", "jurisdiction": "houston-tx", "permitNumber": null,
-            "permitType": null, "description": null, "status": null,
-            "address": null, "city": null, "state": null, "zip": null,
-            "latitude": null, "longitude": null, "filedDate": null,
-            "issuedDate": null, "estimatedValue": null, "squareFootage": null,
-            "ownerName": null, "contractorName": null, "sourceUrl": null, "leadScore": null
+            "recordId": "tulsa-fire-permits:FIRE-000001-2026",
+            "jurisdiction": null, "address": null,
+            "recordType": null, "fireSystemType": null, "workType": null,
+            "permitNumber": null, "permitStatus": null,
+            "applicationDate": null, "issuedDate": null, "expirationDate": null,
+            "inspectionDate": null, "inspectionStatus": null, "violations": [],
+            "description": null, "projectValue": null, "propertyType": null,
+            "owner": null, "contractor": null,
+            "leadScore": null, "leadSignals": null, "source": null, "scrapedAt": null
           }
         ]
         """));
@@ -398,9 +511,13 @@ public class ApifyClientTests
         var items = await client.GetDatasetItemsAsync("ds-1", CancellationToken.None);
 
         Assert.Equal(2, items.Count);
-        Assert.Equal("houston-1", items[0].Id);
-        Assert.Equal("Install sprinklers", items[0].Description);
+        Assert.Equal("tulsa-fire-permits:FIRE-255412-2026", items[0].RecordId);
+        Assert.Equal("Fire Alarm | Fire Alarm", items[0].Description);
+        Assert.Equal("fire_alarm", items[0].FireSystemType);
+        Assert.Equal("tulsa-fire-permits", items[0].Source!.SourceId);
+        Assert.Equal(60, items[0].LeadScore);
         Assert.Null(items[1].Description);
+        Assert.Null(items[1].Source);
         var uri = Assert.Single(handler.Requests).RequestUri!;
         Assert.Equal("/v2/datasets/ds-1/items", uri.AbsolutePath);
         Assert.Contains("token=test-token", uri.Query);
@@ -412,16 +529,18 @@ public class ApifyClientTests
     {
         var handler = new FakeHttpMessageHandler(_ => Json("""
         {
-          "requestedJurisdictions": ["houston-tx"],
-          "supportedJurisdictions": ["houston-tx"],
-          "successfulJurisdictions": ["houston-tx"],
-          "failedJurisdictions": [],
-          "unsupportedJurisdictions": [],
+          "requestedJurisdictions": 1,
+          "supportedJurisdictions": 1,
+          "successfulJurisdictions": 1,
+          "failedJurisdictions": 0,
+          "unsupportedJurisdictions": 0,
+          "skippedJurisdictions": 0,
           "recordsFound": 12,
           "unsupportedDetails": [],
           "failedDetails": [],
+          "skippedDetails": [],
           "sourceStats": [
-            { "jurisdiction": "houston-tx", "status": "ok", "recordCount": 12, "durationSeconds": 8.5, "truncated": false }
+            { "sourceId": "tulsa-fire-permits", "jurisdictionKey": "ok/tulsa", "ok": true, "rawCount": 12, "emittedCount": 12, "requestCount": 3, "durationMs": 8500, "error": null, "addressShortfall": null, "coverage": null }
           ]
         }
         """));
@@ -431,7 +550,10 @@ public class ApifyClientTests
 
         Assert.NotNull(report);
         Assert.Equal(12, report!.RecordsFound);
-        Assert.Single(report.SourceStats);
+        var stat = Assert.Single(report.SourceStats);
+        Assert.Equal("tulsa-fire-permits", stat.SourceId);
+        Assert.True(stat.Ok);
+        Assert.Equal(12, stat.EmittedCount);
         var uri = Assert.Single(handler.Requests).RequestUri!;
         Assert.Equal("/v2/key-value-stores/kv-1/records/COVERAGE_REPORT", uri.AbsolutePath);
         Assert.Contains("token=test-token", uri.Query);
@@ -646,32 +768,41 @@ public class ApifyPermitProviderTests
     }
     """;
 
+    // Trimmed real record from scraper-sample.json.
     private const string DatasetJson = """
     [
       {
-        "id": "houston-1", "jurisdiction": "houston-tx", "permitNumber": "P-1",
-        "permitType": "Fire Sprinkler", "description": "Install sprinklers", "status": "Issued",
-        "address": "100 Main St", "city": "Houston", "state": "TX", "zip": "77002",
-        "latitude": null, "longitude": null, "filedDate": "2026-08-18T00:00:00.000Z",
-        "issuedDate": null, "estimatedValue": "10000", "squareFootage": null,
-        "ownerName": null, "contractorName": null,
-        "sourceUrl": "https://permits.houstontx.gov/p/P-1", "leadScore": "70"
+        "recordId": "tulsa-fire-permits:FIRE-255161-2026",
+        "jurisdiction": { "city": "Tulsa", "county": "Tulsa", "state": "OK" },
+        "address": { "street": "4239 S 74TH AVE E", "city": "Tulsa", "state": "OK", "zip": "74145", "latitude": null, "longitude": null },
+        "recordType": "permit", "fireSystemType": "other_fire_protection", "workType": "unknown",
+        "permitNumber": "FIRE-255161-2026", "permitStatus": "Issued",
+        "applicationDate": "2026-08-05", "issuedDate": "2026-08-13", "expirationDate": "2026-09-13",
+        "inspectionDate": null, "inspectionStatus": null, "violations": [],
+        "description": "Fire Suppression | Fire Suppression", "projectValue": null, "propertyType": null,
+        "owner": { "name": null, "company": null },
+        "contractor": { "name": null, "company": null, "licenseNumber": null },
+        "leadScore": 75, "leadSignals": ["RECENTLY_ISSUED", "NO_CONTRACTOR_LISTED", "EXPIRING_CERTIFICATION"],
+        "source": { "sourceId": "tulsa-fire-permits", "jurisdiction": "Tulsa, OK", "provider": "energov", "url": "https://tulsaok-energovweb.tylerhost.net/apps/selfservice#/search" },
+        "scrapedAt": "2026-08-20T15:51:00.227Z"
       }
     ]
     """;
 
     private const string CoverageJson = """
     {
-      "requestedJurisdictions": ["houston-tx"],
-      "supportedJurisdictions": ["houston-tx"],
-      "successfulJurisdictions": ["houston-tx"],
-      "failedJurisdictions": [],
-      "unsupportedJurisdictions": [],
+      "requestedJurisdictions": 1,
+      "supportedJurisdictions": 1,
+      "successfulJurisdictions": 1,
+      "failedJurisdictions": 0,
+      "unsupportedJurisdictions": 0,
+      "skippedJurisdictions": 0,
       "recordsFound": 1,
       "unsupportedDetails": [],
       "failedDetails": [],
+      "skippedDetails": [],
       "sourceStats": [
-        { "jurisdiction": "houston-tx", "status": "ok", "recordCount": 1, "durationSeconds": 8.5, "truncated": false }
+        { "sourceId": "tulsa-fire-permits", "jurisdictionKey": "ok/tulsa", "ok": true, "rawCount": 1, "emittedCount": 1, "requestCount": 1, "durationMs": 8500, "error": null, "addressShortfall": null, "coverage": null }
       ]
     }
     """;
@@ -710,7 +841,8 @@ public class ApifyPermitProviderTests
         Assert.Equal("SUCCEEDED", result.Status);
         Assert.Equal(new DateTime(2026, 8, 19, 10, 0, 0, DateTimeKind.Utc), result.StartedAt);
         Assert.Single(result.Records);
-        Assert.Equal("houston-1", result.Records[0].Id);
+        Assert.Equal("tulsa-fire-permits:FIRE-255161-2026", result.Records[0].RecordId);
+        Assert.Equal("tulsa-fire-permits", result.Records[0].Source!.SourceId);
         Assert.NotNull(result.Coverage);
         Assert.Single(result.Coverage!.SourceStats);
     }
@@ -891,7 +1023,7 @@ git commit -m "Add Apify permit source provider with already-ingested run skip"
 - Produces (LOCKED from master §5):
   - `static class PermitNormalizer { public static NormalizedPermit Normalize(RawPermitRecord raw); }`
   - `record NormalizedPermit(string ExternalId, string Jurisdiction, string? PermitNumber, string? PermitType, string? Description, PermitStatusKind Status, string? RawStatus, string? Address, string City, string State, string? Zip, double? Latitude, double? Longitude, DateTime? FiledDate, DateTime? IssuedDate, decimal? EstimatedValue, int? SquareFootage, string? OwnerName, string? ContractorName, string SourceUrl, string Fingerprint)`
-- Behavior contract: null `Jurisdiction`/`City`/`State`/`SourceUrl` become `""`; dates parse as UTC (`DateTimeKind.Utc`) or null; `EstimatedValue` tolerates `$`/`,`; `SquareFootage` tolerates `,` and decimal strings; status maps case-insensitively by contains, first match wins, in this exact order: issued/active → Active; applied/submitted/new → New; inspection → Inspection; failed/violation → Failed; closed/final/complete → Closed; else Unknown. Fingerprint = lowercase hex SHA-256 of `{address}|{permit_type}|{filed_date:yyyy-MM-dd}|{description}` lowercased, nulls as empty strings.
+- Behavior contract (mapping locked in master §4): `ExternalId = RecordId` · `Jurisdiction = Source?.SourceId ?? ""` · `PermitType = FireSystemType` (carries the scraper's classification hint into the classifier) · `RawStatus = PermitStatus`, and `Status` maps from it case-insensitively by contains, first match wins, in this exact order: issued/active → Active; applied/submitted/new → New; inspection → Inspection; failed/violation → Failed; closed/final/complete → Closed; else Unknown (the real data emits `"Issued"` → Active) · `Address = Address?.Street` · `City = Address?.City ?? Jurisdiction?.City ?? ""`, `State` likewise, `Zip = Address?.Zip` · `Latitude`/`Longitude` come straight from `Address` (already `double?` — no string parsing) · `FiledDate` = parse `ApplicationDate`, `IssuedDate` = parse `IssuedDate`, as UTC (`DateTimeKind.Utc`) or null · `EstimatedValue = ProjectValue` (already `decimal?` — no parsing) · `SquareFootage = null` always (this provider never emits it; the `NormalizedPermit` field stays for future providers) · `OwnerName = Owner?.Name ?? Owner?.Company`, `ContractorName = Contractor?.Name ?? Contractor?.Company` · `SourceUrl = Source?.Url ?? ""`. Fingerprint = lowercase hex SHA-256 of `{address}|{permit_type}|{filed_date:yyyy-MM-dd}|{description}` lowercased, nulls as empty strings (formula unchanged).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -899,6 +1031,7 @@ Create `apps/api/tests/PermitTorch.Api.Tests/Domain/PermitNormalizerTests.cs`:
 
 ```csharp
 using System;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using PermitTorch.Api.Data;
 using PermitTorch.Api.Domain.Normalization;
@@ -909,70 +1042,99 @@ namespace PermitTorch.Api.Tests.Domain;
 
 public class PermitNormalizerTests
 {
+    // Builder over the real Tulsa record from scraper-sample.json; override nested records per test.
     private static RawPermitRecord Raw(
-        string id = "houston-1",
-        string? jurisdiction = "houston-tx",
-        string? permitNumber = "P-1",
-        string? permitType = "Fire Sprinkler",
-        string? description = "Install NFPA 13 sprinkler system",
-        string? status = "Issued",
-        string? address = "100 Main St",
-        string? city = "Houston",
-        string? state = "TX",
-        string? zip = "77002",
-        string? latitude = "29.7604",
-        string? longitude = "-95.3698",
-        string? filedDate = "2026-08-18T14:30:00.000Z",
-        string? issuedDate = null,
-        string? estimatedValue = "750000",
-        string? squareFootage = "25000",
-        string? ownerName = "Acme Holdings LLC",
-        string? contractorName = null,
-        string? sourceUrl = "https://permits.houstontx.gov/p/P-1",
-        string? leadScore = "88")
-        => new(id, jurisdiction, permitNumber, permitType, description, status, address, city, state,
-            zip, latitude, longitude, filedDate, issuedDate, estimatedValue, squareFootage,
-            ownerName, contractorName, sourceUrl, leadScore);
+        string recordId = "tulsa-fire-permits:FIRE-255161-2026",
+        RawJurisdiction? jurisdiction = null,
+        RawAddress? address = null,
+        string? fireSystemType = "other_fire_protection",
+        string? permitNumber = "FIRE-255161-2026",
+        string? permitStatus = "Issued",
+        string? applicationDate = "2026-08-05",
+        string? issuedDate = "2026-08-13",
+        string? description = "Fire Suppression | Fire Suppression",
+        decimal? projectValue = null,
+        RawParty? owner = null,
+        RawContractor? contractor = null,
+        RawSource? source = null)
+        => new(
+            RecordId: recordId,
+            Jurisdiction: jurisdiction ?? new RawJurisdiction("Tulsa", "Tulsa", "OK"),
+            BusinessName: null,
+            ProjectName: null,
+            Address: address ?? new RawAddress("4239 S 74TH AVE E", "Tulsa", "OK", "74145", null, null),
+            RecordType: "permit",
+            FireSystemType: fireSystemType,
+            WorkType: "unknown",
+            PermitNumber: permitNumber,
+            PermitStatus: permitStatus,
+            ApplicationDate: applicationDate,
+            IssuedDate: issuedDate,
+            ExpirationDate: "2026-09-13",
+            InspectionDate: null,
+            InspectionStatus: null,
+            Violations: Array.Empty<JsonElement>(),
+            Description: description,
+            ProjectValue: projectValue,
+            PropertyType: null,
+            Owner: owner ?? new RawParty(null, null),
+            Contractor: contractor ?? new RawContractor(null, null, null),
+            LeadScore: 75,
+            LeadSignals: new[] { "RECENTLY_ISSUED", "NO_CONTRACTOR_LISTED" },
+            Source: source ?? new RawSource("tulsa-fire-permits", "Tulsa, OK", "energov",
+                "https://tulsaok-energovweb.tylerhost.net/apps/selfservice#/search"),
+            ScrapedAt: "2026-08-20T15:51:00.227Z");
 
     [Fact]
     public void Normalize_MapsAllFields_ForFullRecord()
     {
-        var normalized = PermitNormalizer.Normalize(Raw());
+        var normalized = PermitNormalizer.Normalize(Raw(
+            address: new RawAddress("4239 S 74TH AVE E", "Tulsa", "OK", "74145", 36.1015, -95.8562),
+            projectValue: 750000m,
+            owner: new RawParty("Acme Holdings LLC", null),
+            contractor: new RawContractor(null, "Reliable Fire Co", "OK-12345")));
 
-        Assert.Equal("houston-1", normalized.ExternalId);
-        Assert.Equal("houston-tx", normalized.Jurisdiction);
-        Assert.Equal("P-1", normalized.PermitNumber);
-        Assert.Equal("Fire Sprinkler", normalized.PermitType);
-        Assert.Equal("Install NFPA 13 sprinkler system", normalized.Description);
+        Assert.Equal("tulsa-fire-permits:FIRE-255161-2026", normalized.ExternalId);
+        Assert.Equal("tulsa-fire-permits", normalized.Jurisdiction);
+        Assert.Equal("FIRE-255161-2026", normalized.PermitNumber);
+        Assert.Equal("other_fire_protection", normalized.PermitType);
+        Assert.Equal("Fire Suppression | Fire Suppression", normalized.Description);
         Assert.Equal(PermitStatusKind.Active, normalized.Status);
         Assert.Equal("Issued", normalized.RawStatus);
-        Assert.Equal("100 Main St", normalized.Address);
-        Assert.Equal("Houston", normalized.City);
-        Assert.Equal("TX", normalized.State);
-        Assert.Equal("77002", normalized.Zip);
-        Assert.Equal(29.7604, normalized.Latitude!.Value, 4);
-        Assert.Equal(-95.3698, normalized.Longitude!.Value, 4);
-        Assert.Equal(new DateTime(2026, 8, 18, 14, 30, 0, DateTimeKind.Utc), normalized.FiledDate);
+        Assert.Equal("4239 S 74TH AVE E", normalized.Address);
+        Assert.Equal("Tulsa", normalized.City);
+        Assert.Equal("OK", normalized.State);
+        Assert.Equal("74145", normalized.Zip);
+        Assert.Equal(36.1015, normalized.Latitude!.Value, 4);
+        Assert.Equal(-95.8562, normalized.Longitude!.Value, 4);
+        Assert.Equal(new DateTime(2026, 8, 5, 0, 0, 0, DateTimeKind.Utc), normalized.FiledDate);
         Assert.Equal(DateTimeKind.Utc, normalized.FiledDate!.Value.Kind);
-        Assert.Null(normalized.IssuedDate);
+        Assert.Equal(new DateTime(2026, 8, 13, 0, 0, 0, DateTimeKind.Utc), normalized.IssuedDate);
         Assert.Equal(750000m, normalized.EstimatedValue);
-        Assert.Equal(25000, normalized.SquareFootage);
+        Assert.Null(normalized.SquareFootage); // this provider never emits square footage
         Assert.Equal("Acme Holdings LLC", normalized.OwnerName);
-        Assert.Null(normalized.ContractorName);
-        Assert.Equal("https://permits.houstontx.gov/p/P-1", normalized.SourceUrl);
+        Assert.Equal("Reliable Fire Co", normalized.ContractorName); // company fallback
+        Assert.Equal("https://tulsaok-energovweb.tylerhost.net/apps/selfservice#/search",
+            normalized.SourceUrl);
     }
 
     [Fact]
     public void Normalize_ToleratesNullHeavyRecord()
     {
-        var raw = new RawPermitRecord("x-1", null, null, null, null, null, null, null, null,
-            null, null, null, null, null, null, null, null, null, null, null);
+        var raw = new RawPermitRecord(
+            RecordId: "x-1", Jurisdiction: null, BusinessName: null, ProjectName: null,
+            Address: null, RecordType: null, FireSystemType: null, WorkType: null,
+            PermitNumber: null, PermitStatus: null, ApplicationDate: null, IssuedDate: null,
+            ExpirationDate: null, InspectionDate: null, InspectionStatus: null, Violations: null,
+            Description: null, ProjectValue: null, PropertyType: null, Owner: null,
+            Contractor: null, LeadScore: null, LeadSignals: null, Source: null, ScrapedAt: null);
 
         var normalized = PermitNormalizer.Normalize(raw);
 
         Assert.Equal("x-1", normalized.ExternalId);
         Assert.Equal(string.Empty, normalized.Jurisdiction);
         Assert.Null(normalized.PermitNumber);
+        Assert.Null(normalized.PermitType);
         Assert.Null(normalized.Description);
         Assert.Equal(PermitStatusKind.Unknown, normalized.Status);
         Assert.Null(normalized.RawStatus);
@@ -983,12 +1145,14 @@ public class PermitNormalizerTests
         Assert.Null(normalized.FiledDate);
         Assert.Null(normalized.EstimatedValue);
         Assert.Null(normalized.SquareFootage);
+        Assert.Null(normalized.OwnerName);
+        Assert.Null(normalized.ContractorName);
         Assert.Equal(string.Empty, normalized.SourceUrl);
         Assert.Matches(new Regex("^[0-9a-f]{64}$"), normalized.Fingerprint);
     }
 
     [Theory]
-    [InlineData("Issued", PermitStatusKind.Active)]
+    [InlineData("Issued", PermitStatusKind.Active)] // what the real Tulsa data emits
     [InlineData("ACTIVE", PermitStatusKind.Active)]
     [InlineData("Permit Issued - In Effect", PermitStatusKind.Active)]
     [InlineData("Applied", PermitStatusKind.New)]
@@ -1003,68 +1167,59 @@ public class PermitNormalizerTests
     [InlineData("Pending Review", PermitStatusKind.Unknown)]
     [InlineData("", PermitStatusKind.Unknown)]
     [InlineData(null, PermitStatusKind.Unknown)]
-    public void Normalize_MapsRawStatusToStatusKind(string? rawStatus, PermitStatusKind expected)
+    public void Normalize_MapsPermitStatusToStatusKind(string? permitStatus, PermitStatusKind expected)
     {
-        var normalized = PermitNormalizer.Normalize(Raw(status: rawStatus));
+        var normalized = PermitNormalizer.Normalize(Raw(permitStatus: permitStatus));
 
         Assert.Equal(expected, normalized.Status);
-        Assert.Equal(rawStatus, normalized.RawStatus);
+        Assert.Equal(permitStatus, normalized.RawStatus);
     }
 
-    [Theory]
-    [InlineData("750000", 750000)]
-    [InlineData("$1,250,000.50", 1250000.50)]
-    [InlineData(" 42 ", 42)]
-    public void Normalize_ParsesEstimatedValue(string rawValue, decimal expected)
+    [Fact]
+    public void Normalize_FallsBackToJurisdictionCityState_WhenAddressFieldsNull()
     {
-        var normalized = PermitNormalizer.Normalize(Raw(estimatedValue: rawValue));
+        // Fields are present-but-null in real output; jurisdiction{} still identifies the locale.
+        var normalized = PermitNormalizer.Normalize(Raw(
+            address: new RawAddress(null, null, null, null, null, null)));
 
-        Assert.Equal(expected, normalized.EstimatedValue);
+        Assert.Null(normalized.Address);
+        Assert.Null(normalized.Zip);
+        Assert.Equal("Tulsa", normalized.City);
+        Assert.Equal("OK", normalized.State);
     }
 
-    [Theory]
-    [InlineData("not-a-number")]
-    [InlineData("")]
-    [InlineData(null)]
-    public void Normalize_ReturnsNullEstimatedValue_ForUnparseableInput(string? rawValue)
+    [Fact]
+    public void Normalize_PassesProjectValueThroughAsEstimatedValue()
     {
-        var normalized = PermitNormalizer.Normalize(Raw(estimatedValue: rawValue));
-
-        Assert.Null(normalized.EstimatedValue);
+        // projectValue is already decimal? — no string parsing anywhere.
+        Assert.Equal(1250000.50m,
+            PermitNormalizer.Normalize(Raw(projectValue: 1250000.50m)).EstimatedValue);
+        Assert.Null(PermitNormalizer.Normalize(Raw(projectValue: null)).EstimatedValue);
     }
 
-    [Theory]
-    [InlineData("25000", 25000)]
-    [InlineData("20,500", 20500)]
-    [InlineData("18000.0", 18000)]
-    public void Normalize_ParsesSquareFootage(string rawValue, int expected)
+    [Fact]
+    public void Normalize_SquareFootageIsAlwaysNull()
     {
-        var normalized = PermitNormalizer.Normalize(Raw(squareFootage: rawValue));
-
-        Assert.Equal(expected, normalized.SquareFootage);
+        // The scraper does not emit square footage; NormalizedPermit keeps the field for
+        // future providers, so the LARGE_SQUARE_FOOTAGE signal simply never fires here.
+        Assert.Null(PermitNormalizer.Normalize(Raw()).SquareFootage);
     }
 
-    [Theory]
-    [InlineData("garbage")]
-    [InlineData("91.9999")] // out-of-band latitude text is still parseable; garbage is not
-    public void Normalize_ParsesOrRejectsLatitude(string rawValue)
+    [Fact]
+    public void Normalize_PrefersName_OverCompany_ForOwnerAndContractor()
     {
-        var normalized = PermitNormalizer.Normalize(Raw(latitude: rawValue));
+        var normalized = PermitNormalizer.Normalize(Raw(
+            owner: new RawParty(null, "Acme Holdings LLC"),
+            contractor: new RawContractor("Jane Doe", "Reliable Fire Co", null)));
 
-        if (rawValue == "garbage")
-        {
-            Assert.Null(normalized.Latitude);
-        }
-        else
-        {
-            Assert.Equal(91.9999, normalized.Latitude!.Value, 4);
-        }
+        Assert.Equal("Acme Holdings LLC", normalized.OwnerName);  // company fallback
+        Assert.Equal("Jane Doe", normalized.ContractorName);      // name wins over company
     }
 
     [Fact]
     public void Normalize_ReturnsNullDate_ForUnparseableDate()
     {
-        var normalized = PermitNormalizer.Normalize(Raw(filedDate: "not-a-date"));
+        var normalized = PermitNormalizer.Normalize(Raw(applicationDate: "not-a-date"));
 
         Assert.Null(normalized.FiledDate);
     }
@@ -1072,8 +1227,12 @@ public class PermitNormalizerTests
     [Fact]
     public void Fingerprint_IsStable_AndCaseInsensitive()
     {
-        var a = PermitNormalizer.Normalize(Raw(address: "100 MAIN ST", description: "INSTALL SPRINKLERS"));
-        var b = PermitNormalizer.Normalize(Raw(address: "100 main st", description: "install sprinklers"));
+        var a = PermitNormalizer.Normalize(Raw(
+            address: new RawAddress("4239 S 74TH AVE E", "Tulsa", "OK", "74145", null, null),
+            description: "FIRE SUPPRESSION | FIRE SUPPRESSION"));
+        var b = PermitNormalizer.Normalize(Raw(
+            address: new RawAddress("4239 s 74th ave e", "Tulsa", "OK", "74145", null, null),
+            description: "fire suppression | fire suppression"));
 
         Assert.Equal(a.Fingerprint, b.Fingerprint);
         Assert.Matches(new Regex("^[0-9a-f]{64}$"), a.Fingerprint);
@@ -1082,8 +1241,8 @@ public class PermitNormalizerTests
     [Fact]
     public void Fingerprint_Differs_WhenDescriptionDiffers()
     {
-        var a = PermitNormalizer.Normalize(Raw(description: "Install sprinklers"));
-        var b = PermitNormalizer.Normalize(Raw(description: "Install fire alarm"));
+        var a = PermitNormalizer.Normalize(Raw(description: "Fire Suppression | Fire Suppression"));
+        var b = PermitNormalizer.Normalize(Raw(description: "Fire Alarm | Fire Alarm"));
 
         Assert.NotEqual(a.Fingerprint, b.Fingerprint);
     }
@@ -1091,9 +1250,13 @@ public class PermitNormalizerTests
     [Fact]
     public void Fingerprint_IgnoresFieldsOutsideTheContract()
     {
-        // Only address | permit_type | filed_date | description participate.
-        var a = PermitNormalizer.Normalize(Raw(ownerName: "Owner A", contractorName: "Contractor A"));
-        var b = PermitNormalizer.Normalize(Raw(ownerName: "Owner B", contractorName: null));
+        // Only address | permit_type (fireSystemType) | filed_date | description participate.
+        var a = PermitNormalizer.Normalize(Raw(
+            owner: new RawParty("Owner A", null),
+            contractor: new RawContractor("Contractor A", null, null)));
+        var b = PermitNormalizer.Normalize(Raw(
+            owner: new RawParty("Owner B", null),
+            contractor: new RawContractor(null, null, null)));
 
         Assert.Equal(a.Fingerprint, b.Fingerprint);
     }
@@ -1126,42 +1289,43 @@ public record NormalizedPermit(string ExternalId, string Jurisdiction, string? P
     DateTime? FiledDate, DateTime? IssuedDate, decimal? EstimatedValue, int? SquareFootage,
     string? OwnerName, string? ContractorName, string SourceUrl, string Fingerprint);
 
-// LOCKED entry point — master plan §5.
+// LOCKED entry point — master plan §5. Mapping locked in master §4.
 public static class PermitNormalizer
 {
     public static NormalizedPermit Normalize(RawPermitRecord raw)
     {
-        var filedDate = ParseUtcDate(raw.FiledDate);
+        var filedDate = ParseUtcDate(raw.ApplicationDate);
+        var street = raw.Address?.Street;
 
         return new NormalizedPermit(
-            ExternalId: raw.Id,
-            Jurisdiction: raw.Jurisdiction ?? string.Empty,
+            ExternalId: raw.RecordId,
+            Jurisdiction: raw.Source?.SourceId ?? string.Empty,
             PermitNumber: raw.PermitNumber,
-            PermitType: raw.PermitType,
+            PermitType: raw.FireSystemType,   // carries the scraper's classification hint downstream
             Description: raw.Description,
-            Status: MapStatus(raw.Status),
-            RawStatus: raw.Status,
-            Address: raw.Address,
-            City: raw.City ?? string.Empty,
-            State: raw.State ?? string.Empty,
-            Zip: raw.Zip,
-            Latitude: ParseDouble(raw.Latitude),
-            Longitude: ParseDouble(raw.Longitude),
+            Status: MapStatus(raw.PermitStatus),
+            RawStatus: raw.PermitStatus,
+            Address: street,
+            City: raw.Address?.City ?? raw.Jurisdiction?.City ?? string.Empty,
+            State: raw.Address?.State ?? raw.Jurisdiction?.State ?? string.Empty,
+            Zip: raw.Address?.Zip,
+            Latitude: raw.Address?.Latitude,      // already double? — no string parsing
+            Longitude: raw.Address?.Longitude,
             FiledDate: filedDate,
             IssuedDate: ParseUtcDate(raw.IssuedDate),
-            EstimatedValue: ParseDecimal(raw.EstimatedValue),
-            SquareFootage: ParseInt(raw.SquareFootage),
-            OwnerName: raw.OwnerName,
-            ContractorName: raw.ContractorName,
-            SourceUrl: raw.SourceUrl ?? string.Empty,
-            Fingerprint: ComputeFingerprint(raw.Address, raw.PermitType, filedDate, raw.Description));
+            EstimatedValue: raw.ProjectValue,     // already decimal? — no string parsing
+            SquareFootage: null,                  // never emitted by this provider; field kept for future providers
+            OwnerName: raw.Owner?.Name ?? raw.Owner?.Company,
+            ContractorName: raw.Contractor?.Name ?? raw.Contractor?.Company,
+            SourceUrl: raw.Source?.Url ?? string.Empty,
+            Fingerprint: ComputeFingerprint(street, raw.FireSystemType, filedDate, raw.Description));
     }
 
     private static PermitStatusKind MapStatus(string? rawStatus)
     {
         if (string.IsNullOrWhiteSpace(rawStatus)) return PermitStatusKind.Unknown;
         var s = rawStatus.ToLowerInvariant();
-        // First match wins, in contract order.
+        // First match wins, in contract order. Real Tulsa data emits "Issued" -> Active.
         if (s.Contains("issued") || s.Contains("active")) return PermitStatusKind.Active;
         if (s.Contains("applied") || s.Contains("submitted") || s.Contains("new")) return PermitStatusKind.New;
         if (s.Contains("inspection")) return PermitStatusKind.Inspection;
@@ -1175,31 +1339,6 @@ public static class PermitNormalizer
                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var parsed)
             ? parsed
             : null;
-
-    private static double? ParseDouble(string? value)
-        => double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
-            ? parsed
-            : null;
-
-    private static decimal? ParseDecimal(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return null;
-        var cleaned = value.Replace("$", string.Empty).Replace(",", string.Empty).Trim();
-        return decimal.TryParse(cleaned, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
-            ? parsed
-            : null;
-    }
-
-    private static int? ParseInt(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return null;
-        var cleaned = value.Replace(",", string.Empty).Trim();
-        if (int.TryParse(cleaned, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
-            return parsed;
-        return decimal.TryParse(cleaned, NumberStyles.Float, CultureInfo.InvariantCulture, out var dec)
-            ? (int)dec
-            : null;
-    }
 
     private static string ComputeFingerprint(string? address, string? permitType, DateTime? filedDate, string? description)
     {
@@ -1217,7 +1356,7 @@ public static class PermitNormalizer
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `dotnet test apps/api/tests/PermitTorch.Api.Tests --filter "FullyQualifiedName~PermitNormalizerTests"`
-Expected: PASS — all normalizer tests pass (10 test methods, 30 total cases with theories).
+Expected: PASS — all normalizer tests pass (11 test methods, 25 total cases with the status theory).
 
 - [ ] **Step 5: Commit**
 
@@ -1238,7 +1377,18 @@ git commit -m "Add permit normalizer with status mapping and dedupe fingerprint"
 - Produces (LOCKED from master §5):
   - `static class FireClassifier { public static ClassificationResult? Classify(NormalizedPermit permit); }` — null means not fire-related
   - `record ClassificationResult(FireCategory Category, decimal Confidence, string MatchedRule)`
-- Rule table (deterministic, first match wins, matched against `Description + " " + PermitType`, case-insensitive):
+- **Hint-first rule (runs before the regex table):** `permit.PermitType` now carries the scraper's `fireSystemType` (master §4 mapping). When it matches this map (case-insensitive exact match), return that category with confidence 0.95 and MatchedRule `fire_system_type_hint`. An unknown or null hint falls through to the regex rules below (unchanged — they serve future non-Apify providers and records with unrecognized hints):
+
+| fireSystemType hint | Category |
+| --- | --- |
+| `fire_alarm` | FireAlarm |
+| `fire_sprinkler` | FireSprinkler |
+| `fire_suppression` | FireSuppression |
+| `kitchen_suppression`, `kitchen_hood` | KitchenSuppression |
+| `fire_inspection` | FireInspection |
+| `other_fire_protection` | GeneralFireProtection |
+
+- Regex rule table (deterministic, first match wins, matched against `Description + " " + PermitType`, case-insensitive):
 
 | Order | Pattern | Category | Confidence | MatchedRule string |
 | --- | --- | --- | --- | --- |
@@ -1266,9 +1416,38 @@ namespace PermitTorch.Api.Tests.Domain;
 public class FireClassifierTests
 {
     private static NormalizedPermit Permit(string? description, string? permitType = null)
-        => new("ext-1", "houston-tx", null, permitType, description, PermitStatusKind.Active, null,
-            "100 Main St", "Houston", "TX", null, null, null, null, null, null, null,
+        => new("ext-1", "tulsa-fire-permits", null, permitType, description, PermitStatusKind.Active, null,
+            "4239 S 74TH AVE E", "Tulsa", "OK", null, null, null, null, null, null, null,
             null, null, "https://example.gov/p/1", "fp");
+
+    [Theory]
+    // Hint-first: PermitType carries the scraper's fireSystemType; a recognized hint wins
+    // outright — even when the description text would regex-match a different category.
+    [InlineData("Fire Alarm | Fire Alarm", "fire_alarm", FireCategory.FireAlarm)]
+    [InlineData("Sprinkler retrofit", "FIRE_SPRINKLER", FireCategory.FireSprinkler)] // case-insensitive
+    [InlineData("Hood system", "kitchen_hood", FireCategory.KitchenSuppression)]
+    [InlineData("Fire Suppression | Fire Suppression", "other_fire_protection", FireCategory.GeneralFireProtection)]
+    public void Classify_UsesFireSystemTypeHint_BeforeRegexRules(string? description, string hint,
+        FireCategory expectedCategory)
+    {
+        var result = FireClassifier.Classify(Permit(description, hint));
+
+        Assert.NotNull(result);
+        Assert.Equal(expectedCategory, result!.Category);
+        Assert.Equal(0.95m, result.Confidence);
+        Assert.Equal("fire_system_type_hint", result.MatchedRule);
+    }
+
+    [Fact]
+    public void Classify_FallsThroughToRegex_ForUnrecognizedHint()
+    {
+        var result = FireClassifier.Classify(
+            Permit("Install NFPA 13 sprinkler system", "mechanical_permit"));
+
+        Assert.NotNull(result);
+        Assert.Equal(FireCategory.FireSprinkler, result!.Category);
+        Assert.Equal("sprinkler|nfpa 13", result.MatchedRule);
+    }
 
     [Theory]
     // FireSprinkler — explicit sprinkler / NFPA 13 scope
@@ -1354,6 +1533,8 @@ Expected: Build FAILED with `error CS0246: The type or namespace name 'FireClass
 Create `apps/api/Domain/Classification/FireClassifier.cs`:
 
 ```csharp
+using System;
+using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using PermitTorch.Api.Data;
 using PermitTorch.Api.Domain.Normalization;
@@ -1363,10 +1544,25 @@ namespace PermitTorch.Api.Domain.Classification;
 // LOCKED shape — master plan §5.
 public record ClassificationResult(FireCategory Category, decimal Confidence, string MatchedRule);
 
-// LOCKED entry point — master plan §5. Deterministic keyword/regex rules only (PRD §46).
+// LOCKED entry point — master plan §5. Deterministic hint + keyword/regex rules only (PRD §46).
 public static class FireClassifier
 {
     private const RegexOptions Opts = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant;
+
+    // Hint-first: the normalizer maps the scraper's fireSystemType into PermitType (master §4).
+    // Recognized hints short-circuit the regex rules; unknown hints fall through so the regex
+    // path keeps serving future non-Apify providers and records with unrecognized hints.
+    private static readonly Dictionary<string, FireCategory> FireSystemTypeHints =
+        new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["fire_alarm"] = FireCategory.FireAlarm,
+        ["fire_sprinkler"] = FireCategory.FireSprinkler,
+        ["fire_suppression"] = FireCategory.FireSuppression,
+        ["kitchen_suppression"] = FireCategory.KitchenSuppression,
+        ["kitchen_hood"] = FireCategory.KitchenSuppression,
+        ["fire_inspection"] = FireCategory.FireInspection,
+        ["other_fire_protection"] = FireCategory.GeneralFireProtection,
+    };
 
     private sealed record Rule(Regex Pattern, FireCategory Category, decimal Confidence, string Name);
 
@@ -1390,6 +1586,10 @@ public static class FireClassifier
 
     public static ClassificationResult? Classify(NormalizedPermit permit)
     {
+        if (permit.PermitType is not null
+            && FireSystemTypeHints.TryGetValue(permit.PermitType.Trim(), out var hinted))
+            return new ClassificationResult(hinted, 0.95m, "fire_system_type_hint");
+
         var text = $"{permit.Description} {permit.PermitType}".Trim();
         if (text.Length == 0) return null;
 
@@ -1413,13 +1613,13 @@ public static class FireClassifier
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `dotnet test apps/api/tests/PermitTorch.Api.Tests --filter "FullyQualifiedName~FireClassifierTests"`
-Expected: PASS — 22 test cases pass.
+Expected: PASS — 25 test cases pass (hint path + regex path).
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add apps/api/Domain/Classification/FireClassifier.cs apps/api/tests/PermitTorch.Api.Tests/Domain/FireClassifierTests.cs
-git commit -m "Add deterministic keyword fire classifier"
+git commit -m "Add deterministic fire classifier with hint-first and keyword rules"
 ```
 
 ---
@@ -1828,11 +2028,11 @@ git commit -m "Add configurable deterministic lead scoring engine"
   - Poll interval from configuration key `Ingestion:IntervalMinutes` (default 15)
 - Behavior contract:
   1. Fetch via `IPermitSourceProvider.FetchLatestRunAsync`; null → do nothing.
-  2. Per record: `PermitNormalizer.Normalize` → resolve `Source` by `Jurisdiction` (case-insensitive; unknown → log warning, count as failure, skip).
+  2. Per record: `PermitNormalizer.Normalize` → resolve `Source` by matching `NormalizedPermit.Jurisdiction` (which carries the scraper's `source.sourceId`, e.g. `"tulsa-fire-permits"`) against the `Source.Jurisdiction` entity field (which stores the scraper sourceId — master §3), case-insensitive; unknown → log warning, count as failure, skip.
   3. Dedupe upsert: match on `(SourceId, ExternalId)`, else fingerprint fallback within the same source; existing rows get `LastSeenAt`/`UpdatedAt` refreshed and non-null incoming fields merged — never overwrite a non-null column with null (PRD §62). New rows count as imported, matches as duplicates.
   4. `FireClassifier.Classify`; when classified: upsert `FireOpportunity` (preserve `FirstDetectedAt`), recompute `LeadScore`/`Reason` via `ScoringEngine`, and replace all `LeadSignal` rows.
   5. Persist a `ScraperRun` row with counts, duration, and raw `CoverageReportJson`.
-  6. Update per-source health from `CoverageReport.SourceStats`: stat status != "ok" → `Failed`; truncated → `Warning` (+ `LastSuccessfulRunAt`/`RecordsLastRun`, run did succeed partially); ok → `Healthy` + `LastSuccessfulRunAt`/`RecordsLastRun`. Sources with `HealthStatus.Disabled` are never touched.
+  6. Update per-source health from `CoverageReport.SourceStats` (matched by `stat.SourceId` against `Source.Jurisdiction`): `stat.Ok == false` → `Failed` (log `stat.Error`); truncated — `stat.Coverage != null && (Coverage.TruncatedBy.Length > 0 || Coverage.Outcome == "max-records")` — → `Warning` (+ `LastSuccessfulRunAt`, `RecordsLastRun = stat.EmittedCount`; the run did succeed partially); otherwise → `Healthy` + `LastSuccessfulRunAt`, `RecordsLastRun = stat.EmittedCount`. Sources with `HealthStatus.Disabled` are never touched.
   7. Per-record exceptions are caught, logged, and counted as failures — one bad record never kills the run.
 
 - [ ] **Step 1: Write the failing integration test**
@@ -1874,29 +2074,29 @@ public class IngestionJobTests
 
     public IngestionJobTests(PostgresFixture fixture) => _fixture = fixture;
 
-    private async Task<Source> SeedSourceAsync(string jurisdiction,
+    private async Task<Source> SeedSourceAsync(string scraperSourceId,
         HealthStatus health = HealthStatus.Healthy)
     {
         await using var db = _fixture.CreateContext();
         var market = new Market
         {
             Id = Guid.NewGuid(),
-            Name = "Houston",
-            City = "Houston",
-            State = "TX",
-            Slug = $"houston-{Guid.NewGuid():N}",
+            Name = "Tulsa",
+            City = "Tulsa",
+            State = "OK",
+            Slug = $"tulsa-{Guid.NewGuid():N}",
             Active = true,
         };
         var source = new Source
         {
             Id = Guid.NewGuid(),
             MarketId = market.Id,
-            Name = $"Houston Permits {jurisdiction}",
-            City = "Houston",
-            State = "TX",
-            PortalType = "accela",
-            SourceUrl = "https://permits.houstontx.gov",
-            Jurisdiction = jurisdiction,
+            Name = $"Tulsa Fire Permits {scraperSourceId}",
+            City = "Tulsa",
+            State = "OK",
+            PortalType = "energov",
+            SourceUrl = "https://tulsaok-energovweb.tylerhost.net",
+            Jurisdiction = scraperSourceId, // Source.Jurisdiction stores the scraper sourceId (master §3)
             Active = true,
             HealthStatus = health,
             RecordsLastRun = 0,
@@ -1923,52 +2123,86 @@ public class IngestionJobTests
         return (job, sp);
     }
 
+    // Builder for nested raw records (master §4 shape) so tests stay terse.
     private static RawPermitRecord Record(
-        string id,
-        string jurisdiction,
+        string recordId,
+        string sourceId,
         string? description = null,
-        string? permitType = null,
-        string? status = "Issued",
-        string? address = "100 Main St",
-        string? filedDate = null,
+        string? fireSystemType = null,
+        string? permitStatus = "Issued",
+        string? street = "4239 S 74TH AVE E",
+        string? applicationDate = null,
         string? contractorName = "Reliable Fire Co",
-        string? estimatedValue = null)
-        => new(id, jurisdiction, PermitNumber: null, PermitType: permitType, Description: description,
-            Status: status, Address: address, City: "Houston", State: "TX", Zip: null,
-            Latitude: null, Longitude: null, FiledDate: filedDate, IssuedDate: null,
-            EstimatedValue: estimatedValue, SquareFootage: null, OwnerName: null,
-            ContractorName: contractorName, SourceUrl: "https://permits.houstontx.gov/p/1",
-            LeadScore: null);
+        decimal? projectValue = null)
+        => new(
+            RecordId: recordId,
+            Jurisdiction: new RawJurisdiction("Tulsa", "Tulsa", "OK"),
+            BusinessName: null,
+            ProjectName: null,
+            Address: new RawAddress(street, "Tulsa", "OK", "74145", null, null),
+            RecordType: "permit",
+            FireSystemType: fireSystemType,
+            WorkType: "unknown",
+            PermitNumber: null,
+            PermitStatus: permitStatus,
+            ApplicationDate: applicationDate,
+            IssuedDate: null,
+            ExpirationDate: null,
+            InspectionDate: null,
+            InspectionStatus: null,
+            Violations: Array.Empty<JsonElement>(),
+            Description: description,
+            ProjectValue: projectValue,
+            PropertyType: null,
+            Owner: new RawParty(null, null),
+            Contractor: new RawContractor(contractorName, null, null),
+            LeadScore: null,
+            LeadSignals: null,
+            Source: new RawSource(sourceId, "Tulsa, OK", "energov",
+                "https://tulsaok-energovweb.tylerhost.net/apps/selfservice#/search"),
+            ScrapedAt: "2026-08-20T15:51:00.227Z");
+
+    // SourceStat builder matching the real COVERAGE_REPORT shape (scraper-sample.json).
+    private static SourceStat Stat(string sourceId, bool ok = true, int emitted = 1,
+        SourceCoverage? coverage = null, string? error = null)
+        => new(sourceId, $"ok/{sourceId}", ok, emitted, emitted, RequestCount: 1,
+            DurationMs: 5000, Error: error, AddressShortfall: null, Coverage: coverage);
+
+    // Real truncation shape: outcome "max-records" from the result cap.
+    private static SourceCoverage MaxRecordsCoverage(int held, int delivered)
+        => new(held, HeldUnknownTypes: 0, Delivered: delivered, Outcome: "max-records",
+            TruncatedBy: Array.Empty<string>(), TypesSearched: 3, TypesTotal: 7);
 
     private static ProviderRunResult Run(string runId, IReadOnlyList<RawPermitRecord> records,
         params SourceStat[] stats)
         => new(runId, "SUCCEEDED", DateTime.UtcNow.AddMinutes(-10), DateTime.UtcNow.AddMinutes(-5),
             records,
             new CoverageReport(
-                stats.Select(s => s.Jurisdiction).ToArray(),
-                stats.Select(s => s.Jurisdiction).ToArray(),
-                stats.Where(s => s.Status == "ok").Select(s => s.Jurisdiction).ToArray(),
-                stats.Where(s => s.Status != "ok").Select(s => s.Jurisdiction).ToArray(),
-                Array.Empty<string>(),
-                records.Count,
-                Array.Empty<JsonElement>(),
-                Array.Empty<JsonElement>(),
-                stats));
+                RequestedJurisdictions: stats.Length,
+                SupportedJurisdictions: stats.Length,
+                SuccessfulJurisdictions: stats.Count(s => s.Ok),
+                FailedJurisdictions: stats.Count(s => !s.Ok),
+                UnsupportedJurisdictions: 0,
+                SkippedJurisdictions: 0,
+                RecordsFound: records.Count,
+                UnsupportedDetails: Array.Empty<JsonElement>(),
+                FailedDetails: Array.Empty<JsonElement>(),
+                SkippedDetails: Array.Empty<JsonElement>(),
+                SourceStats: stats));
 
     [Fact]
     public async Task RunOnce_ImportsClassifiesAndScoresFireRecord()
     {
-        var jurisdiction = $"j-{Guid.NewGuid():N}";
-        var source = await SeedSourceAsync(jurisdiction);
-        var record = Record($"ext-{Guid.NewGuid():N}", jurisdiction,
+        var sourceId = $"src-{Guid.NewGuid():N}";
+        var source = await SeedSourceAsync(sourceId);
+        var record = Record($"ext-{Guid.NewGuid():N}", sourceId,
             description: "New commercial building with NFPA 13 fire sprinkler system",
-            permitType: "Fire Sprinkler",
-            filedDate: DateTime.UtcNow.AddHours(-24).ToString("o"),
+            fireSystemType: "fire_sprinkler",
+            applicationDate: DateTime.UtcNow.AddHours(-24).ToString("o"),
             contractorName: null,
-            estimatedValue: "750000");
+            projectValue: 750000m);
         var (job, sp) = BuildJob(new FakePermitSourceProvider(
-            Run($"run-{Guid.NewGuid():N}", new[] { record },
-                new SourceStat(jurisdiction, "ok", 1, 9.5, false))));
+            Run($"run-{Guid.NewGuid():N}", new[] { record }, Stat(sourceId))));
         await using var _ = sp;
 
         var scraperRun = await job.RunOnceAsync(CancellationToken.None);
@@ -1981,7 +2215,7 @@ public class IngestionJobTests
         Assert.NotNull(scraperRun.CoverageReportJson);
 
         await using var db = _fixture.CreateContext();
-        var permit = await db.Set<Permit>().SingleAsync(p => p.ExternalId == record.Id);
+        var permit = await db.Set<Permit>().SingleAsync(p => p.ExternalId == record.RecordId);
         Assert.Equal(source.Id, permit.SourceId);
         Assert.Equal(PermitStatusKind.Active, permit.Status);
         Assert.Equal(64, permit.Fingerprint.Length);
@@ -2001,22 +2235,20 @@ public class IngestionJobTests
     [Fact]
     public async Task RunOnce_SkipsDuplicate_AndNeverOverwritesNonNullWithNull()
     {
-        var jurisdiction = $"j-{Guid.NewGuid():N}";
-        await SeedSourceAsync(jurisdiction);
+        var sourceId = $"src-{Guid.NewGuid():N}";
+        await SeedSourceAsync(sourceId);
         var externalId = $"ext-{Guid.NewGuid():N}";
-        var first = Record(externalId, jurisdiction,
-            description: "Fire sprinkler install suite 210", address: "200 Elm St");
-        var second = Record(externalId, jurisdiction, description: null, address: "200 Elm St",
-            status: null);
+        var first = Record(externalId, sourceId,
+            description: "Fire sprinkler install suite 210", street: "200 Elm St");
+        var second = Record(externalId, sourceId, description: null, street: "200 Elm St",
+            permitStatus: null);
 
         var (job1, sp1) = BuildJob(new FakePermitSourceProvider(
-            Run($"run-{Guid.NewGuid():N}", new[] { first },
-                new SourceStat(jurisdiction, "ok", 1, 5, false))));
+            Run($"run-{Guid.NewGuid():N}", new[] { first }, Stat(sourceId))));
         await using (sp1) { await job1.RunOnceAsync(CancellationToken.None); }
 
         var (job2, sp2) = BuildJob(new FakePermitSourceProvider(
-            Run($"run-{Guid.NewGuid():N}", new[] { second },
-                new SourceStat(jurisdiction, "ok", 1, 5, false))));
+            Run($"run-{Guid.NewGuid():N}", new[] { second }, Stat(sourceId))));
         ScraperRun? secondRun;
         await using (sp2) { secondRun = await job2.RunOnceAsync(CancellationToken.None); }
 
@@ -2034,24 +2266,22 @@ public class IngestionJobTests
     [Fact]
     public async Task RunOnce_FingerprintFallback_CatchesDuplicateWithDifferentExternalId()
     {
-        var jurisdiction = $"j-{Guid.NewGuid():N}";
-        await SeedSourceAsync(jurisdiction);
-        var filed = "2026-08-15T00:00:00.000Z";
-        var first = Record($"ext-{Guid.NewGuid():N}", jurisdiction,
-            description: "Install fire alarm system", permitType: "Fire Alarm",
-            address: "300 Oak Ave", filedDate: filed);
-        var second = Record($"ext-{Guid.NewGuid():N}", jurisdiction,
-            description: "Install fire alarm system", permitType: "Fire Alarm",
-            address: "300 Oak Ave", filedDate: filed);
+        var sourceId = $"src-{Guid.NewGuid():N}";
+        await SeedSourceAsync(sourceId);
+        var applied = "2026-08-15"; // real data emits date-only ISO strings
+        var first = Record($"ext-{Guid.NewGuid():N}", sourceId,
+            description: "Install fire alarm system", fireSystemType: "fire_alarm",
+            street: "300 Oak Ave", applicationDate: applied);
+        var second = Record($"ext-{Guid.NewGuid():N}", sourceId,
+            description: "Install fire alarm system", fireSystemType: "fire_alarm",
+            street: "300 Oak Ave", applicationDate: applied);
 
         var (job1, sp1) = BuildJob(new FakePermitSourceProvider(
-            Run($"run-{Guid.NewGuid():N}", new[] { first },
-                new SourceStat(jurisdiction, "ok", 1, 5, false))));
+            Run($"run-{Guid.NewGuid():N}", new[] { first }, Stat(sourceId))));
         await using (sp1) { await job1.RunOnceAsync(CancellationToken.None); }
 
         var (job2, sp2) = BuildJob(new FakePermitSourceProvider(
-            Run($"run-{Guid.NewGuid():N}", new[] { second },
-                new SourceStat(jurisdiction, "ok", 1, 5, false))));
+            Run($"run-{Guid.NewGuid():N}", new[] { second }, Stat(sourceId))));
         ScraperRun? secondRun;
         await using (sp2) { secondRun = await job2.RunOnceAsync(CancellationToken.None); }
 
@@ -2060,14 +2290,14 @@ public class IngestionJobTests
         Assert.Equal(1, secondRun.DuplicatesSkipped);
 
         await using var db = _fixture.CreateContext();
-        var count = await db.Set<Permit>().CountAsync(p => p.ExternalId == first.Id);
-        Assert.Equal(1, count); // second external id never created a row
+        var count = await db.Set<Permit>().CountAsync(p => p.ExternalId == first.RecordId);
+        Assert.Equal(1, count); // second record id never created a row
     }
 
     [Fact]
-    public async Task RunOnce_SkipsAndCountsUnknownJurisdiction()
+    public async Task RunOnce_SkipsAndCountsUnknownSourceId()
     {
-        var unknown = $"nowhere-{Guid.NewGuid():N}";
+        var unknown = $"nowhere-{Guid.NewGuid():N}"; // no Source row has this scraper sourceId
         var record = Record($"ext-{Guid.NewGuid():N}", unknown, description: "Fire sprinkler install");
         var (job, sp) = BuildJob(new FakePermitSourceProvider(
             Run($"run-{Guid.NewGuid():N}", new[] { record })));
@@ -2080,19 +2310,18 @@ public class IngestionJobTests
         Assert.Equal(1, scraperRun.Failures);
 
         await using var db = _fixture.CreateContext();
-        Assert.False(await db.Set<Permit>().AnyAsync(p => p.ExternalId == record.Id));
+        Assert.False(await db.Set<Permit>().AnyAsync(p => p.ExternalId == record.RecordId));
     }
 
     [Fact]
     public async Task RunOnce_ImportsNonFireRecord_WithoutOpportunity()
     {
-        var jurisdiction = $"j-{Guid.NewGuid():N}";
-        await SeedSourceAsync(jurisdiction);
-        var record = Record($"ext-{Guid.NewGuid():N}", jurisdiction,
-            description: "Water heater replacement", permitType: "Plumbing");
+        var sourceId = $"src-{Guid.NewGuid():N}";
+        await SeedSourceAsync(sourceId);
+        var record = Record($"ext-{Guid.NewGuid():N}", sourceId,
+            description: "Water heater replacement", fireSystemType: null);
         var (job, sp) = BuildJob(new FakePermitSourceProvider(
-            Run($"run-{Guid.NewGuid():N}", new[] { record },
-                new SourceStat(jurisdiction, "ok", 1, 5, false))));
+            Run($"run-{Guid.NewGuid():N}", new[] { record }, Stat(sourceId))));
         await using var _ = sp;
 
         var scraperRun = await job.RunOnceAsync(CancellationToken.None);
@@ -2102,25 +2331,26 @@ public class IngestionJobTests
         Assert.Equal(0, scraperRun.Classified);
 
         await using var db = _fixture.CreateContext();
-        var permit = await db.Set<Permit>().SingleAsync(p => p.ExternalId == record.Id);
+        var permit = await db.Set<Permit>().SingleAsync(p => p.ExternalId == record.RecordId);
         Assert.False(await db.Set<FireOpportunity>().AnyAsync(o => o.PermitId == permit.Id));
     }
 
     [Fact]
     public async Task RunOnce_UpdatesSourceHealthFromCoverageReport()
     {
-        var okJurisdiction = $"j-ok-{Guid.NewGuid():N}";
-        var truncatedJurisdiction = $"j-trunc-{Guid.NewGuid():N}";
-        var failedJurisdiction = $"j-fail-{Guid.NewGuid():N}";
-        var okSource = await SeedSourceAsync(okJurisdiction, HealthStatus.Stale);
-        var truncatedSource = await SeedSourceAsync(truncatedJurisdiction);
-        var failedSource = await SeedSourceAsync(failedJurisdiction);
+        var okSourceId = $"src-ok-{Guid.NewGuid():N}";
+        var truncatedSourceId = $"src-trunc-{Guid.NewGuid():N}";
+        var failedSourceId = $"src-fail-{Guid.NewGuid():N}";
+        var okSource = await SeedSourceAsync(okSourceId, HealthStatus.Stale);
+        var truncatedSource = await SeedSourceAsync(truncatedSourceId);
+        var failedSource = await SeedSourceAsync(failedSourceId);
 
         var (job, sp) = BuildJob(new FakePermitSourceProvider(
             Run($"run-{Guid.NewGuid():N}", Array.Empty<RawPermitRecord>(),
-                new SourceStat(okJurisdiction, "ok", 42, 8.0, false),
-                new SourceStat(truncatedJurisdiction, "ok", 5000, 60.0, true),
-                new SourceStat(failedJurisdiction, "error", 0, 3.0, false))));
+                Stat(okSourceId, emitted: 42),
+                Stat(truncatedSourceId, emitted: 150,
+                    coverage: MaxRecordsCoverage(held: 171, delivered: 150)),
+                Stat(failedSourceId, ok: false, emitted: 0, error: "timeout"))));
         await using var _ = sp;
 
         await job.RunOnceAsync(CancellationToken.None);
@@ -2133,7 +2363,7 @@ public class IngestionJobTests
 
         var truncated = await db.Set<Source>().SingleAsync(s => s.Id == truncatedSource.Id);
         Assert.Equal(HealthStatus.Warning, truncated.HealthStatus);
-        Assert.Equal(5000, truncated.RecordsLastRun);
+        Assert.Equal(150, truncated.RecordsLastRun);
 
         var failed = await db.Set<Source>().SingleAsync(s => s.Id == failedSource.Id);
         Assert.Equal(HealthStatus.Failed, failed.HealthStatus);
@@ -2241,12 +2471,15 @@ public sealed class IngestionJob : BackgroundService
         var run = await provider.FetchLatestRunAsync(ct);
         if (run is null) return null;
 
+        // Source.Jurisdiction stores the scraper sourceId (master §3); records carry it as
+        // source.sourceId (surfaced by the normalizer as NormalizedPermit.Jurisdiction) and
+        // COVERAGE_REPORT as sourceStats[].sourceId.
         var sources = await db.Set<Source>().Where(s => s.Active).ToListAsync(ct);
-        var byJurisdiction = new Dictionary<string, Source>(StringComparer.OrdinalIgnoreCase);
+        var bySourceId = new Dictionary<string, Source>(StringComparer.OrdinalIgnoreCase);
         foreach (var source in sources)
         {
             if (!string.IsNullOrEmpty(source.Jurisdiction))
-                byJurisdiction[source.Jurisdiction] = source;
+                bySourceId[source.Jurisdiction] = source;
         }
 
         var imported = 0;
@@ -2261,10 +2494,10 @@ public sealed class IngestionJob : BackgroundService
             try
             {
                 var normalized = PermitNormalizer.Normalize(raw);
-                if (!byJurisdiction.TryGetValue(normalized.Jurisdiction, out var source))
+                if (!bySourceId.TryGetValue(normalized.Jurisdiction, out var source))
                 {
                     _logger.LogWarning(
-                        "Skipping record {ExternalId}: unknown jurisdiction '{Jurisdiction}'",
+                        "Skipping record {ExternalId}: unknown sourceId '{SourceId}'",
                         normalized.ExternalId, normalized.Jurisdiction);
                     failures++;
                     continue;
@@ -2371,12 +2604,12 @@ public sealed class IngestionJob : BackgroundService
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                _logger.LogError(ex, "Failed to ingest record {RecordId}", raw.Id);
+                _logger.LogError(ex, "Failed to ingest record {RecordId}", raw.RecordId);
                 failures++;
             }
         }
 
-        ApplySourceHealth(run.Coverage, byJurisdiction);
+        ApplySourceHealth(run.Coverage, bySourceId);
 
         var scraperRun = new ScraperRun
         {
@@ -2427,40 +2660,47 @@ public sealed class IngestionJob : BackgroundService
         if (!string.IsNullOrEmpty(n.SourceUrl)) permit.SourceUrl = n.SourceUrl;
     }
 
-    // Architecture §6.1/§7: health is driven by per-source COVERAGE_REPORT stats,
-    // never by run status alone.
-    private void ApplySourceHealth(CoverageReport? coverage, Dictionary<string, Source> byJurisdiction)
+    // Architecture §6.1/§7: health is driven by per-source COVERAGE_REPORT stats
+    // (ok / coverage.outcome / coverage.truncatedBy), never by run status alone.
+    private void ApplySourceHealth(CoverageReport? coverage, Dictionary<string, Source> bySourceId)
     {
         if (coverage is null) return;
         var now = DateTime.UtcNow;
 
         foreach (var stat in coverage.SourceStats)
         {
-            if (!byJurisdiction.TryGetValue(stat.Jurisdiction, out var source)) continue;
+            if (!bySourceId.TryGetValue(stat.SourceId, out var source)) continue;
             if (source.HealthStatus == HealthStatus.Disabled) continue;
 
-            if (!string.Equals(stat.Status, "ok", StringComparison.OrdinalIgnoreCase))
+            if (!stat.Ok)
             {
                 source.HealthStatus = HealthStatus.Failed;
-                _logger.LogWarning("Source {Name} ({Jurisdiction}) failed in latest run",
-                    source.Name, stat.Jurisdiction);
+                _logger.LogWarning("Source {Name} ({SourceId}) failed in latest run: {Error}",
+                    source.Name, stat.SourceId, stat.Error);
             }
-            else if (stat.Truncated)
+            else if (IsTruncated(stat.Coverage))
             {
                 source.HealthStatus = HealthStatus.Warning;
                 source.LastSuccessfulRunAt = now;
-                source.RecordsLastRun = stat.RecordCount;
-                _logger.LogWarning("Source {Name} ({Jurisdiction}) truncated at {Count} records",
-                    source.Name, stat.Jurisdiction, stat.RecordCount);
+                source.RecordsLastRun = stat.EmittedCount;
+                _logger.LogWarning(
+                    "Source {Name} ({SourceId}) truncated at {Count} records (outcome {Outcome})",
+                    source.Name, stat.SourceId, stat.EmittedCount, stat.Coverage!.Outcome);
             }
             else
             {
                 source.HealthStatus = HealthStatus.Healthy;
                 source.LastSuccessfulRunAt = now;
-                source.RecordsLastRun = stat.RecordCount;
+                source.RecordsLastRun = stat.EmittedCount;
             }
         }
     }
+
+    // Real runs report truncation via coverage: either an explicit truncatedBy list or the
+    // "max-records" outcome when the result cap cut delivery short (scraper-sample.json).
+    private static bool IsTruncated(SourceCoverage? coverage)
+        => coverage is not null
+           && (coverage.TruncatedBy.Length > 0 || coverage.Outcome == "max-records");
 }
 ```
 
@@ -2962,6 +3202,6 @@ git commit -m "Register ingestion pipeline services and hosted jobs"
 ## Done criteria (whole workstream)
 
 - All nine tasks committed on `ws/pipeline` with passing owned-filter tests.
-- LOCKED names verified verbatim against master §4–§5: `RawPermitRecord`, `CoverageReport`, `SourceStat`, `IPermitSourceProvider`, `ProviderRunResult`, `PermitNormalizer.Normalize`, `NormalizedPermit`, `FireClassifier.Classify`, `ClassificationResult`, `ScoringEngine.Score`, `ScoreResult`, `ScoredSignal`, `ScoringOptions`, and the ten signal-type strings.
+- LOCKED names verified verbatim against master §4–§5: `RawPermitRecord`, `RawJurisdiction`, `RawAddress`, `RawParty`, `RawContractor`, `RawSource`, `CoverageReport`, `SourceStat`, `SourceCoverage`, `IPermitSourceProvider`, `ProviderRunResult`, `PermitNormalizer.Normalize`, `NormalizedPermit`, `FireClassifier.Classify`, `ClassificationResult`, `ScoringEngine.Score`, `ScoreResult`, `ScoredSignal`, `ScoringOptions`, and the ten signal-type strings. Raw fixtures in tests match the real run output in `scraper-sample.json` (nested `jurisdiction{}`/`address{}`/`owner{}`/`contractor{}`/`source{}`, `recordId`, `applicationDate`/`projectValue`, integer COVERAGE_REPORT counts).
 - `dotnet build apps/api` clean; no files outside WS1 ownership modified (`git status` verified in Task 9).
 - Branch left ready for the WS1 → main merge (master §1 merge order); do not merge yourself — WS5 owns integration.

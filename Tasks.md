@@ -13,7 +13,7 @@ Ordering within a phase is roughly dependency order. Every PR includes tests (se
 - [ ] Actor deployed to Apify with scheduled runs
 - [x] Stable dataset output shape documented — Zod-validated `PermitLeadSchema`, README §4–5 (see Architecture.md §6.1)
 - [x] Run metadata available — status/timestamps/counts from the Apify Run object; per-source quality from `COVERAGE_REPORT` in the run key-value store
-- [ ] `COVERAGE_REPORT` field-level shape documented in scraper README (requested on scraper side)
+- [x] `COVERAGE_REPORT` field-level shape captured from a real run (Architecture.md §6.1, `docs/superpowers/plans/2026-08-19-permittorch-mvp/scraper-sample.json`)
 
 ---
 

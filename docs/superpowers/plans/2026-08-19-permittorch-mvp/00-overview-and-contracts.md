@@ -94,7 +94,7 @@ public class Source {
     public string Name; public string City; public string State;
     public string PortalType;        // e.g. "accela", "arcgis", "socrata"
     public string SourceUrl;
-    public string Jurisdiction;      // matches scraper COVERAGE_REPORT jurisdiction key
+    public string Jurisdiction;      // matches scraper sourceId, e.g. "tulsa-fire-permits" (records carry it as source.sourceId, COVERAGE_REPORT as sourceStats[].sourceId)
     public bool Active;
     public DateTime? LastSuccessfulRunAt; public DateTime? LastRecordSeenAt;
     public int RecordsLastRun;
@@ -191,28 +191,58 @@ Unique indexes (WS0 migration): `permits(source_id, external_id)`, `permits(fing
 
 ## 4. LOCKED: Scraper Input Contract (consumed by WS1)
 
-See Architecture.md §6.1. Raw dataset record shape (`ApifyPermitProvider` deserialization target, most fields `string | null`):
+See Architecture.md §6.1 and [scraper-sample.json](scraper-sample.json) (real output captured from Apify run `40Atzgu9WPoPC10YU`, 2026-08-20 — the authoritative shape). Raw dataset record shape (`ApifyPermitProvider` deserialization target; fields are present-but-null when unknown, never absent; dates are ISO strings):
 
 ```csharp
-// Infrastructure/Apify/ApifyModels.cs (WS1 creates; shape locked here)
+// Infrastructure/Apify/ApifyModels.cs (WS1 creates; shape locked here — verified against real run output)
 public record RawPermitRecord(
-    string Id, string? Jurisdiction, string? PermitNumber, string? PermitType,
-    string? Description, string? Status, string? Address, string? City, string? State,
-    string? Zip, string? Latitude, string? Longitude, string? FiledDate, string? IssuedDate,
-    string? EstimatedValue, string? SquareFootage, string? OwnerName, string? ContractorName,
-    string? SourceUrl, string? LeadScore);
+    string RecordId,                    // "{sourceId}:{permitNumber}", e.g. "tulsa-fire-permits:FIRE-255161-2026"
+    RawJurisdiction? Jurisdiction,
+    string? BusinessName, string? ProjectName,
+    RawAddress? Address,
+    string? RecordType,                 // "permit" observed; treat as open string
+    string? FireSystemType,             // scraper's own classification, e.g. "fire_alarm", "other_fire_protection"
+    string? WorkType,                   // "unknown" observed; treat as open string
+    string? PermitNumber, string? PermitStatus,
+    string? ApplicationDate, string? IssuedDate, string? ExpirationDate,
+    string? InspectionDate, string? InspectionStatus,
+    JsonElement[]? Violations,
+    string? Description,
+    decimal? ProjectValue,
+    string? PropertyType,
+    RawParty? Owner, RawContractor? Contractor,
+    int? LeadScore,                     // scraper's score — raw input at most, never surfaced
+    string[]? LeadSignals,              // scraper's signals, e.g. "RECENTLY_ISSUED" — raw input at most
+    RawSource? Source,
+    string? ScrapedAt);
+
+public record RawJurisdiction(string? City, string? County, string? State);
+public record RawAddress(string? Street, string? City, string? State, string? Zip,
+    double? Latitude, double? Longitude);
+public record RawParty(string? Name, string? Company);
+public record RawContractor(string? Name, string? Company, string? LicenseNumber);
+public record RawSource(string? SourceId, string? Jurisdiction, string? Provider, string? Url);
 
 public record CoverageReport(
-    string[] RequestedJurisdictions, string[] SupportedJurisdictions,
-    string[] SuccessfulJurisdictions, string[] FailedJurisdictions, string[] UnsupportedJurisdictions,
-    int RecordsFound, JsonElement[] UnsupportedDetails, JsonElement[] FailedDetails,
+    int RequestedJurisdictions, int SupportedJurisdictions, int SuccessfulJurisdictions,
+    int FailedJurisdictions, int UnsupportedJurisdictions, int SkippedJurisdictions,
+    int RecordsFound,
+    JsonElement[] UnsupportedDetails, JsonElement[] FailedDetails, JsonElement[] SkippedDetails,
     SourceStat[] SourceStats);
 
-public record SourceStat(string Jurisdiction, string Status, int RecordCount,
-    double DurationSeconds, bool Truncated);
+public record SourceStat(
+    string SourceId, string JurisdictionKey,          // e.g. "tulsa-fire-permits", "ok/tulsa"
+    bool Ok, int RawCount, int EmittedCount, int RequestCount, long DurationMs,
+    string? Error, JsonElement? AddressShortfall, SourceCoverage? Coverage);
+
+public record SourceCoverage(int Held, int HeldUnknownTypes, int Delivered,
+    string? Outcome,                    // e.g. "max-records" when the result cap truncated output
+    string[] TruncatedBy, int TypesSearched, int TypesTotal);
 ```
 
-Rules: dataset capped at 5,000 records/run; completeness judged from `CoverageReport.SourceStats`, never run status alone; scraper `LeadScore` is raw input at most — canonical score comes from `ScoringEngine`.
+Normalizer mapping into `NormalizedPermit` (which is unchanged — the domain never sees the raw shape): `ExternalId = RecordId` · `Jurisdiction = Source.SourceId` · `PermitType = FireSystemType` (classifier hint) · `Status/RawStatus ← PermitStatus` · `Address = Address.Street`, `City/State/Zip/Latitude/Longitude` from `Address` (fall back to `Jurisdiction.City/State`) · `FiledDate ← ApplicationDate` · `EstimatedValue = ProjectValue` · `SquareFootage = null` (not emitted by this provider) · `OwnerName = Owner.Name ?? Owner.Company`, `ContractorName = Contractor.Name ?? Contractor.Company` · `SourceUrl = Source.Url`.
+
+Rules: dataset capped at 5,000 records/run; per-source completeness judged from `CoverageReport.SourceStats` (`ok`, `coverage.outcome`/`truncatedBy`), never run status alone; scraper `LeadScore`/`LeadSignals`/`FireSystemType` are raw input at most — canonical score comes from `ScoringEngine`, canonical category from `FireClassifier` (which may use the `FireSystemType` hint via `PermitType` before falling back to description regex).
 
 ---
 
@@ -396,6 +426,7 @@ export interface LeadsQuery {
 - **Playwright config:** lives at `apps/web/playwright.config.ts` with `testDir: "../../e2e"`; browser install deferred to WS5.
 - **`DATABASE_URL`:** Npgsql-format connection string. Railway's `postgres://` URL form needs conversion at deploy time — WS5 handles it.
 - **API dev base URL:** `http://localhost:5000`. Solution file: `apps/api/PermitTorch.sln`.
+- **Raw scraper shape corrected against real run output (2026-08-20):** §4 was originally written from a relayed description; a real run (`40Atzgu9WPoPC10YU`, captured in `scraper-sample.json`) showed the actual shape is nested (`jurisdiction{}`, `address{}`, `owner{}`, `contractor{}`, `source{}`), keyed by `recordId`, with `applicationDate`/`projectValue` (not `filedDate`/`estimatedValue`), no `squareFootage`, typed numbers for `projectValue`/`leadScore`/`latitude`/`longitude`, plus new fields (`fireSystemType`, `workType`, `expirationDate`, inspection fields, `violations`, `leadSignals`). `COVERAGE_REPORT` jurisdiction counts are integers (not string arrays) and `sourceStats[]` uses `sourceId`/`jurisdictionKey`/`ok`/`emittedCount`/`coverage{}`. §4 now shows the verified shape; blast radius is WS1 only — `NormalizedPermit` and everything downstream are unchanged, except `Permit.SquareFootage` stays null from this provider (the `LARGE_SQUARE_FOOTAGE` signal simply never fires for it).
 
 ## 11. Workstream Plan Files
 
