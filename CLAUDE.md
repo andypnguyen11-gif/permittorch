@@ -46,6 +46,7 @@ Build with **scalability, maintainability, and security** in mind — in the spe
 - Keep domain logic in the API. The Next.js app renders and calls the API — it holds no business rules.
 - All Apify-specific code stays behind `IPermitSourceProvider` in `Infrastructure/`. Raw scraper structures must never leak into domain code or the frontend.
 - Lead scoring is deterministic and rule-based; weights live in configuration. Never route the primary score through an LLM.
+- The scraper's emitted `leadScore` is a raw input signal at most. The canonical, explainable 0–100 score is always computed by the API's scoring engine (Architecture.md §6.1) — never surface the scraper's score directly to users.
 - Every score must remain explainable — each point traces to a persisted `LeadSignal`.
 
 ### Security
