@@ -21,7 +21,7 @@ This document describes the technical architecture for the PermitTorch MVP: a le
 | Billing | Stripe Billing | Subscriptions, trials, customer portal, webhooks |
 | Email | Resend | Digest + transactional email |
 | Observability | Sentry (errors) + PostHog (product analytics) | Minimum viable observability |
-| Hosting | Vercel (web) + Railway (API + Postgres) | Low DevOps overhead; no AWS during validation |
+| Hosting | Railway (web + API + Postgres) | One platform, low DevOps overhead; Vercel remains an option for the web app; no AWS during validation |
 | Repo layout | Monorepo (`apps/web`, `apps/api`) | Shared types/config in one place; scraper stays in its own repo |
 
 ---
@@ -39,7 +39,7 @@ flowchart LR
     end
 
     subgraph PermitTorch["PermitTorch (this repo)"]
-        WEB[Next.js Web App<br/>marketing site + dashboard<br/>Vercel]
+        WEB[Next.js Web App<br/>marketing site + dashboard<br/>Railway]
         API[ASP.NET Core API<br/>domain logic, ingestion, jobs<br/>Railway]
         DB[(PostgreSQL<br/>Railway)]
     end
@@ -169,7 +169,7 @@ Search uses Postgres indexes, `ILIKE`, and full-text search when needed. No Elas
 ```mermaid
 sequenceDiagram
     participant U as User (browser)
-    participant W as Next.js (Vercel)
+    participant W as Next.js (Railway)
     participant C as Clerk
     participant A as ASP.NET Core API
     participant P as PostgreSQL
@@ -235,14 +235,14 @@ Data reliability is the #1 technical risk (PRD §60), so monitoring is an MVP fe
 
 | Concern | Approach |
 | --- | --- |
-| Transport | HTTPS everywhere (Vercel/Railway default) |
+| Transport | HTTPS everywhere (Railway default) |
 | Authentication | Clerk; API validates JWTs against Clerk JWKS |
 | Authorization | Server-side, role-based; market entitlements enforced in queries; admin routes require admin role |
 | SQL injection | EF Core parameterized queries only — no string-built SQL |
 | Stripe webhooks | Signature verification on every event before processing |
 | Input validation | Validate/whitelist all filter, search, and pagination inputs at the API boundary |
 | Rate limiting | ASP.NET Core rate-limiting middleware on public and authenticated endpoints |
-| Secrets | Environment variables (Vercel/Railway); never in source control |
+| Secrets | Environment variables (Railway); never in source control |
 | Data compliance | Store source URL, jurisdiction, retrieval timestamp per record (PRD §59) |
 
 ---
@@ -258,7 +258,7 @@ The MVP deliberately starts small; each bottleneck has a known next step, taken 
 | Caching | None (Postgres + indexes) | Redis for hot aggregates |
 | Email volume | Resend | AWS SES at scale |
 | New markets | Add a source row + Apify actor config | Same — this is the designed scaling axis (PRD Goal 5) |
-| Infra | Vercel + Railway | Migrate to AWS only if validated growth demands it |
+| Infra | Railway | Migrate to AWS only if validated growth demands it |
 
 Explicitly avoided during MVP: Kubernetes, microservices, Kafka, Elasticsearch, vector databases, event sourcing, distributed job queues (PRD §76).
 
