@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
 using PermitTorch.Api.Features;
 using PermitTorch.Api.Features.Auth;
+using PermitTorch.Api.Features.Billing;
 using PermitTorch.Api.Features.Shared;
 
 namespace PermitTorch.Api.Setup;
@@ -54,6 +55,17 @@ public static class FeaturesSetup
                     QueueLimit = 0,
                 }));
         });
+
+        services.Configure<BillingOptions>(o =>
+        {
+            o.SecretKey = configuration["STRIPE_SECRET_KEY"] ?? "";
+            o.WebhookSecret = configuration["STRIPE_WEBHOOK_SECRET"] ?? "";
+            o.PriceStarter = configuration["STRIPE_PRICE_STARTER"] ?? "";
+            o.PricePro = configuration["STRIPE_PRICE_PRO"] ?? "";
+            o.PriceTerritory = configuration["STRIPE_PRICE_TERRITORY"] ?? "";
+            o.WebOrigin = configuration["WEB_ORIGIN"] ?? "http://localhost:3000";
+        });
+        services.AddSingleton<StripeGateway>();
 
         return services;
     }

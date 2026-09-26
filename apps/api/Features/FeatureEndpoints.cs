@@ -1,4 +1,5 @@
 using PermitTorch.Api.Features.Account;
+using PermitTorch.Api.Features.Billing;
 using PermitTorch.Api.Features.Leads;
 using PermitTorch.Api.Features.Markets;
 using PermitTorch.Api.Features.SampleLeads;
@@ -17,6 +18,7 @@ public static class FeatureEndpoints
         endpoints.MapSavedLeadsEndpoints();
         endpoints.MapAccountEndpoints();
         endpoints.MapSampleLeadsEndpoints();
+        endpoints.MapBillingEndpoints();
 
         return endpoints;
     }
