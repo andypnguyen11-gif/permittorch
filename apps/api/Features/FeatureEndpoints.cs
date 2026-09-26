@@ -1,3 +1,5 @@
+using PermitTorch.Api.Features.Markets;
+
 namespace PermitTorch.Api.Features;
 
 public static class FeatureEndpoints
@@ -13,6 +15,8 @@ public static class FeatureEndpoints
                 return Results.Ok(new { email = user.Email });
             })
             .RequireAuthorization("User");
+
+        endpoints.MapMarketsEndpoints();
 
         return endpoints;
     }
