@@ -150,12 +150,12 @@ public class ScraperRun {
 }
 
 public class Organization {
-    public Guid Id; public string Name; public string? ClerkOrgId;
+    public Guid Id; public string Name;
     public List<AppUser> Users; public Subscription? Subscription;
 }
 
 public class AppUser {
-    public Guid Id; public string ClerkUserId; public string Email;
+    public Guid Id; public string FirebaseUid; public string Email;   // Firebase Auth uid (JWT `sub`)
     public Guid OrganizationId; public Organization Organization;
     public UserRole Role;
 }
@@ -185,7 +185,7 @@ public class SampleLeadRequest {                       // marketing lead magnet 
 }
 ```
 
-Unique indexes (WS0 migration): `permits(source_id, external_id)`, `permits(fingerprint)` non-unique index, `app_users(clerk_user_id)` unique, `markets(slug)` unique, `saved_leads(user_id, fire_opportunity_id)` unique, `sample_lead_requests(email, market_slug)` unique. FTS: GIN index on `to_tsvector('english', coalesce(description,'') || ' ' || coalesce(address,''))`.
+Unique indexes (WS0 migration): `permits(source_id, external_id)`, `permits(fingerprint)` non-unique index, `app_users(firebase_uid)` unique, `markets(slug)` unique, `saved_leads(user_id, fire_opportunity_id)` unique, `sample_lead_requests(email, market_slug)` unique. FTS: GIN index on `to_tsvector('english', coalesce(description,'') || ' ' || coalesce(address,''))`.
 
 ---
 
@@ -291,7 +291,7 @@ Signal types (locked strings): `NEW_COMMERCIAL_BUILD`, `FIRE_SPRINKLER_SCOPE`, `
 
 ## 6. LOCKED: HTTP API Contract (WS2 implements, WS4/WS5 consume)
 
-Base URL env: web reads `NEXT_PUBLIC_API_URL`; auth = `Authorization: Bearer <Clerk JWT>`. All responses JSON camelCase. Errors: `{ "error": string }` with appropriate status.
+Base URL env: web reads `NEXT_PUBLIC_API_URL`; auth = `Authorization: Bearer <Firebase ID token>` (issuer `https://securetoken.google.com/{FIREBASE_PROJECT_ID}`, audience = project id, claims `sub` = uid, `email`). All responses JSON camelCase. Errors: `{ "error": string }` with appropriate status.
 
 | Method & Route | Auth | Response |
 | --- | --- | --- |
@@ -411,13 +411,14 @@ export interface LeadsQuery {
 | --- | --- | --- |
 | `DATABASE_URL` | api | Npgsql connection string |
 | `APIFY_TOKEN`, `APIFY_TASK_ID` | api | Apify API access — the API polls the runs of the dedicated task `scrapelabmax/permittorch-daily` (id `xatpyth2FgbUydjLd`), never the actor's last run (§10, 2026-09-26) |
-| `CLERK_SECRET_KEY`, `CLERK_JWKS_URL`, `CLERK_ISSUER` | api | JWT validation |
+| `FIREBASE_PROJECT_ID` | api | Firebase ID-token validation (OIDC discovery at `https://securetoken.google.com/{projectId}`) |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_TERRITORY` | api | Billing |
 | `RESEND_API_KEY`, `EMAIL_FROM` | api | Digest + transactional email |
 | `SENTRY_DSN` (api) / `NEXT_PUBLIC_SENTRY_DSN` (web) | api, web | Errors |
 | `WEB_ORIGIN` | api | CORS allowed origin + Stripe checkout success/cancel redirect base |
 | `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_API_MOCK` | web | API client |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY` | web | Clerk |
+| `NEXT_PUBLIC_FIREBASE_API_KEY`, `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`, `NEXT_PUBLIC_FIREBASE_PROJECT_ID`, `NEXT_PUBLIC_FIREBASE_APP_ID` | web (client) | Firebase client SDK (sign-in UI) |
+| `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`, `AUTH_COOKIE_SIGNATURE_KEY_CURRENT`, `AUTH_COOKIE_SIGNATURE_KEY_PREVIOUS` | web (server) | `next-firebase-auth-edge` session cookies (service account + rotating cookie signature keys) |
 | `NEXT_PUBLIC_POSTHOG_KEY` | web | Analytics |
 
 ## 10. Contract Amendments (locked during WS0 planning)
@@ -437,6 +438,15 @@ export interface LeadsQuery {
   - **`CoverageReport` gains two optional fields** the actor now emits: `chargeLimit { leadsWithinLimit, reached }` and `skippedSources[] { sourceId, jurisdictionKey, reason }` (both modelled as nullable `JsonElement` so the 2026-08-20 sample still deserializes). Ingestion treats a source listed in `skippedSources` as **not run** this pass (health unchanged), never as failed.
   - **Owner runs bill compute only.** The actor is pay-per-event for renters, but the owner account (`scrapelabmax`) is charged platform usage only (verified: 24 charged result events, $0.0019 billed). The task sets an explicit `maxTotalChargeUsd` so the actor never self-caps to the plan balance.
   - **Dev seeder (WS5)** seeds the 31 markets and 40 sources from the registry; E2E fixtures move from Houston/Dallas/Austin to Austin/San Antonio/Fort Worth.
+
+- **Auth provider: Firebase Auth replaces Clerk (2026-09-26, user decision; nothing Clerk-specific had been built).**
+  - **Web (WS0 lays, WS4 uses):** packages `firebase` (client SDK) + `next-firebase-auth-edge` (edge-compatible session cookies, auto-refresh). `apps/web/middleware.ts` (frozen) wraps `authMiddleware` with the SAME locked public-route list; `/api/login` and `/api/logout` are handled by the middleware itself. `apps/web/lib/auth/config.ts` (server-only, frozen) exports the shared `authConfig` (apiKey, cookieName `AuthToken`, cookieSignatureKeys, serviceAccount from env). `apps/web/lib/firebase/client.ts` (frozen) initialises the client app from `NEXT_PUBLIC_FIREBASE_*`. **Pin Next.js 15** (`pnpm create next-app@15`) — Next 16 renamed middleware to proxy.
+  - **Token plumbing (WS4):** server components get the ID token via `(await getTokens(await cookies(), authConfig))?.token`; client components via `firebaseAuth.currentUser?.getIdToken()`. Both are sent as `Authorization: Bearer` — unchanged API contract. After a client-side sign-in, POST `/api/login` with `Authorization: Bearer <idToken>` to set the session cookie; `GET /api/logout` clears it.
+  - **Login/signup pages are now app-owned (new WS4 tasks):** `/login` and `/signup` under `app/(auth)/` — email/password + Google sign-in via the Firebase client SDK, styled with shadcn. Account menu replaces Clerk's `UserButton`. Clerk previously hosted these.
+  - **API (WS2):** `Features/Auth/FirebaseJwt.cs` replaces `ClerkJwt.cs`: JwtBearer with `Authority = https://securetoken.google.com/{FIREBASE_PROJECT_ID}`, `ValidIssuer` = same, `ValidAudience` = project id. Firebase ID tokens carry `email` natively (no JWT template step). Env `CLERK_*` → `FIREBASE_PROJECT_ID`. Test factory overrides the handler with a symmetric key exactly as before.
+  - **Schema:** `AppUser.ClerkUserId` → `FirebaseUid` (unique index `app_users(firebase_uid)`); `Organization.ClerkOrgId` removed (Firebase has no org concept; orgs are provisioned on first request as before).
+  - **WS5:** E2E identities are created with a small `firebase-admin` script (`e2e/scripts/create-users.mjs`) using the service-account env vars; env names `CLERK_SUPERADMIN_USER_ID` → `SUPERADMIN_FIREBASE_UID`, `E2E_ENTITLED_CLERK_USER_ID` → `E2E_ENTITLED_FIREBASE_UID`, `E2E_UNENTITLED_CLERK_USER_ID` → `E2E_UNENTITLED_FIREBASE_UID`; Playwright signs in through the app's own `/login` form.
+  - **Data stays on Railway Postgres** — Firebase is authentication only; enable Railway's automated Postgres backups at deploy.
 
 ## 11. Workstream Plan Files
 

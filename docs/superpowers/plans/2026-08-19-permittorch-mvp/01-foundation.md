@@ -6,7 +6,7 @@
 
 **Architecture:** A pnpm-workspace monorepo: `apps/web` (Next.js 15+ App Router, marketing + dashboard surfaces), `apps/api` (ASP.NET Core minimal API `PermitTorch.Api` with EF Core 10 + Npgsql against PostgreSQL), and `packages/types` (shared TS API contract `@permittorch/types`). `Program.cs` ships in final form delegating all future registration to two stub extension methods (`AddPipelineServices` for WS1, `AddFeatureServices`/`MapFeatureEndpoints` for WS2); the web API client `lib/api.ts` ships fully implemented with a fixture-mock branch so WS4 builds against it offline.
 
-**Tech Stack:** .NET 10 (LTS) · ASP.NET Core minimal APIs · EF Core 10 + Npgsql + EFCore.NamingConventions · xUnit + Microsoft.AspNetCore.Mvc.Testing + Testcontainers.PostgreSql · Next.js 15+ (App Router) · TypeScript strict · Tailwind CSS (v4) · shadcn/ui · Clerk (@clerk/nextjs) · Vitest + @testing-library/react · Playwright · Node 22 LTS · pnpm workspaces · GitHub Actions.
+**Tech Stack:** .NET 10 (LTS) · ASP.NET Core minimal APIs · EF Core 10 + Npgsql + EFCore.NamingConventions · xUnit + Microsoft.AspNetCore.Mvc.Testing + Testcontainers.PostgreSql · Next.js 15+ (App Router) · TypeScript strict · Tailwind CSS (v4) · shadcn/ui · Firebase Auth (firebase + next-firebase-auth-edge) · Vitest + @testing-library/react · Playwright · Node 22 LTS · pnpm workspaces · GitHub Actions.
 
 **Spec:** `Prd.md` (product scope; esp. §28–33, §77–79), `Architecture.md` (system design), and `docs/superpowers/plans/2026-08-19-permittorch-mvp/00-overview-and-contracts.md` (**the master contracts doc — every name, type, route, and path in it is LOCKED; this plan uses them verbatim**). Engineering rules: `CLAUDE.md`.
 
@@ -348,7 +348,10 @@
 - [ ] Scaffold (run from the repo root; answer no prompts — all flags supplied):
   ```bash
   cd "/Users/andynguyen/Desktop/Permit Torch"
-  pnpm create next-app@latest apps/web --typescript --tailwind --eslint --app --no-src-dir --import-alias "@/*" --use-pnpm --turbopack
+  pnpm create next-app@15 apps/web --typescript --tailwind --eslint --app --no-src-dir --import-alias "@/*" --use-pnpm --turbopack
+  ```
+  (Pinned to Next.js 15: Next 16 renamed `middleware.ts` to `proxy.ts`, and every plan assumes `middleware.ts`. If a flag is rejected by the pinned version, drop it and note it in the report.)
+  ```bash
   ```
   Expected outcome: `apps/web/` exists with `package.json` (name `web`), `app/` directory, `tsconfig.json`, Tailwind v4 wired via `postcss.config.mjs` and `app/globals.css`.
 - [ ] If create-next-app produced `apps/web/pnpm-lock.yaml` or `apps/web/node_modules` outside the workspace, remove the stray lockfile and reinstall from the root so there is exactly ONE lockfile:
@@ -382,10 +385,10 @@
 - [ ] Install runtime dependencies:
   ```bash
   cd "/Users/andynguyen/Desktop/Permit Torch"
-  pnpm --filter web add @clerk/nextjs posthog-js @sentry/nextjs
+  pnpm --filter web add firebase next-firebase-auth-edge posthog-js @sentry/nextjs
   pnpm --filter web add "@permittorch/types@workspace:*"
   ```
-  Expected: `apps/web/package.json` gains all four under `dependencies`, with `"@permittorch/types": "workspace:*"`.
+  Expected: `apps/web/package.json` gains all five under `dependencies`, with `"@permittorch/types": "workspace:*"`.
 - [ ] Install dev/test dependencies:
   ```bash
   pnpm --filter web add -D vitest @vitejs/plugin-react jsdom @testing-library/react @testing-library/jest-dom @playwright/test
@@ -575,15 +578,14 @@
 - Modify: `/Users/andynguyen/Desktop/Permit Torch/apps/web/app/page.tsx`
 
 **Interfaces:**
-- Consumes: shadcn token structure from Task 5; `@clerk/nextjs` from Task 4.
-- Produces: `<ClerkProvider>`-wrapped root layout and the light/orange token palette (`--primary` = #F97316 family) that WS3 and WS4 style against.
+- Consumes: shadcn token structure from Task 5.
+- Produces: the root layout (no auth provider wrapper — Firebase auth is cookie-based via middleware, Task 9) and the light/orange token palette (`--primary` = #F97316 family) that WS3 and WS4 style against.
 
 **Steps:**
 
 - [ ] Replace `/Users/andynguyen/Desktop/Permit Torch/apps/web/app/layout.tsx` with:
   ```tsx
   import type { Metadata } from "next";
-  import { ClerkProvider } from "@clerk/nextjs";
   import { Inter } from "next/font/google";
   import "./globals.css";
 
@@ -602,13 +604,11 @@
     children,
   }: Readonly<{ children: React.ReactNode }>) {
     return (
-      <ClerkProvider>
-        <html lang="en" className={inter.variable}>
-          <body className="min-h-screen bg-background font-sans text-foreground antialiased">
-            {children}
-          </body>
-        </html>
-      </ClerkProvider>
+      <html lang="en" className={inter.variable}>
+        <body className="min-h-screen bg-background font-sans text-foreground antialiased">
+          {children}
+        </body>
+      </html>
     );
   }
   ```
@@ -663,74 +663,196 @@
     );
   }
   ```
-- [ ] Verify with a build using a Clerk development-format placeholder key (ClerkProvider requires a syntactically valid publishable key at build time; this one decodes to `clerk.example.com$` and never contacts Clerk during static rendering):
+- [ ] Verify with a build (no auth env vars are needed at build time):
   ```bash
   cd "/Users/andynguyen/Desktop/Permit Torch/apps/web"
-  NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_Y2xlcmsuZXhhbXBsZS5jb20k pnpm build
+  pnpm build
   ```
   Expected: `✓ Compiled successfully`.
 - [ ] Commit:
   ```bash
   cd "/Users/andynguyen/Desktop/Permit Torch"
   git add apps/web/app
-  git commit -m "Add Clerk-wrapped root layout with light theme and orange brand tokens"
+  git commit -m "Add root layout with light theme and orange brand tokens"
   ```
 
 ---
 
-### Task 9: `middleware.ts` in FINAL form (Clerk public routes)
+### Task 9: Firebase auth boundary in FINAL form — `middleware.ts`, `lib/auth/config.ts`, `lib/firebase/client.ts`
 
 **Files:**
+- Create: `/Users/andynguyen/Desktop/Permit Torch/apps/web/lib/auth/config.ts` (server-only shared auth options)
+- Create: `/Users/andynguyen/Desktop/Permit Torch/apps/web/lib/firebase/client.ts` (browser Firebase app + auth instance)
 - Create: `/Users/andynguyen/Desktop/Permit Torch/apps/web/middleware.ts`
+- Test: `/Users/andynguyen/Desktop/Permit Torch/apps/web/__tests__/lib/auth-routes.test.ts`
 
 **Interfaces:**
-- Consumes: `@clerk/nextjs/server` (`clerkMiddleware`, `createRouteMatcher`).
-- Produces: the frozen auth boundary — public routes exactly as locked: `/`, `/pricing`, `/how-it-works`, `/fire-protection-leads(.*)`, `/fire-sprinkler-leads`, `/fire-alarm-leads`, `/locations(.*)`, `/blog(.*)`, `/login(.*)`, `/signup(.*)`, `/api/(.*)`. Everything else (i.e. `/app/**`) requires a session. NO workstream may edit this file after WS0.
+- Consumes: `next-firebase-auth-edge` (`authMiddleware`, `redirectToLogin`, `getTokens`), `firebase/app` + `firebase/auth` (Task 4); env vars from master §9 (`NEXT_PUBLIC_FIREBASE_*`, `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`, `AUTH_COOKIE_SIGNATURE_KEY_CURRENT`, `AUTH_COOKIE_SIGNATURE_KEY_PREVIOUS`).
+- Produces: the frozen auth boundary — public routes exactly as locked: `/`, `/pricing`, `/how-it-works`, `/fire-protection-leads(.*)`, `/fire-sprinkler-leads`, `/fire-alarm-leads`, `/locations(.*)`, `/blog(.*)`, `/login(.*)`, `/signup(.*)`, `/api/(.*)`. Everything else (i.e. `/app/**`) requires a valid Firebase session cookie, else redirect to `/login`. Signed-in users visiting `/login` or `/signup` are redirected to `/app/leads`. `/api/login` (POST with `Authorization: Bearer <Firebase ID token>`) and `/api/logout` are served by the middleware. `authConfig` is what WS4 passes to `getTokens(await cookies(), authConfig)` in server components; `firebaseAuth` is what WS4's `/login`, `/signup`, account menu and `useApiToken()` use. NO workstream may edit these three files after WS0.
 
 **Steps:**
 
+- [ ] **Write the failing test first.** Create `/Users/andynguyen/Desktop/Permit Torch/apps/web/__tests__/lib/auth-routes.test.ts` — it pins the locked public-route list (the middleware itself needs a running edge runtime, so the route predicate is exported from `lib/auth/config.ts` and tested directly):
+  ```typescript
+  import { describe, expect, it } from "vitest";
+  import { isPublicPath, isAuthPage } from "@/lib/auth/config";
+
+  describe("locked public routes", () => {
+    it.each([
+      "/", "/pricing", "/how-it-works", "/fire-protection-leads", "/fire-protection-leads/texas",
+      "/fire-sprinkler-leads", "/fire-alarm-leads", "/locations", "/locations/texas/austin",
+      "/blog", "/blog/post-1", "/login", "/login/reset", "/signup", "/api/login", "/api/logout", "/api/anything",
+    ])("treats %s as public", (path) => {
+      expect(isPublicPath(path)).toBe(true);
+    });
+
+    it.each(["/app", "/app/leads", "/app/leads/abc", "/app/saved", "/app/admin/sources", "/pricing/secret", "/fire-sprinkler-leads/x"])(
+      "treats %s as protected",
+      (path) => {
+        expect(isPublicPath(path)).toBe(false);
+      },
+    );
+
+    it("identifies the auth pages that signed-in users are bounced away from", () => {
+      expect(isAuthPage("/login")).toBe(true);
+      expect(isAuthPage("/signup")).toBe(true);
+      expect(isAuthPage("/")).toBe(false);
+      expect(isAuthPage("/app/leads")).toBe(false);
+    });
+  });
+  ```
+- [ ] Run to verify failure: `cd "/Users/andynguyen/Desktop/Permit Torch/apps/web" && pnpm test` — the new suite fails with `Failed to resolve import "@/lib/auth/config"`; the smoke test still passes.
+- [ ] Create `/Users/andynguyen/Desktop/Permit Torch/apps/web/lib/auth/config.ts`:
+  ```typescript
+  // FINAL FORM (WS0). Do not edit in any workstream.
+  // Shared next-firebase-auth-edge options + the LOCKED public-route list.
+  // Server-only: the service-account private key must never reach the browser.
+  import "server-only";
+
+  const PUBLIC_PATH_PATTERNS: RegExp[] = [
+    /^\/$/,
+    /^\/pricing$/,
+    /^\/how-it-works$/,
+    /^\/fire-protection-leads(\/.*)?$/,
+    /^\/fire-sprinkler-leads$/,
+    /^\/fire-alarm-leads$/,
+    /^\/locations(\/.*)?$/,
+    /^\/blog(\/.*)?$/,
+    /^\/login(\/.*)?$/,
+    /^\/signup(\/.*)?$/,
+    /^\/api(\/.*)?$/,
+  ];
+
+  export function isPublicPath(pathname: string): boolean {
+    return PUBLIC_PATH_PATTERNS.some((pattern) => pattern.test(pathname));
+  }
+
+  /** Pages a signed-in user should be redirected away from. */
+  export function isAuthPage(pathname: string): boolean {
+    return pathname === "/login" || pathname === "/signup";
+  }
+
+  export const AUTH_COOKIE_NAME = "AuthToken";
+  export const APP_HOME = "/app/leads";
+  export const LOGIN_PATH = "/login";
+
+  function env(name: string): string {
+    return process.env[name] ?? "";
+  }
+
+  // Options shared by middleware.ts (authMiddleware) and server components (getTokens).
+  export const authConfig = {
+    apiKey: env("NEXT_PUBLIC_FIREBASE_API_KEY"),
+    cookieName: AUTH_COOKIE_NAME,
+    cookieSignatureKeys: [
+      env("AUTH_COOKIE_SIGNATURE_KEY_CURRENT"),
+      env("AUTH_COOKIE_SIGNATURE_KEY_PREVIOUS"),
+    ].filter((key) => key.length > 0),
+    cookieSerializeOptions: {
+      path: "/",
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax" as const,
+      maxAge: 12 * 60 * 60 * 24, // 12 days
+    },
+    serviceAccount: {
+      projectId: env("FIREBASE_PROJECT_ID"),
+      clientEmail: env("FIREBASE_CLIENT_EMAIL"),
+      // Railway/Vercel store the key with literal "\n" sequences.
+      privateKey: env("FIREBASE_PRIVATE_KEY").replace(/\\n/g, "\n"),
+    },
+  };
+  ```
+  Install the tiny guard package the file imports: `cd "/Users/andynguyen/Desktop/Permit Torch" && pnpm --filter web add server-only` (this is a WS0 edit to `package.json`, allowed here).
+- [ ] Create `/Users/andynguyen/Desktop/Permit Torch/apps/web/lib/firebase/client.ts`:
+  ```typescript
+  // FINAL FORM (WS0). Do not edit in any workstream.
+  // Browser-side Firebase app used by /login, /signup, the account menu and useApiToken().
+  "use client";
+
+  import { getApp, getApps, initializeApp } from "firebase/app";
+  import { getAuth } from "firebase/auth";
+
+  const firebaseConfig = {
+    apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+    authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+    appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  };
+
+  export const firebaseApp = getApps().length ? getApp() : initializeApp(firebaseConfig);
+  export const firebaseAuth = getAuth(firebaseApp);
+  ```
 - [ ] Create `/Users/andynguyen/Desktop/Permit Torch/apps/web/middleware.ts`:
   ```typescript
-  import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+  import { NextResponse, type NextRequest } from "next/server";
+  import { authMiddleware, redirectToLogin } from "next-firebase-auth-edge";
+  import { APP_HOME, LOGIN_PATH, authConfig, isAuthPage, isPublicPath } from "@/lib/auth/config";
 
   // FINAL FORM (WS0). Do not edit in any workstream.
-  // Public routes are locked in the master contracts doc; everything else
-  // (the /app dashboard surface) requires an authenticated Clerk session.
-  const isPublicRoute = createRouteMatcher([
-    "/",
-    "/pricing",
-    "/how-it-works",
-    "/fire-protection-leads(.*)",
-    "/fire-sprinkler-leads",
-    "/fire-alarm-leads",
-    "/locations(.*)",
-    "/blog(.*)",
-    "/login(.*)",
-    "/signup(.*)",
-    "/api/(.*)",
-  ]);
+  // Public routes are locked in the master contracts doc (see lib/auth/config.ts);
+  // everything else (the /app dashboard surface) requires a valid Firebase session
+  // cookie. /api/login and /api/logout are served by authMiddleware itself.
+  export async function middleware(request: NextRequest) {
+    const { pathname } = request.nextUrl;
 
-  export default clerkMiddleware(async (auth, req) => {
-    if (!isPublicRoute(req)) {
-      await auth.protect();
-    }
-  });
+    return authMiddleware(request, {
+      loginPath: "/api/login",
+      logoutPath: "/api/logout",
+      ...authConfig,
+      handleValidToken: async (_tokens, headers) => {
+        if (isAuthPage(pathname)) {
+          return NextResponse.redirect(new URL(APP_HOME, request.url));
+        }
+        return NextResponse.next({ request: { headers } });
+      },
+      handleInvalidToken: async () => {
+        if (isPublicPath(pathname)) return NextResponse.next();
+        return redirectToLogin(request, { path: LOGIN_PATH, publicPaths: [] });
+      },
+      handleError: async () => {
+        if (isPublicPath(pathname)) return NextResponse.next();
+        return redirectToLogin(request, { path: LOGIN_PATH, publicPaths: [] });
+      },
+    });
+  }
 
   export const config = {
     matcher: [
-      // Run on everything except Next.js internals and static assets.
-      "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
-      // Always run for API routes.
-      "/(api|trpc)(.*)",
+      "/api/login",
+      "/api/logout",
+      // Run on every page except Next.js internals and static assets.
+      "/((?!_next|favicon.ico|.*\\..*).*)",
     ],
   };
   ```
-- [ ] Verify: `cd "/Users/andynguyen/Desktop/Permit Torch/apps/web" && pnpm typecheck` exits 0, then `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_Y2xlcmsuZXhhbXBsZS5jb20k pnpm build` succeeds and the build output lists `ƒ Middleware`.
+  If `next-firebase-auth-edge` types reject `...authConfig` (e.g. it requires a non-empty `cookieSignatureKeys` tuple), keep the object shape but adjust the typing minimally and note it in the report — do NOT change the route logic.
+- [ ] Run to verify pass: `pnpm test` in `apps/web` — expect the smoke test + all auth-route cases green. Then `pnpm typecheck` exits 0, then `pnpm build` succeeds and the build output lists `ƒ Middleware`.
 - [ ] Commit:
   ```bash
   cd "/Users/andynguyen/Desktop/Permit Torch"
-  git add apps/web/middleware.ts
-  git commit -m "Add final Clerk middleware with locked public route list"
+  git add apps/web/middleware.ts apps/web/lib/auth apps/web/lib/firebase apps/web/__tests__/lib/auth-routes.test.ts apps/web/package.json pnpm-lock.yaml
+  git commit -m "Add final Firebase auth middleware with locked public route list"
   ```
 
 ---
@@ -743,7 +865,7 @@
 - Test: `/Users/andynguyen/Desktop/Permit Torch/apps/web/__tests__/lib/api.test.ts`
 
 **Interfaces:**
-- Consumes: `@permittorch/types` (Task 2); env vars `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_API_MOCK`.
+- Consumes: `@permittorch/types` (Task 2); env vars `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_API_MOCK`. Also creates the WS3-owned stub `apps/web/lib/fixtures/markets.ts` (see step below) so the dynamic import resolves.
 - Produces (LOCKED signatures from master doc §8, verbatim):
   ```typescript
   export async function getLeads(params: LeadsQuery, token: string): Promise<LeadsResponse>;
@@ -1138,11 +1260,20 @@
   export async function getAdminRuns(_params: { sourceId?: string; page?: number }): Promise<Paged<ScraperRunSummary>> { notImplemented("getAdminRuns"); }
   export async function setSourceActive(_id: string, _active: boolean): Promise<void> { notImplemented("setSourceActive"); }
   ```
-- [ ] Run to verify pass: `cd "/Users/andynguyen/Desktop/Permit Torch/apps/web" && pnpm test` — expect all 7 tests passing (6 api + 1 smoke). Then `pnpm typecheck` — exits 0.
+- [ ] Create the WS3-owned stub `/Users/andynguyen/Desktop/Permit Torch/apps/web/lib/fixtures/markets.ts` (WS3 replaces the bodies with real illustrative fixtures; without this file `tsc` and Vite cannot resolve the dynamic import above):
+  ```typescript
+  // MARKET FIXTURES (WS0 stub). WS3 (marketing) owns this file and replaces the
+  // empty values with illustrative mock markets/stats. Keep both export names.
+  import type { Market, MarketStats } from "@permittorch/types";
+
+  export const mockMarkets: Market[] = [];
+  export const mockMarketStats: Record<string, MarketStats> = {};
+  ```
+- [ ] Run to verify pass: `cd "/Users/andynguyen/Desktop/Permit Torch/apps/web" && pnpm test` — expect all api tests + the smoke test + the auth-route tests passing. Then `pnpm typecheck` — exits 0.
 - [ ] Commit:
   ```bash
   cd "/Users/andynguyen/Desktop/Permit Torch"
-  git add apps/web/lib apps/web/__tests__/lib
+  git add apps/web/lib/api.ts apps/web/lib/fixtures apps/web/__tests__/lib/api.test.ts
   git commit -m "Implement typed API client with fixture mock branch"
   ```
 
@@ -1333,11 +1464,11 @@
       }
 
       [Fact]
-      public void AppUser_has_unique_index_on_clerk_user_id()
+      public void AppUser_has_unique_index_on_firebase_uid()
       {
           using var db = CreateContext();
           var index = db.Model.FindEntityType(typeof(AppUser))!.GetIndexes().Single(i =>
-              i.Properties.Select(p => p.Name).SequenceEqual(new[] { "ClerkUserId" }));
+              i.Properties.Select(p => p.Name).SequenceEqual(new[] { "FirebaseUid" }));
           Assert.True(index.IsUnique);
       }
 
@@ -1523,7 +1654,6 @@
   {
       public Guid Id { get; set; }
       public string Name { get; set; } = null!;
-      public string? ClerkOrgId { get; set; }
       public List<AppUser> Users { get; set; } = new();
       public Subscription? Subscription { get; set; }
   }
@@ -1531,7 +1661,7 @@
   public class AppUser
   {
       public Guid Id { get; set; }
-      public string ClerkUserId { get; set; } = null!;
+      public string FirebaseUid { get; set; } = null!;        // Firebase Auth uid (JWT `sub`)
       public string Email { get; set; } = null!;
       public Guid OrganizationId { get; set; }
       public Organization Organization { get; set; } = null!;
@@ -1651,7 +1781,7 @@
 
           modelBuilder.Entity<AppUser>(e =>
           {
-              e.HasIndex(u => u.ClerkUserId).IsUnique();
+              e.HasIndex(u => u.FirebaseUid).IsUnique();
           });
 
           modelBuilder.Entity<SubscriptionMarket>(e =>
@@ -1761,7 +1891,7 @@
           // Unique indexes locked in master doc §3.
           Assert.Contains(indexdefs, d => d.Contains("UNIQUE") && d.Contains("permits") && d.Contains("source_id") && d.Contains("external_id"));
           Assert.Contains(indexdefs, d => !d.Contains("UNIQUE") && d.Contains("permits") && d.Contains("fingerprint"));
-          Assert.Contains(indexdefs, d => d.Contains("UNIQUE") && d.Contains("app_users") && d.Contains("clerk_user_id"));
+          Assert.Contains(indexdefs, d => d.Contains("UNIQUE") && d.Contains("app_users") && d.Contains("firebase_uid"));
           Assert.Contains(indexdefs, d => d.Contains("UNIQUE") && d.Contains("markets") && d.Contains("slug"));
           Assert.Contains(indexdefs, d => d.Contains("UNIQUE") && d.Contains("saved_leads") && d.Contains("user_id") && d.Contains("fire_opportunity_id"));
           Assert.Contains(indexdefs, d => d.Contains("UNIQUE") && d.Contains("sample_lead_requests") && d.Contains("email") && d.Contains("market_slug"));
@@ -1896,9 +2026,9 @@
   public static class FeaturesSetup
   {
       /// <summary>
-      /// WS2 (ws/api) registers everything here: Clerk JWT bearer authentication
-      /// (Microsoft.AspNetCore.Authentication.JwtBearer against CLERK_JWKS_URL /
-      /// CLERK_ISSUER), authorization policies, rate limiting, CORS, Stripe and
+      /// WS2 (ws/api) registers everything here: Firebase ID-token bearer authentication
+      /// (Microsoft.AspNetCore.Authentication.JwtBearer with Authority
+      /// https://securetoken.google.com/{FIREBASE_PROJECT_ID}), authorization policies, rate limiting, CORS, Stripe and
       /// Resend clients, and per-feature services.
       /// WS0 ships it as an intentionally empty stub so Program.cs never changes.
       /// </summary>
@@ -1984,10 +2114,8 @@
   # Apify API access — token + the dedicated task id (scrapelabmax/permittorch-daily); see master §9/§10
   APIFY_TOKEN=
   APIFY_TASK_ID=
-  # Clerk JWT validation
-  CLERK_SECRET_KEY=
-  CLERK_JWKS_URL=
-  CLERK_ISSUER=
+  # Firebase ID-token validation (project id only; keys come from Google's OIDC discovery)
+  FIREBASE_PROJECT_ID=
   # Stripe billing
   STRIPE_SECRET_KEY=
   STRIPE_WEBHOOK_SECRET=
@@ -2004,8 +2132,16 @@
   # API client base URL; NEXT_PUBLIC_API_MOCK=1 serves fixtures (WS4 dev mode)
   NEXT_PUBLIC_API_URL=http://localhost:5000
   NEXT_PUBLIC_API_MOCK=1
-  # Clerk (CLERK_SECRET_KEY above is shared by web server-side)
-  NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
+  # Firebase client SDK (browser)
+  NEXT_PUBLIC_FIREBASE_API_KEY=
+  NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=
+  NEXT_PUBLIC_FIREBASE_PROJECT_ID=
+  NEXT_PUBLIC_FIREBASE_APP_ID=
+  # next-firebase-auth-edge session cookies (server): service account + rotating signature keys (32+ random bytes each)
+  FIREBASE_CLIENT_EMAIL=
+  FIREBASE_PRIVATE_KEY=
+  AUTH_COOKIE_SIGNATURE_KEY_CURRENT=
+  AUTH_COOKIE_SIGNATURE_KEY_PREVIOUS=
   # PostHog analytics
   NEXT_PUBLIC_POSTHOG_KEY=
   ```
@@ -2089,14 +2225,14 @@
   git status --short          # expect EMPTY output — nothing uncommitted
   pnpm install --frozen-lockfile
   pnpm -r typecheck           # types + web: 0 errors
-  pnpm -r test                # web: 7 tests green
-  cd apps/web && NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_Y2xlcmsuZXhhbXBsZS5jb20k pnpm build && cd ../..
+  pnpm -r test                # web: smoke + auth-route + api tests green
+  cd apps/web && pnpm build && cd ../..
   dotnet build apps/api/PermitTorch.sln --configuration Release   # 0 warnings-as-errors, 0 errors
   dotnet test apps/api/PermitTorch.sln --configuration Release --no-build  # all green (Docker running)
   ```
 - [ ] Confirm the frozen-file inventory exists exactly as the ownership table expects:
   ```bash
-  ls apps/web/middleware.ts apps/web/lib/api.ts apps/web/lib/fixtures/index.ts \
+  ls apps/web/middleware.ts apps/web/lib/auth/config.ts apps/web/lib/firebase/client.ts apps/web/lib/api.ts apps/web/lib/fixtures/index.ts \
      apps/api/Program.cs apps/api/Setup/PipelineSetup.cs apps/api/Setup/FeaturesSetup.cs \
      apps/api/Data/Entities.cs apps/api/Data/Enums.cs apps/api/Data/AppDbContext.cs \
      packages/types/src/index.ts .github/workflows/ci.yml .env.example
