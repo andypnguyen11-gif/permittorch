@@ -177,15 +177,17 @@ public class SavedLead {
 
 public class EmailPreference {
     public Guid Id; public Guid UserId; public DigestFrequency Frequency;
+    public DateTime? LastSentAt;
 }
 
 public class SampleLeadRequest {                       // marketing lead magnet capture
     public Guid Id; public string Name; public string Email; public string Company;
     public string MarketSlug; public DateTime CreatedAt;
+    public DateTime? LastSentAt;
 }
 ```
 
-Unique indexes (WS0 migration): `permits(source_id, external_id)`, `permits(fingerprint)` non-unique index, `app_users(firebase_uid)` unique, `markets(slug)` unique, `saved_leads(user_id, fire_opportunity_id)` unique, `sample_lead_requests(email, market_slug)` unique. FTS: GIN index on `to_tsvector('english', coalesce(description,'') || ' ' || coalesce(address,''))`.
+Unique indexes (WS0 migration): `permits(source_id, external_id)`, `permits(fingerprint)` non-unique index, `app_users(firebase_uid)` unique, `markets(slug)` unique, `saved_leads(user_id, fire_opportunity_id)` unique, `sample_lead_requests(email, market_slug)` unique, `sources(jurisdiction)` unique, `scraper_runs(apify_run_id)` unique, `email_preferences(user_id)` unique. FTS: GIN index on `to_tsvector('english', coalesce(description,'') || ' ' || coalesce(address,''))`.
 
 ---
 
@@ -403,7 +405,11 @@ export interface LeadsQuery {
   market?: string; category?: FireCategory; minScore?: number;
   maxAgeDays?: number; status?: PermitStatus; q?: string; page?: number; pageSize?: number;
 }
+
+export class ApiError extends Error { readonly status: number }
 ```
+
+`apiFetch` throws `ApiError` on any non-2xx response (`status` set from the HTTP status code); path params are `encodeURIComponent`-encoded before being interpolated into the URL. WS4 uses `err instanceof ApiError && err.status === 404` → `notFound()`, `401` → redirect to `/login`.
 
 ## 9. LOCKED: Environment Variables
 
@@ -447,6 +453,16 @@ export interface LeadsQuery {
   - **Schema:** `AppUser.ClerkUserId` → `FirebaseUid` (unique index `app_users(firebase_uid)`); `Organization.ClerkOrgId` removed (Firebase has no org concept; orgs are provisioned on first request as before).
   - **WS5:** E2E identities are created with a small `firebase-admin` script (`e2e/scripts/create-users.mjs`) using the service-account env vars; env names `CLERK_SUPERADMIN_USER_ID` → `SUPERADMIN_FIREBASE_UID`, `E2E_ENTITLED_CLERK_USER_ID` → `E2E_ENTITLED_FIREBASE_UID`, `E2E_UNENTITLED_CLERK_USER_ID` → `E2E_UNENTITLED_FIREBASE_UID`; Playwright signs in through the app's own `/login` form.
   - **Data stays on Railway Postgres** — Firebase is authentication only; enable Railway's automated Postgres backups at deploy.
+
+- **WS0 final-review fixes (2026-09-26):**
+  - **A. Public routes:** `/terms` and `/privacy` are now public (exact-match) in `apps/web/lib/auth/config.ts`; `config.matcher` in `middleware.ts` gains `"/app/:path*"`.
+  - **B. API client:** `apps/web/lib/api.ts` exports `ApiError` (see §8) and `encodeURIComponent`-encodes path params.
+  - **C. Mock mode:** `apps/web/lib/fixtures/index.ts` stub `submitSampleLeadRequest` resolves (no-op) in mock mode; all other stubs still throw until WS4 replaces them.
+  - **D. Schema:** `EmailPreference.LastSentAt` / `SampleLeadRequest.LastSentAt` (both `DateTime?`) exist in WS0's entities and initial migration, plus new unique indexes (see §3).
+  - **E. Firebase client:** `lib/firebase/client.ts` falls back to a placeholder API key so module evaluation never throws at build time; `firebaseAuth.currentUser` is `null` until `await firebaseAuth.authStateReady()` resolves.
+  - **F. CI** also runs `pnpm --filter web build` with `NEXT_PUBLIC_API_MOCK=1` and a placeholder `NEXT_PUBLIC_FIREBASE_API_KEY`.
+  - **G. Middleware ordering (WS2):** ASP.NET Core auto-inserts `UseAuthentication`/`UseAuthorization` before anything added inside `MapFeatureEndpoints`, so a `UseCors` call added there would run after authorization. WS2 must call `app.UseCors(); app.UseAuthentication(); app.UseAuthorization(); app.UseRateLimiter();` explicitly at the top of `MapFeatureEndpoints` (explicit calls suppress the auto-insertion) and add an integration test that an `OPTIONS` preflight to an authenticated route returns the CORS headers.
+  - **H. Dev port:** `apps/api/Properties/launchSettings.json` now uses port 5000 (contract, matches §10's API dev base URL).
 
 ## 11. Workstream Plan Files
 

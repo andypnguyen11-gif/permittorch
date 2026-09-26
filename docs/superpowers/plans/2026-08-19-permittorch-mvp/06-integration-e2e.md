@@ -188,7 +188,7 @@ WS5-specific rules:
   SENTRY_DSN=
   WEB_ORIGIN=http://localhost:3000               # CORS allow-origin + Stripe redirect base
   RUN_MIGRATIONS_ON_STARTUP=true
-  ASPNETCORE_URLS=http://localhost:5000
+  ASPNETCORE_URLS=http://localhost:5000  # matches apps/api/Properties/launchSettings.json (WS0); see the macOS AirPlay note in Task 9 if port 5000 is unavailable
   # --- Seeder / E2E identities (Firebase Auth uids) ---
   SUPERADMIN_FIREBASE_UID=
   SUPERADMIN_EMAIL=e2e-admin@permittorch.dev
@@ -636,6 +636,7 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
   dotnet run --project apps/api
   ```
   → expect: `Now listening on: http://localhost:5000`. Then `curl -s http://localhost:5000/api/health` → expect `{"status":"ok"}`.
+  > **macOS note:** `apps/api/Properties/launchSettings.json` (WS0) pins the dev port to 5000. On macOS, port 5000 is often already held by the **AirPlay Receiver** service, which will make the API fail to bind (or silently answer with AirPlay's own response instead of the API's). If `curl` above doesn't return `{"status":"ok"}`, either disable AirPlay Receiver (System Settings → General → AirDrop & Handoff → turn off "AirPlay Receiver") or run the API on a different port with `dotnet run --project apps/api --urls http://localhost:5050` and set `NEXT_PUBLIC_API_URL=http://localhost:5050` (and the `stripe listen --forward-to` target in Task 7) to match.
 - [ ] Verify CORS: `curl -s -i -X OPTIONS http://localhost:5000/api/leads -H "Origin: http://localhost:3000" -H "Access-Control-Request-Method: GET" | grep -i access-control` → expect `Access-Control-Allow-Origin: http://localhost:3000`. If absent, add to Program.cs (before `builder.Build()`): `builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.WithOrigins(Environment.GetEnvironmentVariable("WEB_ORIGIN") ?? "http://localhost:3000").AllowAnyHeader().AllowAnyMethod()));` and `app.UseCors();` after build; commit `Allow web origin via CORS policy driven by WEB_ORIGIN`.
 - [ ] Start the web app with mock OFF (terminal 2): `pnpm --dir apps/web dev` → expect Next.js ready on `http://localhost:3000`. Confirm no `NEXT_PUBLIC_API_MOCK` in `apps/web/.env.local`.
 - [ ] Verify unauthenticated market data flows from the real API: `curl -s http://localhost:5000/api/markets` → expect JSON array of 31 markets including slugs `austin-tx`, `san-antonio-tx`, `fort-worth-tx`. Open `http://localhost:3000/locations/texas/austin` in a browser → expect real aggregate numbers (from `/api/markets/austin-tx/stats`), not fixture numbers.
@@ -653,7 +654,7 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
 
 ## Task 10: Analytics wrapper, PostHog init, Sentry in both apps
 
-**Files:** `apps/web/lib/analytics.ts` (create), `apps/web/components/app/analytics-provider.tsx` (create), `apps/web/app/layout.tsx` (modify: mount provider), `apps/web/instrumentation.ts` + `apps/web/instrumentation-client.ts` + `apps/web/sentry.server.config.ts` + `apps/web/sentry.edge.config.ts` (create), `apps/web/next.config.ts` (verify only), `apps/api/Program.cs` + `apps/api/PermitTorch.Api.csproj` (modify: Sentry), `apps/web/package.json` (modify: deps), event call-site edits in WS3/WS4 components (located by grep, listed below), `apps/web/__tests__/app/analytics.test.ts` (create).
+**Files:** `apps/web/lib/analytics.ts` (create), `apps/web/components/app/analytics-provider.tsx` (create), `apps/web/app/layout.tsx` (modify: mount provider), `apps/web/instrumentation.ts` + `apps/web/instrumentation-client.ts` + `apps/web/sentry.server.config.ts` + `apps/web/sentry.edge.config.ts` (create), `apps/web/middleware.ts` (modify: capture `handleError`'s error with Sentry — the one intended WS5 edit to this otherwise-frozen file), `apps/web/next.config.ts` (verify only), `apps/api/Program.cs` + `apps/api/PermitTorch.Api.csproj` (modify: Sentry), `apps/web/package.json` (modify: deps), event call-site edits in WS3/WS4 components (located by grep, listed below), `apps/web/__tests__/app/analytics.test.ts` (create).
 **Interfaces:** `track(event, props)` — typed event union exactly: `signup`, `pricing_viewed`, `lead_opened`, `lead_saved`, `search_performed`, `filter_changed`, `digest_enabled`, `checkout_started` (PRD §49; `subscription created` is a server-side Stripe fact and is read from Stripe/PostHog webhooksless — out of client scope).
 
 - [ ] Install deps (WS5 may edit package.json — serial): `pnpm --dir apps/web add posthog-js @sentry/nextjs` → expect lockfile update, no peer errors.
@@ -783,6 +784,17 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
   });
   ```
   Deliberately NOT wrapping `next.config` with `withSentryConfig` (source-map upload needs an org auth token; error capture works without it — note this as a follow-up in the Sentry project).
+- [ ] Wire Sentry into `middleware.ts`'s silent `handleError`. `apps/web/middleware.ts` is WS0-frozen for WS1–WS4, but per master §1 "WS5 may edit any file" — this is the one intended edit to it. Today `handleError` (in the `authMiddleware` options WS0 wrote — see `docs/.../01-foundation.md` Task 9) discards whatever `next-firebase-auth-edge` hands it and just falls back to the public-path/redirect behavior, so a token-validation failure never reaches Sentry. Add the capture without changing the fallback behavior:
+  ```typescript
+  import * as Sentry from "@sentry/nextjs";
+  // ...
+      handleError: async (error) => {
+        Sentry.captureException(error);
+        if (isPublicPath(pathname)) return NextResponse.next();
+        return redirectToLogin(request, { path: LOGIN_PATH, publicPaths: [] });
+      },
+  ```
+  Verify: temporarily throw inside `handleValidToken` in a local run, confirm the event lands in the `permittorch-web` Sentry project, then revert the temporary throw.
 - [ ] Sentry API: `dotnet add apps/api/PermitTorch.Api.csproj package Sentry.AspNetCore` then in `apps/api/Program.cs` before `builder.Build()`:
   ```csharp
   if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("SENTRY_DSN")))
@@ -798,7 +810,7 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
   ```bash
   dotnet test apps/api/tests/PermitTorch.Api.Tests/PermitTorch.Api.Tests.csproj
   pnpm -r typecheck && pnpm --dir apps/web exec vitest run
-  git add -A && git commit -m "Add PostHog analytics wrapper with typed events and Sentry error reporting in web and API"
+  git add -A && git commit -m "Add PostHog analytics wrapper with typed events and Sentry error reporting in web, middleware, and API"
   ```
 
 ## Task 11: Playwright E2E scaffold, driving the app's own `/login` form
@@ -1304,6 +1316,10 @@ If web hosting ever moves to Vercel: import the GitHub repo at https://vercel.co
   | `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_FIREBASE_API_KEY`, `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`, `NEXT_PUBLIC_FIREBASE_PROJECT_ID`, `NEXT_PUBLIC_FIREBASE_APP_ID`, `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`, `AUTH_COOKIE_SIGNATURE_KEY_CURRENT`, `AUTH_COOKIE_SIGNATURE_KEY_PREVIOUS`, `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_SENTRY_DSN` | web |
 
   (`NEXT_PUBLIC_API_MOCK` is deliberately absent everywhere in production.)
+- [ ] **Fail fast on missing required config outside Development (WS0 final-review note).** Both apps currently fall back to a `localhost` default when their required connection env var is unset, which would silently point a production deploy at nobody's database/API instead of refusing to start:
+  - API (`apps/api/Program.cs`): replace the unconditional `?? "Host=localhost;..."` fallback for `DATABASE_URL` with an environment-gated check — keep the localhost default only when `builder.Environment.IsDevelopment()`; otherwise throw at startup (e.g. `?? throw new InvalidOperationException("DATABASE_URL is required outside Development")`) so a misconfigured Railway deploy fails the healthcheck immediately instead of running against a nonexistent local Postgres.
+  - Web (`apps/web/lib/api.ts`): the `apiFetch` base-URL fallback (`process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000"`) is baked in at build time for a `NEXT_PUBLIC_*` var, so the check belongs at build/start time, not per-request — add a guard (e.g. in `apps/web/next.config.ts` or `apps/web/instrumentation.ts`) that throws when `process.env.NODE_ENV === "production"` and `NEXT_PUBLIC_API_URL` is unset, so a production image built without it fails the build/boot rather than silently shipping a client that calls `localhost:5000`.
+  - Verify: temporarily unset each var in a non-Development run and confirm the process now fails fast with a clear message instead of starting against `localhost`; then restore the var and redeploy.
 - [ ] Smoke test the deployed system (substitute the real domains):
   ```bash
   curl -s https://<api>/api/health                       # → {"status":"ok"}

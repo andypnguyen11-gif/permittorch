@@ -38,9 +38,9 @@ All file paths below are given relative to the worktree root (`../pt-api`, absol
 - `apps/api/Setup/FeaturesSetup.cs`
 - `apps/api/tests/PermitTorch.Api.Tests/Features/`
 
-WS2 must NEVER touch `apps/api/Domain/`, `apps/api/Infrastructure/`, `apps/api/Jobs/`, `apps/api/Program.cs`, any `.csproj`, or `apps/api/Data/` — with **one documented exception** (Task 13): adding a nullable `public DateTime? LastSentAt { get; set; }` property to **both** `EmailPreference` and `SampleLeadRequest` in `apps/api/Data/Entities.cs`, and running `dotnet ef migrations add AddEmailPreferenceLastSentAt` once (which generates files under `apps/api/Data/Migrations/` covering both columns). Those specific edits and nothing else in `Data/` are authorized by the master coordinator for this workstream.
+WS2 must NEVER touch `apps/api/Domain/`, `apps/api/Infrastructure/`, `apps/api/Jobs/`, `apps/api/Program.cs`, any `.csproj`, or `apps/api/Data/`. **No exception is needed for Task 13's digest anchors:** `EmailPreference.LastSentAt` and `SampleLeadRequest.LastSentAt` (both nullable `DateTime?`) are already present from WS0's entities and initial migration (WS0 final-review fix D) — Task 13 only reads/writes them, with zero edits under `Data/`.
 
-**Endpoint/middleware mechanism (coordinator-confirmed):** WS0's frozen `Program.cs` calls `builder.Services.AddFeatureServices(builder.Configuration)` and later `app.MapFeatureEndpoints()` — an extension on `WebApplication` stubbed in WS2-owned `Setup/FeaturesSetup.cs`. Register all services (auth, authorization, CORS, rate limiter, Stripe/Resend clients, per-feature services) in `AddFeatureServices`; register middleware (`app.UseCors(...)`, `app.UseRateLimiter()`) and map every feature's endpoint group inside `MapFeatureEndpoints`. ASP.NET Core auto-inserts `UseRouting` at the front of the pipeline and `UseAuthentication`/`UseAuthorization` after it once those services are registered, so user middleware added in `MapFeatureEndpoints` is endpoint-aware. **No `IStartupFilter` anywhere; no Program.cs edit ever.** Other WS0 facts: snake_case naming via EFCore.NamingConventions is already configured in `AppDbContext`; `appsettings.json` already contains a `Scoring:Weights` section (never touch it); dev API base URL is `http://localhost:5000`.
+**Endpoint/middleware mechanism (coordinator-confirmed; revised 2026-09-26, WS0 final-review fix G):** WS0's frozen `Program.cs` calls `builder.Services.AddFeatureServices(builder.Configuration)` and later `app.MapFeatureEndpoints()` — an extension on `WebApplication` stubbed in WS2-owned `Setup/FeaturesSetup.cs`. Register all services (auth, authorization, CORS, rate limiter, Stripe/Resend clients, per-feature services) in `AddFeatureServices`. ASP.NET Core auto-inserts `UseAuthentication`/`UseAuthorization` **before** anything added inside `MapFeatureEndpoints` — so a bare `app.UseCors(...)` there would run *after* authorization and never attach CORS headers to an authenticated route's preflight response. `MapFeatureEndpoints` must therefore call all four middlewares explicitly, in this order, at the top of the method: `app.UseCors(); app.UseAuthentication(); app.UseAuthorization(); app.UseRateLimiter();` (explicit calls suppress the auto-insertion), then map every feature's endpoint group. Task 2 adds an integration test asserting that an `OPTIONS` preflight to an authenticated route returns the CORS headers. **No `IStartupFilter` anywhere; no Program.cs edit ever.** Other WS0 facts: snake_case naming via EFCore.NamingConventions is already configured in `AppDbContext`; `appsettings.json` already contains a `Scoring:Weights` section (never touch it); dev API base URL is `http://localhost:5000`.
 
 **Test rule (parallel-build exception to CLAUDE.md):** run ONLY WS2-owned tests locally:
 ```bash
@@ -51,7 +51,7 @@ cd "/Users/andynguyen/Desktop/pt-api/apps/api" && dotnet test PermitTorch.sln --
 **WS0 facts this plan builds on** (verify each at start of Task 2; if any is missing, stop and report — do not work around by editing frozen files):
 - `Program.cs` (frozen): reads `DATABASE_URL` from configuration, registers `AddDbContext<AppDbContext>`, calls `builder.Services.AddFeatureServices(builder.Configuration)`, maps `GET /api/health`, then calls `app.MapFeatureEndpoints()`, and ends with `public partial class Program { }`.
 - `Setup/FeaturesSetup.cs` (WS2-owned) contains two stubs to fill: `public static IServiceCollection AddFeatureServices(this IServiceCollection services, IConfiguration configuration)` and `public static WebApplication MapFeatureEndpoints(this WebApplication app)`.
-- Entities in namespace `PermitTorch.Api.Data` are `{ get; set; }` auto-properties matching master §3 verbatim; `AppDbContext` exposes `Markets, Sources, Permits, PermitParticipants, FireOpportunities, LeadSignals, ScraperRuns, Organizations, AppUsers, Subscriptions, SubscriptionMarkets, SavedLeads, EmailPreferences, SampleLeadRequests`; unique indexes per master §3 incl. `saved_leads(user_id, fire_opportunity_id)` and `sample_lead_requests(email, market_slug)`; FTS GIN index on `to_tsvector('english', coalesce(description,'') || ' ' || coalesce(address,''))`.
+- Entities in namespace `PermitTorch.Api.Data` are `{ get; set; }` auto-properties matching master §3 verbatim, including `EmailPreference.LastSentAt` and `SampleLeadRequest.LastSentAt` (both nullable `DateTime?`); `AppDbContext` exposes `Markets, Sources, Permits, PermitParticipants, FireOpportunities, LeadSignals, ScraperRuns, Organizations, AppUsers, Subscriptions, SubscriptionMarkets, SavedLeads, EmailPreferences, SampleLeadRequests`; unique indexes per master §3 incl. `saved_leads(user_id, fire_opportunity_id)`, `sample_lead_requests(email, market_slug)`, `sources(jurisdiction)`, `scraper_runs(apify_run_id)`, and `email_preferences(user_id)`; FTS GIN index on `to_tsvector('english', coalesce(description,'') || ' ' || coalesce(address,''))`.
 - `Data/DesignTimeDbContextFactory.cs` exists, so `dotnet ef` works without touching `Program.cs`.
 - NuGet already installed: JwtBearer, Stripe.net, Testcontainers.PostgreSql, Microsoft.AspNetCore.Mvc.Testing.
 
@@ -341,7 +341,7 @@ The master contract leaves gaps that WS2 must fill; these decisions are additive
 - Consumes: WS0 stubs `AddFeatureServices(this IServiceCollection, IConfiguration)` / `MapFeatureEndpoints(this WebApplication)`; `public partial class Program`; `AppDbContext`; env vars `WEB_ORIGIN`, `DATABASE_URL`, `RateLimiting:GlobalPermitLimit`.
 - Produces:
   - `public static IServiceCollection AddFeatureServices(this IServiceCollection services, IConfiguration configuration)` — v1: wire JSON, bare JwtBearer (Firebase config in Task 3), authorization, CORS policy `"web"` from `WEB_ORIGIN`, rate limiter (global 100/min/IP configurable + `"sample-leads"` 5/min/IP).
-  - `public static WebApplication MapFeatureEndpoints(this WebApplication app)` — FINAL form: `UseCors` → `UseRateLimiter` → `MapFeatureEndpointGroups()`.
+  - `public static WebApplication MapFeatureEndpoints(this WebApplication app)` — FINAL form: `UseCors` → `UseAuthentication` → `UseAuthorization` → `UseRateLimiter` → `MapFeatureEndpointGroups()` (explicit auth calls needed — see the ordering note above).
   - `public static IEndpointRouteBuilder MapFeatureEndpointGroups(this IEndpointRouteBuilder endpoints)` in `Features/FeatureEndpoints.cs` — the single aggregator every later task extends by one line. (Named distinctly from the WebApplication extension because `WebApplication` implements `IEndpointRouteBuilder` — same-name overloads would be ambiguous.)
   - `public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime { Action<IServiceCollection>? TestServices { get; init; } HttpClient CreateClientFor(string firebaseUid, string email); Task SeedAsync(Action<AppDbContext> seed); Task<T> QueryAsync<T>(Func<AppDbContext, Task<T>> query) }`
   - `public static class TestTokens { const string Issuer; static SymmetricSecurityKey SigningKey; static string Issue(string sub, string email) }`
@@ -712,12 +712,16 @@ The master contract leaves gaps that WS2 must fill; these decisions are additive
       }
 
       /// <summary>FINAL form. Program.cs (frozen) calls this after building the app.
-      /// UseRouting is auto-inserted at the front of the pipeline and
-      /// UseAuthentication/UseAuthorization are auto-inserted once those services are
-      /// registered, so this middleware is endpoint-aware. No IStartupFilter needed.</summary>
+      /// ASP.NET Core auto-inserts UseAuthentication/UseAuthorization BEFORE anything
+      /// added inside this method, so a bare UseCors() here would run AFTER
+      /// authorization and never attach CORS headers to an authenticated route's
+      /// preflight response. Calling all four explicitly, in this order, suppresses
+      /// the auto-insertion and puts CORS first. No IStartupFilter needed.</summary>
       public static WebApplication MapFeatureEndpoints(this WebApplication app)
       {
           app.UseCors(CorsPolicy);
+          app.UseAuthentication();
+          app.UseAuthorization();
           app.UseRateLimiter();
           app.MapFeatureEndpointGroups();
           return app;
@@ -820,6 +824,24 @@ The master contract leaves gaps that WS2 must fill; these decisions are additive
 
           var count = await factory.QueryAsync(db => db.AppUsers.CountAsync(u => u.FirebaseUid == sub));
           Assert.Equal(1, count);
+      }
+
+      [Fact]
+      public async Task Options_preflight_to_an_authenticated_route_returns_cors_headers()
+      {
+          // Regression test for WS0 final-review fix G: MapFeatureEndpoints must call
+          // UseCors/UseAuthentication/UseAuthorization/UseRateLimiter explicitly, in that
+          // order, so CORS runs before authorization and a preflight to a protected route
+          // (like /api/auth-probe, policy "User") never gets swallowed by a 401 with no
+          // Access-Control-Allow-Origin header.
+          var client = factory.CreateClient();
+          var request = new HttpRequestMessage(HttpMethod.Options, "/api/auth-probe");
+          request.Headers.Add("Origin", "https://web.test.permittorch.local");
+          request.Headers.Add("Access-Control-Request-Method", "GET");
+          var response = await client.SendAsync(request);
+
+          Assert.Equal("https://web.test.permittorch.local",
+              Assert.Single(response.Headers.GetValues("Access-Control-Allow-Origin")));
       }
   }
   ```
@@ -974,7 +996,7 @@ The master contract leaves gaps that WS2 must fill; these decisions are additive
   ```bash
   cd "/Users/andynguyen/Desktop/pt-api/apps/api" && dotnet test PermitTorch.sln --filter "FullyQualifiedName~PermitTorch.Api.Tests.Features.Auth"
   ```
-  Expected: all four green (401 anonymous, 401 forged signature, provisioning, idempotent re-use).
+  Expected: all five green (401 anonymous, 401 forged signature, provisioning, idempotent re-use, CORS preflight to a protected route).
 - [ ] Commit:
   ```bash
   cd "/Users/andynguyen/Desktop/pt-api" && git add apps/api/Features apps/api/Setup/FeaturesSetup.cs apps/api/tests && git commit -m "Add Firebase ID-token validation with first-request user and org provisioning"
@@ -3454,8 +3476,7 @@ The master contract leaves gaps that WS2 must fill; these decisions are additive
 ### Task 13: EmailDigests — schedule math, Resend delivery, subscriber + sample-lead digests, hourly job
 
 **Files:**
-- Modify: `apps/api/Data/Entities.cs` — **AUTHORIZED EXCEPTION (see Global Constraints):** add `public DateTime? LastSentAt { get; set; }` to `EmailPreference` AND to `SampleLeadRequest`; nothing else changes in this file
-- Create: `apps/api/Data/Migrations/*_AddEmailPreferenceLastSentAt.cs` — generated by `dotnet ef migrations add AddEmailPreferenceLastSentAt` (covers both new columns), never hand-written
+- `apps/api/Data/Entities.cs` — already present from WS0; no schema change: `EmailPreference.LastSentAt` and `SampleLeadRequest.LastSentAt` (both nullable `DateTime?`) were added in WS0's entities and initial migration. Task 13 does not touch `apps/api/Data/`.
 - Create: `apps/api/Features/EmailDigests/DigestSchedule.cs`
 - Create: `apps/api/Features/EmailDigests/DigestEmailBuilder.cs`
 - Create: `apps/api/Features/EmailDigests/ResendEmailClient.cs`
@@ -3467,7 +3488,7 @@ The master contract leaves gaps that WS2 must fill; these decisions are additive
 - Test: `apps/api/tests/PermitTorch.Api.Tests/Features/EmailDigests/DigestServiceTests.cs`
 
 **Interfaces:**
-- Consumes: `EmailPreference.LastSentAt` / `SampleLeadRequest.LastSentAt` (added here); `EntitlementService.EntitledStatuses`; env `RESEND_API_KEY`, `EMAIL_FROM`, `WEB_ORIGIN`; Resend HTTP API `POST https://api.resend.com/emails` (Bearer auth, JSON `{ from, to, subject, html }`).
+- Consumes: `EmailPreference.LastSentAt` / `SampleLeadRequest.LastSentAt` (already present from WS0); `EntitlementService.EntitledStatuses`; env `RESEND_API_KEY`, `EMAIL_FROM`, `WEB_ORIGIN`; Resend HTTP API `POST https://api.resend.com/emails` (Bearer auth, JSON `{ from, to, subject, html }`).
 - Produces:
   - `static class DigestSchedule { static DateTime? LastScheduledInstant(DigestFrequency frequency, DateTime nowUtc); static bool IsDue(DigestFrequency frequency, DateTime? lastSentAt, DateTime nowUtc); static bool IsSampleDue(DateTime? lastSentAt, DateTime nowUtc) }` — Daily fires at 12:00 UTC, Weekly at Monday 12:00 UTC; `IsDue` is false while `lastSentAt` is null (baseline rule, gap resolution 9); `IsSampleDue` = `lastSentAt == null || IsDue(Weekly, ...)` (gap resolution 15).
   - `sealed record DigestLead(int Score, FireCategory Category, string? Description, string? PermitType, string City, string State, DateTime? FiledDate, decimal? EstimatedValue, string MarketName)`
@@ -3478,35 +3499,7 @@ The master contract leaves gaps that WS2 must fill; these decisions are additive
 
 **Steps:**
 
-- [ ] Apply the authorized `Data/` exception. In `apps/api/Data/Entities.cs` change exactly two classes:
-  ```csharp
-  public class EmailPreference
-  {
-      public Guid Id { get; set; }
-      public Guid UserId { get; set; }
-      public DigestFrequency Frequency { get; set; }
-      public DateTime? LastSentAt { get; set; }   // WS2: digest cycle anchor (authorized exception)
-  }
-
-  public class SampleLeadRequest
-  {
-      public Guid Id { get; set; }
-      public string Name { get; set; } = null!;
-      public string Email { get; set; } = null!;
-      public string Company { get; set; } = null!;
-      public string MarketSlug { get; set; } = null!;
-      public DateTime CreatedAt { get; set; }
-      public DateTime? LastSentAt { get; set; }   // WS2: weekly sample digest anchor (authorized exception)
-  }
-  ```
-  Then generate the migration and build:
-  ```bash
-  cd "/Users/andynguyen/Desktop/pt-api/apps/api"
-  DATABASE_URL="Host=localhost;Port=5432;Database=permittorch;Username=postgres;Password=postgres" \
-    dotnet ef migrations add AddEmailPreferenceLastSentAt --project PermitTorch.Api.csproj
-  dotnet build PermitTorch.sln
-  git -C "/Users/andynguyen/Desktop/pt-api" diff --stat   # confirm ONLY Entities.cs + Data/Migrations/* changed
-  ```
+- [ ] **No `Data/` edit needed.** `EmailPreference.LastSentAt` and `SampleLeadRequest.LastSentAt` are already present from WS0's entities and initial migration — confirm this before starting (`grep -n "LastSentAt" ../../apps/api/Data/Entities.cs` from the worktree should show both), then proceed straight to the feature code below. Do not run `dotnet ef migrations add` for this task.
 - [ ] Write the failing unit tests `apps/api/tests/PermitTorch.Api.Tests/Features/EmailDigests/DigestScheduleTests.cs`:
   ```csharp
   using PermitTorch.Api.Data;
@@ -4082,11 +4075,11 @@ The master contract leaves gaps that WS2 must fill; these decisions are additive
   cd "/Users/andynguyen/Desktop/pt-api/apps/api" && dotnet test PermitTorch.sln --filter "FullyQualifiedName~PermitTorch.Api.Tests.Features.EmailDigests"
   ```
   Expected: all schedule, builder, and service tests green.
-- [ ] Commit (the authorized `Data/` exception is called out in the body):
+- [ ] Commit (no `Data/` changes — `LastSentAt` on both entities is WS0's, not this task's):
   ```bash
   cd "/Users/andynguyen/Desktop/pt-api"
-  git add apps/api/Features apps/api/Setup/FeaturesSetup.cs apps/api/tests apps/api/Data/Entities.cs apps/api/Data/Migrations
-  git commit -m "Add scheduled subscriber and sample-lead email digests via Resend" -m "Adds nullable LastSentAt to EmailPreference and SampleLeadRequest with the AddEmailPreferenceLastSentAt migration - the coordinator-authorized Data/ exception for this workstream."
+  git add apps/api/Features apps/api/Setup/FeaturesSetup.cs apps/api/tests
+  git commit -m "Add scheduled subscriber and sample-lead email digests via Resend"
   ```
 
 ---
@@ -4441,12 +4434,16 @@ The master contract leaves gaps that WS2 must fill; these decisions are additive
       }
 
       /// <summary>FINAL form. Program.cs (frozen) calls this after building the app.
-      /// UseRouting is auto-inserted at the front of the pipeline and
-      /// UseAuthentication/UseAuthorization are auto-inserted once those services are
-      /// registered, so this middleware is endpoint-aware. No IStartupFilter needed.</summary>
+      /// ASP.NET Core auto-inserts UseAuthentication/UseAuthorization BEFORE anything
+      /// added inside this method, so a bare UseCors() here would run AFTER
+      /// authorization and never attach CORS headers to an authenticated route's
+      /// preflight response. Calling all four explicitly, in this order, suppresses
+      /// the auto-insertion and puts CORS first. No IStartupFilter needed.</summary>
       public static WebApplication MapFeatureEndpoints(this WebApplication app)
       {
           app.UseCors(CorsPolicy);
+          app.UseAuthentication();
+          app.UseAuthorization();
           app.UseRateLimiter();
           app.MapFeatureEndpointGroups();
           return app;
@@ -4476,10 +4473,10 @@ The master contract leaves gaps that WS2 must fill; these decisions are additive
     | grep -i access-control-allow-origin                           # http://localhost:3000
   kill %1
   ```
-- [ ] Final ownership audit — the diff against `main` must touch ONLY owned paths plus the authorized `Data/` exception:
+- [ ] Final ownership audit — the diff against `main` must touch ONLY owned paths (no `Data/` exception is needed anymore: `LastSentAt` on both entities is WS0's):
   ```bash
   cd "/Users/andynguyen/Desktop/pt-api" && git diff --stat main -- . \
-    | grep -v -E "apps/api/(Features|Setup/FeaturesSetup.cs|tests/PermitTorch.Api.Tests/Features|Data/Entities.cs|Data/Migrations)" \
+    | grep -v -E "apps/api/(Features|Setup/FeaturesSetup.cs|tests/PermitTorch.Api.Tests/Features)" \
     ; echo "(empty output above = ownership clean)"
   ```
 - [ ] Commit:
@@ -4496,6 +4493,6 @@ WS2 is complete when all of the following hold in `../pt-api` on `ws/api`:
 1. `dotnet test PermitTorch.sln --filter "FullyQualifiedName~PermitTorch.Api.Tests.Features"` is fully green (Docker running).
 2. Every route in master §6 responds with the locked shape: leads feed/detail/export, markets + stats, saved-leads CRUD, account trio, sample-leads, billing checkout/portal/webhook, all four admin operations.
 3. Entitlement leakage tests pass: a user entitled to market A can never see market B leads via feed, detail, export, save, or digest.
-4. `git diff --stat main` shows changes ONLY under `apps/api/Features/`, `apps/api/Setup/FeaturesSetup.cs`, `apps/api/tests/PermitTorch.Api.Tests/Features/`, plus the authorized `Data/Entities.cs` + `Data/Migrations/*AddEmailPreferenceLastSentAt*` exception.
+4. `git diff --stat main` shows changes ONLY under `apps/api/Features/`, `apps/api/Setup/FeaturesSetup.cs`, `apps/api/tests/PermitTorch.Api.Tests/Features/` — no `Data/` changes (WS0 already supplies `LastSentAt` on both entities).
 5. No commit message references tasks/PRs; no co-author trailers.
 6. Handoff notes for WS5 (integration): set real `FIREBASE_PROJECT_ID`, `WEB_ORIGIN`, `STRIPE_*` (webhook endpoint `POST /api/webhooks/stripe`), `RESEND_API_KEY`/`EMAIL_FROM`; checkout callers must pass `marketSlug` (STARTER/PRO) or `marketSlugs` (TERRITORY).

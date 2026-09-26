@@ -29,7 +29,7 @@ Copied from master plan §2, plus WS3-specific rules:
 - **Worktree/branch:** work in `../pt-marketing` on branch `ws/marketing` (branched from `main` after WS0 merged).
 - **File ownership (hard rule):** create/modify ONLY under `apps/web/app/(marketing)/`, `apps/web/components/marketing/`, `apps/web/lib/seo.ts`, `apps/web/app/sitemap.ts`, `apps/web/app/robots.ts`, `apps/web/lib/fixtures/markets.ts` (that single file — WS4 owns the rest of `lib/fixtures/`), `apps/web/__tests__/marketing/`. NEVER touch `app/app/`, `middleware.ts`, any `package.json`, `packages/types/`, `lib/api.ts`, root `app/layout.tsx`, or vitest/tailwind config.
 - **Dependency rule:** WS0 installed all npm deps. If a shadcn/ui primitive turns out to be missing, do NOT run `shadcn add` (it edits `package.json` deps) — build a minimal local equivalent inside `components/marketing/` instead and note it in the final report.
-- **Mock mode:** run dev/build/tests with `NEXT_PUBLIC_API_MOCK=1`. `getMarkets()`/`getMarketStats()` return fixtures; `submitSampleLeadRequest()` resolves without a network call.
+- **Mock mode:** run dev/build/tests with `NEXT_PUBLIC_API_MOCK=1`. `getMarkets()`/`getMarketStats()` return fixtures from WS3-owned `lib/fixtures/markets.ts`; `submitSampleLeadRequest()` resolves without a network call — this already works in this worktree with no WS4 dependency, because WS0's `lib/fixtures/index.ts` stub ships `submitSampleLeadRequest` as a no-op that resolves (WS0 final-review fix C), unlike the rest of that file's stubs, which still throw until WS4 replaces them.
 - **Test scope:** run ONLY this workstream's tests: `pnpm vitest run __tests__/marketing` (from `apps/web/`). Full cross-suite verification happens in WS5.
 - Typecheck gate before every commit: `pnpm tsc --noEmit` (from `apps/web/`).
 - Import aliases: `@/` → `apps/web/` (WS0 default) and `@permittorch/types` for shared types.
@@ -404,7 +404,7 @@ export function findMarketByLocationParams(
 
 **Interfaces:**
 - Consumes: `Button` from `@/components/ui/button`; `buildMetadata` from `@/lib/seo`.
-- Produces: `SiteNav`, `SiteFooter` (used by the layout; every later page renders inside this layout), `/terms`, `/privacy` routes.
+- Produces: `SiteNav`, `SiteFooter` (used by the layout; every later page renders inside this layout), `/terms`, `/privacy` routes — both public (exact-match) in the WS0-locked, frozen `middleware.ts`/`lib/auth/config.ts` route list (master §10, WS0 final-review fix A), so these pages render for signed-out visitors with no auth redirect.
 
 **Steps:**
 
@@ -714,7 +714,7 @@ export default function TermsPage() {
 
 ### Task 5: `SampleLeadsForm` lead magnet component — TDD
 
-The PRD §69 lead magnet: name, work email, company, market → `POST /api/sample-leads` via `submitSampleLeadRequest`. Server pages fetch markets and pass them in as a prop (keeps the client bundle free of fetching and makes tests trivial). Uses a styled native `<select>` (reliable in jsdom; radix Select is unnecessary here).
+The PRD §69 lead magnet: name, work email, company, market → `POST /api/sample-leads` via `submitSampleLeadRequest`. Server pages fetch markets and pass them in as a prop (keeps the client bundle free of fetching and makes tests trivial). Uses a styled native `<select>` (reliable in jsdom; radix Select is unnecessary here). In mock mode this form's submit already resolves successfully with no WS4 work needed — WS0's fixture stub ships `submitSampleLeadRequest` as a no-op that resolves (see Global Constraints).
 
 **Files:**
 - Create: `apps/web/components/marketing/sample-leads-form.tsx`

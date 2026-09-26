@@ -37,6 +37,8 @@ WS1-specific constraints:
 - Access entity sets via `db.Set<T>()` (do not depend on WS0's `DbSet` property names).
 - WS0 fact: snake_case naming comes from EFCore.NamingConventions and is already configured inside `AppDbContext` itself, so test fixtures only need `UseNpgsql(...)` — never re-apply the naming convention and never change `Data/`.
 - WS0 fact: `appsettings.json` already contains a `Scoring:Weights` section — do not touch it; `PipelineSetup` only binds it.
+- **Every `DateTime` written to Postgres must be `DateTimeKind.Utc`** (WS0 final-review note, 2026-09-26): Npgsql 10 rejects `Unspecified`/`Local` kinds for `timestamptz` columns at save time. Parse raw scraper date strings as UTC explicitly (e.g. `DateTime.SpecifyKind(parsed, DateTimeKind.Utc)` or `DateTime.Parse(s, styles: DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal)`), and construct any in-code `DateTime` (e.g. `StartedAt`, `FirstSeenAt`, `LastUpdatedAt`) with `DateTimeKind.Utc` — never `DateTime.Now` or a bare `new DateTime(...)` without an explicit kind.
+- **`scraper_runs(apify_run_id)` is a UNIQUE index** (WS0's initial migration, master §3): the "already-ingested" check in `ApifyPermitProvider` can rely on this constraint as a backstop, but ingestion logic must still never attempt to insert the same `ApifyRunId` twice — treat a unique-constraint violation on insert as a bug to fix, not a condition to catch and swallow.
 
 ### File map (what WS1 creates)
 

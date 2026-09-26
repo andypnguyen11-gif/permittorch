@@ -688,7 +688,7 @@
 
 **Interfaces:**
 - Consumes: `next-firebase-auth-edge` (`authMiddleware`, `redirectToLogin`, `getTokens`), `firebase/app` + `firebase/auth` (Task 4); env vars from master §9 (`NEXT_PUBLIC_FIREBASE_*`, `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`, `AUTH_COOKIE_SIGNATURE_KEY_CURRENT`, `AUTH_COOKIE_SIGNATURE_KEY_PREVIOUS`).
-- Produces: the frozen auth boundary — public routes exactly as locked: `/`, `/pricing`, `/how-it-works`, `/fire-protection-leads(.*)`, `/fire-sprinkler-leads`, `/fire-alarm-leads`, `/locations(.*)`, `/blog(.*)`, `/login(.*)`, `/signup(.*)`, `/api/(.*)`. Everything else (i.e. `/app/**`) requires a valid Firebase session cookie, else redirect to `/login`. Signed-in users visiting `/login` or `/signup` are redirected to `/app/leads`. `/api/login` (POST with `Authorization: Bearer <Firebase ID token>`) and `/api/logout` are served by the middleware. `authConfig` is what WS4 passes to `getTokens(await cookies(), authConfig)` in server components; `firebaseAuth` is what WS4's `/login`, `/signup`, account menu and `useApiToken()` use. NO workstream may edit these three files after WS0.
+- Produces: the frozen auth boundary — public routes exactly as locked: `/`, `/pricing`, `/how-it-works`, `/fire-protection-leads(.*)`, `/fire-sprinkler-leads`, `/fire-alarm-leads`, `/locations(.*)`, `/blog(.*)`, `/login(.*)`, `/signup(.*)`, `/terms`, `/privacy`, `/api/(.*)`. Everything else (i.e. `/app/**`) requires a valid Firebase session cookie, else redirect to `/login`. Signed-in users visiting `/login` or `/signup` are redirected to `/app/leads`. `/api/login` (POST with `Authorization: Bearer <Firebase ID token>`) and `/api/logout` are served by the middleware. `authConfig` is what WS4 passes to `getTokens(await cookies(), authConfig)` in server components; `firebaseAuth` is what WS4's `/login`, `/signup`, account menu and `useApiToken()` use. NO workstream may edit these three files after WS0.
 
 **Steps:**
 
@@ -701,7 +701,7 @@
     it.each([
       "/", "/pricing", "/how-it-works", "/fire-protection-leads", "/fire-protection-leads/texas",
       "/fire-sprinkler-leads", "/fire-alarm-leads", "/locations", "/locations/texas/austin",
-      "/blog", "/blog/post-1", "/login", "/login/reset", "/signup", "/api/login", "/api/logout", "/api/anything",
+      "/blog", "/blog/post-1", "/login", "/login/reset", "/signup", "/terms", "/privacy", "/api/login", "/api/logout", "/api/anything",
     ])("treats %s as public", (path) => {
       expect(isPublicPath(path)).toBe(true);
     });
@@ -740,6 +740,8 @@
     /^\/blog(\/.*)?$/,
     /^\/login(\/.*)?$/,
     /^\/signup(\/.*)?$/,
+    /^\/terms$/,
+    /^\/privacy$/,
     /^\/api(\/.*)?$/,
   ];
 
@@ -841,6 +843,7 @@
     matcher: [
       "/api/login",
       "/api/logout",
+      "/app/:path*",
       // Run on every page except Next.js internals and static assets.
       "/((?!_next|favicon.ico|.*\\..*).*)",
     ],
@@ -890,8 +893,10 @@
     market?: string; category?: FireCategory; minScore?: number;
     maxAgeDays?: number; status?: PermitStatus; q?: string; page?: number; pageSize?: number;
   }
+
+  export class ApiError extends Error { readonly status: number }
   ```
-  Plus the fixture-module contract WS4 implements in `apps/web/lib/fixtures/index.ts`: same function names, token parameters dropped — EXCEPT `getMarkets`/`getMarketStats`, whose mock branches import `mockMarkets`/`mockMarketStats` directly from WS3-owned `apps/web/lib/fixtures/markets.ts` (so marketing pages work in mock mode before WS4's fixtures exist).
+  Plus the fixture-module contract WS4 implements in `apps/web/lib/fixtures/index.ts`: same function names, token parameters dropped — EXCEPT `getMarkets`/`getMarketStats`, whose mock branches import `mockMarkets`/`mockMarketStats` directly from WS3-owned `apps/web/lib/fixtures/markets.ts` (so marketing pages work in mock mode before WS4's fixtures exist). `apiFetch` throws `ApiError` (carries the HTTP `status`) on any non-2xx response, and path params are `encodeURIComponent`-encoded before being interpolated into the URL — WS4 uses `err instanceof ApiError && err.status === 404` → `notFound()`, `401` → redirect to `/login`.
 
 **Steps:**
 
@@ -975,13 +980,32 @@
       expect(new Headers(init.headers).get("Content-Type")).toBe("application/json");
     });
 
-    it("throws the API-provided error message on non-2xx responses", async () => {
+    it("throws an ApiError carrying the status and API-provided message on non-2xx responses", async () => {
       vi.stubEnv("NEXT_PUBLIC_API_MOCK", "0");
       vi.stubEnv("NEXT_PUBLIC_API_URL", "http://api.test");
       vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ error: "Lead not found" }, 404)));
       const api = await import("@/lib/api");
 
       await expect(api.getLead("missing", "tok_123")).rejects.toThrow("Lead not found");
+      try {
+        await api.getLead("missing", "tok_123");
+        throw new Error("expected getLead to reject");
+      } catch (err) {
+        expect(err).toBeInstanceOf(api.ApiError);
+        expect((err as InstanceType<typeof api.ApiError>).status).toBe(404);
+      }
+    });
+
+    it("encodeURIComponent-encodes path params", async () => {
+      vi.stubEnv("NEXT_PUBLIC_API_MOCK", "0");
+      vi.stubEnv("NEXT_PUBLIC_API_URL", "http://api.test");
+      const fetchMock = vi.fn(async () => jsonResponse({ id: "lead/1", score: 80 }));
+      vi.stubGlobal("fetch", fetchMock);
+      const api = await import("@/lib/api");
+
+      await api.getLead("lead/1 with space", "tok_123");
+
+      expect(fetchMock.mock.calls[0][0]).toBe("http://api.test/api/leads/lead%2F1%20with%20space");
     });
 
     it("resolves void for 204 responses", async () => {
@@ -1061,6 +1085,15 @@
     return qs ? `?${qs}` : "";
   }
 
+  export class ApiError extends Error {
+    readonly status: number;
+    constructor(message: string, status: number) {
+      super(message);
+      this.name = "ApiError";
+      this.status = status;
+    }
+  }
+
   export async function apiFetch<T>(
     path: string,
     init: RequestInit = {},
@@ -1081,7 +1114,7 @@
       } catch {
         // Non-JSON error body: keep the generic message.
       }
-      throw new Error(message);
+      throw new ApiError(message, res.status);
     }
 
     if (res.status === 204) return undefined as T;
@@ -1106,7 +1139,7 @@
 
   export async function getLead(id: string, token: string): Promise<LeadDetail> {
     if (isMock()) return (await fixtures()).getLead(id);
-    return apiFetch<LeadDetail>(`/api/leads/${id}`, {}, token);
+    return apiFetch<LeadDetail>(`/api/leads/${encodeURIComponent(id)}`, {}, token);
   }
 
   // Markets bypass the fixtures index: WS3 (marketing) needs mock markets in a
@@ -1123,7 +1156,7 @@
       if (!stats) throw new Error(`Unknown market: ${slug}`);
       return stats;
     }
-    return apiFetch<MarketStats>(`/api/markets/${slug}/stats`);
+    return apiFetch<MarketStats>(`/api/markets/${encodeURIComponent(slug)}/stats`);
   }
 
   export async function getSavedLeads(token: string): Promise<SavedLeadItem[]> {
@@ -1143,7 +1176,7 @@
   export async function updateSavedLead(id: string, status: SavedLeadStatus, token: string): Promise<void> {
     if (isMock()) return (await fixtures()).updateSavedLead(id, status);
     return apiFetch<void>(
-      `/api/saved-leads/${id}`,
+      `/api/saved-leads/${encodeURIComponent(id)}`,
       { method: "PATCH", body: JSON.stringify({ status }) },
       token,
     );
@@ -1151,7 +1184,7 @@
 
   export async function unsaveLead(id: string, token: string): Promise<void> {
     if (isMock()) return (await fixtures()).unsaveLead(id);
-    return apiFetch<void>(`/api/saved-leads/${id}`, { method: "DELETE" }, token);
+    return apiFetch<void>(`/api/saved-leads/${encodeURIComponent(id)}`, { method: "DELETE" }, token);
   }
 
   export async function getAccountMarkets(token: string): Promise<Market[]> {
@@ -1211,7 +1244,7 @@
   export async function setSourceActive(id: string, active: boolean, token: string): Promise<void> {
     if (isMock()) return (await fixtures()).setSourceActive(id, active);
     return apiFetch<void>(
-      `/api/admin/sources/${id}/${active ? "enable" : "disable"}`,
+      `/api/admin/sources/${encodeURIComponent(id)}/${active ? "enable" : "disable"}`,
       { method: "POST" },
       token,
     );
@@ -1562,7 +1595,7 @@
       public string State { get; set; } = null!;
       public string PortalType { get; set; } = null!;        // e.g. "accela", "arcgis", "socrata"
       public string SourceUrl { get; set; } = null!;
-      public string Jurisdiction { get; set; } = null!;      // matches scraper COVERAGE_REPORT jurisdiction key
+      public string Jurisdiction { get; set; } = null!;      // matches scraper sourceId, e.g. "tulsa-fire-permits" (records carry it as source.sourceId, COVERAGE_REPORT as sourceStats[].sourceId)
       public bool Active { get; set; }
       public DateTime? LastSuccessfulRunAt { get; set; }
       public DateTime? LastRecordSeenAt { get; set; }
@@ -1700,6 +1733,7 @@
       public Guid Id { get; set; }
       public Guid UserId { get; set; }
       public DigestFrequency Frequency { get; set; }
+      public DateTime? LastSentAt { get; set; }
   }
 
   public class SampleLeadRequest                             // marketing lead magnet capture
@@ -1710,6 +1744,7 @@
       public string Company { get; set; } = null!;
       public string MarketSlug { get; set; } = null!;
       public DateTime CreatedAt { get; set; }
+      public DateTime? LastSentAt { get; set; }
   }
   ```
 - [ ] Create `/Users/andynguyen/Desktop/Permit Torch/apps/api/Data/AppDbContext.cs`:
@@ -1752,6 +1787,11 @@
               e.HasMany(m => m.Sources).WithOne(s => s.Market).HasForeignKey(s => s.MarketId);
           });
 
+          modelBuilder.Entity<Source>(e =>
+          {
+              e.HasIndex(s => s.Jurisdiction).IsUnique();
+          });
+
           modelBuilder.Entity<Permit>(e =>
           {
               e.HasIndex(p => new { p.SourceId, p.ExternalId }).IsUnique();
@@ -1770,6 +1810,7 @@
           modelBuilder.Entity<ScraperRun>(e =>
           {
               e.HasOne<Source>().WithMany().HasForeignKey(r => r.SourceId);
+              e.HasIndex(r => r.ApifyRunId).IsUnique();
           });
 
           modelBuilder.Entity<Organization>(e =>
@@ -1801,6 +1842,7 @@
           modelBuilder.Entity<EmailPreference>(e =>
           {
               e.HasOne<AppUser>().WithMany().HasForeignKey(p => p.UserId);
+              e.HasIndex(p => p.UserId).IsUnique();
           });
 
           modelBuilder.Entity<SampleLeadRequest>(e =>
@@ -1895,6 +1937,9 @@
           Assert.Contains(indexdefs, d => d.Contains("UNIQUE") && d.Contains("markets") && d.Contains("slug"));
           Assert.Contains(indexdefs, d => d.Contains("UNIQUE") && d.Contains("saved_leads") && d.Contains("user_id") && d.Contains("fire_opportunity_id"));
           Assert.Contains(indexdefs, d => d.Contains("UNIQUE") && d.Contains("sample_lead_requests") && d.Contains("email") && d.Contains("market_slug"));
+          Assert.Contains(indexdefs, d => d.Contains("UNIQUE") && d.Contains("sources") && d.Contains("jurisdiction"));
+          Assert.Contains(indexdefs, d => d.Contains("UNIQUE") && d.Contains("scraper_runs") && d.Contains("apify_run_id"));
+          Assert.Contains(indexdefs, d => d.Contains("UNIQUE") && d.Contains("email_preferences") && d.Contains("user_id"));
 
           // FTS GIN index on permits description + address.
           Assert.Contains(indexdefs, d => d.Contains("ix_permits_fts") && d.Contains("gin") && d.Contains("to_tsvector"));
@@ -1926,7 +1971,7 @@
   cd "/Users/andynguyen/Desktop/Permit Torch/apps/api"
   dotnet tool run dotnet-ef migrations add InitialCreate --project PermitTorch.Api.csproj --output-dir Data/Migrations
   ```
-  Expected outcome: `Data/Migrations/<timestamp>_InitialCreate.cs` + `AppDbContextModelSnapshot.cs` with snake_case tables (`permits`, `app_users`, …) and all six indexes from Task 12's model config.
+  Expected outcome: `Data/Migrations/<timestamp>_InitialCreate.cs` + `AppDbContextModelSnapshot.cs` with snake_case tables (`permits`, `app_users`, …) and all nine indexes from Task 12's model config.
 - [ ] Edit the generated `<timestamp>_InitialCreate.cs`: at the END of the `Up` method add the FTS index, and at the START of the `Down` method drop it:
   ```csharp
   // In Up(MigrationBuilder migrationBuilder), after all generated statements:
@@ -2102,7 +2147,7 @@
 
 **Interfaces:**
 - Consumes: master doc §9 (env var list); workspace scripts (Task 1/4); `apps/api/PermitTorch.sln` (Task 11).
-- Produces: CI that gates every PR/push — `api` job (dotnet build+test, Docker available for Testcontainers) and `web` job (pnpm install, typecheck all packages, vitest).
+- Produces: CI that gates every PR/push — `api` job (dotnet build+test, Docker available for Testcontainers) and `web` job (pnpm install, typecheck all packages, vitest, and a `pnpm --filter web build` in mock mode with a placeholder Firebase API key).
 
 **Steps:**
 
@@ -2184,8 +2229,13 @@
           run: pnpm -r typecheck
         - name: Unit tests
           run: pnpm -r test
+        - name: Build (mock mode)
+          run: pnpm --filter web build
+          env:
+            NEXT_PUBLIC_API_MOCK: "1"
+            NEXT_PUBLIC_FIREBASE_API_KEY: "placeholder-ci-key"
   ```
-  Notes: `ubuntu-latest` ships Docker, so the Testcontainers migration test runs in the `api` job unmodified. `pnpm/action-setup@v4` reads the pnpm version from the root `package.json` `packageManager` field if present — add `"packageManager": "pnpm@<your local major.minor.patch from pnpm --version>"` to the root `package.json` now so local and CI agree.
+  Notes: `ubuntu-latest` ships Docker, so the Testcontainers migration test runs in the `api` job unmodified. `pnpm/action-setup@v4` reads the pnpm version from the root `package.json` `packageManager` field if present — add `"packageManager": "pnpm@<your local major.minor.patch from pnpm --version>"` to the root `package.json` now so local and CI agree. The mock-mode build step catches build-time failures (e.g. a module that throws on evaluation without real Firebase env) before they reach a real deploy; `lib/firebase/client.ts`'s placeholder-API-key fallback (WS0 final-review fix E) is what makes this pass without real `NEXT_PUBLIC_FIREBASE_*` secrets.
 - [ ] Add the `packageManager` field to `/Users/andynguyen/Desktop/Permit Torch/package.json` (example — substitute the exact local version printed by `pnpm --version`):
   ```json
   "packageManager": "pnpm@10.14.0"

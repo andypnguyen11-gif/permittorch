@@ -19,7 +19,7 @@
 - Next.js 15+ (App Router), TypeScript strict, Tailwind CSS, shadcn/ui. Tests: Vitest + @testing-library/react. Node 22 LTS, pnpm workspaces.
 - **File ownership (hard rule):** create/modify ONLY `apps/web/app/app/`, `apps/web/app/(auth)/` (login and signup pages only — added for the Firebase Auth pages this plan now owns), `apps/web/components/app/`, `apps/web/lib/fixtures/` (all files EXCEPT `markets.ts`, which WS3 owns), `apps/web/__tests__/app/`. NEVER touch `app/(marketing)/`, `middleware.ts`, `lib/auth/config.ts`, `lib/firebase/client.ts` (all three WS0-frozen), `package.json`, `packages/types/`, `lib/api.ts` (consume only), `lib/seo.ts`. shadcn primitives under `components/ui/` are WS0-installed — consume only; if one is genuinely missing, generate it with `pnpm dlx shadcn@latest add <name>` from `apps/web/` (generated files are deterministic, so a WS3 add/add merge is content-identical) and note it in the commit body.
 - **Mock mode:** everything is built and verified with `NEXT_PUBLIC_API_MOCK=1`. `lib/api.ts` (WS0, locked) returns fixtures from `apps/web/lib/fixtures/` in mock mode. Never bypass `lib/api.ts` in pages/components — always call its exported functions so WS5 can flip the env var off without touching WS4 code.
-- Fixture module contract (LOCKED by WS0's `lib/api.ts`, which is frozen): `lib/fixtures/index.ts` must export **the same function names as `lib/api.ts` with token parameters dropped** — `getLeads(params)`, `getLead(id)`, `getSavedLeads()`, `saveLead(id)`, `updateSavedLead(id, status)`, `unsaveLead(id)`, `getAccountMarkets()`, `getAccountMe()`, `updateEmailPreferences(frequency)`, `submitSampleLeadRequest(input)`, `createCheckout(plan)`, `createBillingPortal()`, `getAdminSources()`, `getAdminRuns(params)`, `setSourceActive(id, active)`. WS0 ships these as throwing stubs; WS4 replaces the bodies as thin adapters over this plan's internal `mock*` data/functions (`mockLeadsResponse(query)`, `mockLeadDetail(id)`, `mockSavedLeads`, `mockAccountMe`, `mockAdminSources`, `mockAdminRuns(params)`). `getMarkets`/`getMarketStats` are NOT in the index contract — `lib/api.ts` imports `mockMarkets`/`mockMarketStats` directly from WS3-owned `./markets`.
+- Fixture module contract (LOCKED by WS0's `lib/api.ts`, which is frozen): `lib/fixtures/index.ts` must export **the same function names as `lib/api.ts` with token parameters dropped** — `getLeads(params)`, `getLead(id)`, `getSavedLeads()`, `saveLead(id)`, `updateSavedLead(id, status)`, `unsaveLead(id)`, `getAccountMarkets()`, `getAccountMe()`, `updateEmailPreferences(frequency)`, `submitSampleLeadRequest(input)`, `createCheckout(plan)`, `createBillingPortal()`, `getAdminSources()`, `getAdminRuns(params)`, `setSourceActive(id, active)`. WS0 ships all of these as throwing stubs **except `submitSampleLeadRequest`, which WS0's stub already resolves as a no-op** (WS0 final-review fix C) — WS4 may keep that no-op body verbatim (Task 2 does) or replace it with real mock state; either is fine. WS4 replaces the remaining bodies as thin adapters over this plan's internal `mock*` data/functions (`mockLeadsResponse(query)`, `mockLeadDetail(id)`, `mockSavedLeads`, `mockAccountMe`, `mockAdminSources`, `mockAdminRuns(params)`). `getMarkets`/`getMarketStats` are NOT in the index contract — `lib/api.ts` imports `mockMarkets`/`mockMarketStats` directly from WS3-owned `./markets`.
 - UI style: match `UI Mockup.png` — light theme, orange (#F97316-family / Tailwind `orange-500`) accents, left sidebar nav, score-badged tables, right-rail panels. Mockup data is illustrative only.
 - Data freshness is a feature: surface "Updated N minutes ago" honestly (PRD §61); scores must stay explainable — every displayed point traces to a `LeadSignal` (CLAUDE.md).
 - Server-side role checks for admin routes (never UI-only hiding). No business rules in the web app.
@@ -27,6 +27,8 @@
 - Test scope (this workstream ONLY runs its own suite): `cd apps/web && pnpm vitest run __tests__/app`. Type check: `cd apps/web && pnpm tsc --noEmit`. Full cross-suite + E2E verification happens in WS5.
 - Types import: this plan writes `import type { … } from "@permittorch/types"`. If WS0's `packages/types/package.json` declares a different package name, use that exact name everywhere instead — change nothing else. `LeadsQuery` is imported from `@/lib/api` (locked §8).
 - Firebase Auth is installed and `middleware.ts` (untouchable, WS0-owned) already protects `/app`; sign in through the app's own `/login` page (Firebase email/password or Google) when visually verifying.
+- **Task ordering (revised 2026-09-26):** Tasks 5–6 (Login, Signup) now run immediately after Task 4 (App shell) — before any `/app` page task — specifically so `/login` already exists the first time a later task's "Visual verify" step asks you to sign in. An earlier draft of this plan sequenced Login/Signup last (as Tasks 15–16), which made that instruction impossible to follow the first time it appeared (in what was then Task 4's own visual-verify step).
+- **Visual verification limit (WS0 final-review note):** `NEXT_PUBLIC_API_MOCK=1` only makes `lib/api.ts` return fixtures — it has no effect on `middleware.ts`, which still requires a real, valid Firebase session cookie for every `/app/**` route. There is no mock bypass in the middleware, and hand-setting a session cookie to fake one is not a supported workaround. Practical consequence for this workstream: verify `/login` and `/signup` render and behave correctly under mock env (they are public routes, gated by nothing) as real browser checks; for every `/app/**` page task, treat the Vitest component test as the authoritative verification, and treat the browser "Visual verify" walkthrough of protected pages as deferred until WS5 wires up real `NEXT_PUBLIC_FIREBASE_*` values and a real signed-in test user — do it manually then, not as a blocking step now.
 
 ## File Map (what WS4 creates)
 
@@ -87,7 +89,7 @@ apps/web/__tests__/app/
 
 **Interfaces:**
 - Consumes: `LeadSummary`, `LeadDetail`, `LeadSignal`, `LeadsResponse`, `FireCategory`, `PermitStatus` from `@permittorch/types`; `LeadsQuery` from `@/lib/api` (types only — do not call the client here).
-- Produces (used by `lib/api.ts` mock branch and Tasks 2–13):
+- Produces (used by `lib/api.ts` mock branch and Tasks 2–4 and 7–15):
   - `minutesAgo(n: number): string`, `hoursAgo(n: number): string`, `daysAgo(n: number): string` (ISO strings relative to now) from `time.ts`
   - `mockLeads: LeadSummary[]` (25 leads, ids `lead-001`…`lead-025`)
   - `mockLeadDetails: LeadDetail[]` (5 curated details: `lead-001`, `lead-004`, `lead-009`, `lead-013`, `lead-022`)
@@ -673,7 +675,7 @@ Run: `cd apps/web && pnpm vitest run __tests__/app/fixtures.test.ts` — Expecte
 
 - [ ] **Step 2: Implement `account.ts`**
 
-> Note: the account fixture is a **Pro-plan** user per scope, and its `role` is `SUPER_ADMIN` so the admin surfaces are reachable during mock-mode development. MEMBER behavior (hidden admin nav, redirect) is covered by tests that `vi.mock` `getAccountMe` (Tasks 4 and 12).
+> Note: the account fixture is a **Pro-plan** user per scope, and its `role` is `SUPER_ADMIN` so the admin surfaces are reachable during mock-mode development. MEMBER behavior (hidden admin nav, redirect) is covered by tests that `vi.mock` `getAccountMe` (Tasks 4 and 14).
 
 ```typescript
 import type { AccountMe } from "@permittorch/types";
@@ -850,7 +852,7 @@ export async function unsaveLead(id: string): Promise<void> {
 export async function getAccountMarkets(): Promise<Market[]> { return mockMarkets.slice(0, 2); } // entitled: houston-tx, dallas-tx; austin-tx renders as locked
 export async function getAccountMe(): Promise<AccountMe> { return mockAccountMe; }
 export async function updateEmailPreferences(_frequency: DigestFrequency): Promise<void> { /* mock no-op */ }
-export async function submitSampleLeadRequest(_input: { name: string; email: string; company: string; marketSlug: string }): Promise<void> { /* mock no-op */ }
+export async function submitSampleLeadRequest(_input: { name: string; email: string; company: string; marketSlug: string }): Promise<void> { /* mock no-op — already resolves this way in WS0's stub */ }
 export async function createCheckout(_plan: PlanTier): Promise<{ url: string }> { return { url: "#" }; }
 export async function createBillingPortal(): Promise<{ url: string }> { return { url: "#" }; }
 export async function getAdminSources(): Promise<AdminSource[]> { return mockAdminSources; }
@@ -893,7 +895,7 @@ git commit -m "Add saved, account, admin, and index fixtures for mock API mode"
 
 **Interfaces:**
 - Consumes: `FireCategory` from `@permittorch/types`; `Badge` from `@/components/ui/badge`; `Flame` from `lucide-react`.
-- Produces (used by Tasks 4–13):
+- Produces (used by Tasks 4 and 7–15):
   - `scoreBand(score: number): "hot" | "strong" | "medium" | "muted"`
   - `formatRelative(iso: string | null, now?: number): string` — "just now" / "N minutes ago" / "N hours ago" / "N days ago" / "—" for null
   - `formatValueShort(value: number | null): string` — `$1.85M`, `$620K`, `$950`, `—` for null
@@ -1135,14 +1137,14 @@ git commit -m "Add score band formatters, score badge, and category chip"
 - Test: `apps/web/__tests__/app/sidebar.test.tsx`
 
 **Interfaces:**
-- Consumes: `getAccountMe(token): Promise<AccountMe>`, `getMarkets(): Promise<Market[]>` from `@/lib/api`; `getTokens` from `next-firebase-auth-edge`, `cookies` from `next/headers`, `authConfig` from `@/lib/auth/config` (server-only, WS0-frozen); `firebaseAuth` from `@/lib/firebase/client` (WS0-frozen), `signOut` from `firebase/auth`; `Select` primitives from `@/components/ui/select`; `DropdownMenu` primitives from `@/components/ui/dropdown-menu`; `Toaster` from `@/components/ui/sonner`.
+- Consumes: `getAccountMe(token): Promise<AccountMe>`, `getMarkets(): Promise<Market[]>` from `@/lib/api`; `getTokens` from `next-firebase-auth-edge`, `cookies` from `next/headers`, `redirect` from `next/navigation`, `authConfig` from `@/lib/auth/config` (server-only, WS0-frozen); `firebaseAuth` from `@/lib/firebase/client` (WS0-frozen), `signOut` from `firebase/auth`; `Select` primitives from `@/components/ui/select`; `DropdownMenu` primitives from `@/components/ui/dropdown-menu`; `Toaster` from `@/components/ui/sonner`; `TooltipProvider` from `@/components/ui/tooltip`.
 - Produces (used by every page task):
-  - `getApiToken(): Promise<string>` (server-only helper)
-  - `useApiToken(): () => Promise<string>` (client hook)
+  - `getApiToken(): Promise<string>` (server-only helper; redirects to `/login` when `getTokens` returns null)
+  - `useApiToken(): () => Promise<string>` (client hook; awaits `firebaseAuth.authStateReady()` before reading `currentUser`)
   - `Sidebar({ role }: { role: AccountMe["role"] })` (client) — renders admin section ONLY when `role === "SUPER_ADMIN"`
   - `TopBar({ markets, email }: { markets: Market[]; email: string })` (client)
   - `AccountMenu({ email }: { email: string })` (client) — shadcn `DropdownMenu` showing the signed-in email with a "Sign out" item
-  - `app/app/layout.tsx` — shell wrapping all `/app` pages, mounts `<Toaster />`
+  - `app/app/layout.tsx` — shell wrapping all `/app` pages, mounts `<TooltipProvider>` (Task 14's `Tooltip` needs an ancestor provider) and `<Toaster />` (sonner `toast(...)` calls in Tasks 10/11/13 need a mounted `<Toaster />` to render into)
 
 - [ ] **Step 1: Write the failing sidebar role-gating test** — `apps/web/__tests__/app/sidebar.test.tsx`
 
@@ -1196,13 +1198,18 @@ Run: `cd apps/web && pnpm vitest run __tests__/app/sidebar.test.tsx` — Expecte
 ```typescript
 // components/app/get-token.ts (server components only)
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { getTokens } from "next-firebase-auth-edge";
 import { authConfig } from "@/lib/auth/config";
 
 export async function getApiToken(): Promise<string> {
   if (process.env.NEXT_PUBLIC_API_MOCK === "1") return "mock-token";
   const tokens = await getTokens(await cookies(), authConfig);
-  return tokens?.token ?? "";
+  // middleware already gates /app/:path* (see WS0 final-review fix A), but a missing/
+  // expired session here (e.g. mid-request cookie expiry) must still bounce to /login
+  // rather than call the API with an empty bearer token.
+  if (!tokens) redirect("/login");
+  return tokens.token;
 }
 ```
 
@@ -1215,6 +1222,9 @@ import { firebaseAuth } from "@/lib/firebase/client";
 export function useApiToken(): () => Promise<string> {
   return useCallback(async () => {
     if (process.env.NEXT_PUBLIC_API_MOCK === "1") return "mock-token";
+    // WS0 final-review fix E: firebaseAuth.currentUser is null until the client SDK's
+    // auth-state listener has fired at least once — wait for it before reading currentUser.
+    await firebaseAuth.authStateReady();
     return (await firebaseAuth.currentUser?.getIdToken()) ?? "";
   }, []);
 }
@@ -1418,30 +1428,37 @@ import { getApiToken } from "@/components/app/get-token";
 import { Sidebar } from "@/components/app/sidebar";
 import { TopBar } from "@/components/app/top-bar";
 import { Toaster } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const token = await getApiToken();
   const [me, markets] = await Promise.all([getAccountMe(token), getMarkets()]);
 
   return (
-    <div className="flex h-screen bg-gray-50 text-gray-900">
-      <Sidebar role={me.role} />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <TopBar markets={markets} email={me.email} />
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+    <TooltipProvider>
+      <div className="flex h-screen bg-gray-50 text-gray-900">
+        <Sidebar role={me.role} />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <TopBar markets={markets} email={me.email} />
+          <main className="flex-1 overflow-y-auto p-6">{children}</main>
+        </div>
+        <Toaster richColors position="top-right" />
       </div>
-      <Toaster richColors position="top-right" />
-    </div>
+    </TooltipProvider>
   );
 }
 ```
+
+`<TooltipProvider>` wraps the shell because Task 14 (Account page) uses shadcn `Tooltip` for the plan tier explanation, and shadcn's `Tooltip` primitives throw at render without an ancestor `TooltipProvider`; `<Toaster />` (sonner) is what every `toast(...)`/`toast.success(...)`/`toast.error(...)` call in Tasks 10, 11, and 13 renders into — both must be mounted once, here, rather than per-page.
 
 > If `@/components/ui/sonner` or `@/components/ui/dropdown-menu` does not exist, run `cd apps/web && pnpm dlx shadcn@latest add sonner select badge table card skeleton tooltip dropdown-menu` once (see Global Constraints) and note it in the commit body.
 
 - [ ] **Step 7: Visual verify**
 
+> **Real Firebase env required.** `NEXT_PUBLIC_API_MOCK=1` mocks `lib/api.ts` only — it does not bypass `middleware.ts`, which still requires a real, valid Firebase session cookie for `/app/**` (no mock bypass exists; see Global Constraints). If real `NEXT_PUBLIC_FIREBASE_*` values and a real test user aren't available yet, skip the sign-in below and instead confirm the shell renders via `pnpm vitest run __tests__/app/sidebar.test.tsx` (already green from Step 4) — do the browser walkthrough once WS5 supplies real Firebase credentials.
+
 Run: `cd apps/web && NEXT_PUBLIC_API_MOCK=1 pnpm dev`, sign in, open `http://localhost:3000/app`.
-Check: white left sidebar with flame logo ("Permit" black + "Torch" orange); nav order Overview/Leads/Saved/Alerts/Markets/Account; Admin section (Sources/Runs/Users/Subscriptions) visible because `mockAccountMe.role === "SUPER_ADMIN"`; active item has orange text on orange-50 pill; top bar shows search with ⌘K hint (press ⌘K → input focuses; type "warehouse" + Enter → `/app/leads?q=warehouse`), market selector listing fixture markets, account menu showing the signed-in email. Page body renders children (Overview is built in Task 10 — a 404/empty page body is fine for now).
+Check: white left sidebar with flame logo ("Permit" black + "Torch" orange); nav order Overview/Leads/Saved/Alerts/Markets/Account; Admin section (Sources/Runs/Users/Subscriptions) visible because `mockAccountMe.role === "SUPER_ADMIN"`; active item has orange text on orange-50 pill; top bar shows search with ⌘K hint (press ⌘K → input focuses; type "warehouse" + Enter → `/app/leads?q=warehouse`), market selector listing fixture markets, account menu showing the signed-in email. Page body renders children (Overview is built in Task 12 — a 404/empty page body is fine for now).
 
 - [ ] **Step 8: Type check and commit**
 
@@ -1453,7 +1470,428 @@ git commit -m "Add app shell with role-gated sidebar and command-K top bar"
 
 ---
 
-### Task 5: Leads URL-state utilities + FilterBar (TDD)
+### Task 5: Login page — `/login`
+
+**Files:**
+- Create: `apps/web/app/(auth)/login/page.tsx`, `apps/web/components/app/auth/login-form.tsx`
+- Test: `apps/web/__tests__/app/login-form.test.tsx`
+
+**Interfaces:**
+- Consumes: `signInWithEmailAndPassword`, `signInWithPopup`, `GoogleAuthProvider`, `sendPasswordResetEmail` from `firebase/auth`; `firebaseAuth` from `@/lib/firebase/client` (WS0-frozen); `useRouter` from `next/navigation`; `Card`, `CardHeader`, `CardTitle`, `CardContent`, `Input`, `Button`, `Label` from `@/components/ui/*`.
+- Produces:
+  - `LoginForm()` (client) — email/password sign-in, "Continue with Google" button, "Forgot password?" link, inline error messages
+  - the `/login` route (public per the WS0-locked route list in `lib/auth/config.ts` — this task only renders the page; it does not touch routing)
+
+- [ ] **Step 1: Write the failing test first** — `apps/web/__tests__/app/login-form.test.tsx`
+
+```tsx
+// @vitest-environment jsdom
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+
+const push = vi.fn();
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
+vi.mock("@/lib/firebase/client", () => ({ firebaseAuth: {} }));
+vi.mock("firebase/auth", () => ({
+  signInWithEmailAndPassword: vi.fn(),
+  signInWithPopup: vi.fn(),
+  GoogleAuthProvider: vi.fn(),
+  sendPasswordResetEmail: vi.fn(),
+}));
+vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true }));
+
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { LoginForm } from "@/components/app/auth/login-form";
+
+beforeEach(() => vi.clearAllMocks());
+
+describe("LoginForm", () => {
+  it("signs in with email/password, sets the session cookie, and redirects to /app/leads", async () => {
+    vi.mocked(signInWithEmailAndPassword).mockResolvedValue({
+      user: { getIdToken: vi.fn().mockResolvedValue("id-token-123") },
+    } as never);
+
+    render(<LoginForm />);
+    await userEvent.type(screen.getByLabelText("Email"), "rep@example.com");
+    await userEvent.type(screen.getByLabelText("Password"), "hunter2!!");
+    await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/app/leads"));
+    expect(fetch).toHaveBeenCalledWith("/api/login", {
+      method: "POST",
+      headers: { Authorization: "Bearer id-token-123" },
+    });
+  });
+
+  it("shows an inline error for invalid credentials instead of redirecting", async () => {
+    vi.mocked(signInWithEmailAndPassword).mockRejectedValue({ code: "auth/invalid-credential" });
+
+    render(<LoginForm />);
+    await userEvent.type(screen.getByLabelText("Email"), "rep@example.com");
+    await userEvent.type(screen.getByLabelText("Password"), "wrong");
+    await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+    expect(await screen.findByText("Incorrect email or password.")).toBeInTheDocument();
+    expect(push).not.toHaveBeenCalled();
+  });
+});
+```
+
+Run: `cd apps/web && pnpm vitest run __tests__/app/login-form.test.tsx` — Expected: FAIL (module not found).
+
+- [ ] **Step 2: Implement `login-form.tsx`**
+
+```tsx
+// components/app/auth/login-form.tsx
+"use client";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  GoogleAuthProvider, sendPasswordResetEmail, signInWithEmailAndPassword, signInWithPopup,
+} from "firebase/auth";
+import { firebaseAuth } from "@/lib/firebase/client";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+
+const ERROR_MESSAGES: Record<string, string> = {
+  "auth/invalid-credential": "Incorrect email or password.",
+  "auth/user-not-found": "Incorrect email or password.",
+  "auth/wrong-password": "Incorrect email or password.",
+  "auth/too-many-requests": "Too many attempts. Try again in a few minutes.",
+  "auth/network-request-failed": "Network error — check your connection and try again.",
+};
+
+function messageFor(code: string): string {
+  return ERROR_MESSAGES[code] ?? "Something went wrong. Please try again.";
+}
+
+async function completeSignIn(idToken: string, router: ReturnType<typeof useRouter>) {
+  await fetch("/api/login", { method: "POST", headers: { Authorization: `Bearer ${idToken}` } });
+  router.push("/app/leads");
+}
+
+export function LoginForm() {
+  const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [resetSent, setResetSent] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    try {
+      const credential = await signInWithEmailAndPassword(firebaseAuth, email, password);
+      await completeSignIn(await credential.user.getIdToken(), router);
+    } catch (err) {
+      setError(messageFor((err as { code?: string }).code ?? ""));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleGoogle() {
+    setError(null);
+    try {
+      const credential = await signInWithPopup(firebaseAuth, new GoogleAuthProvider());
+      await completeSignIn(await credential.user.getIdToken(), router);
+    } catch (err) {
+      setError(messageFor((err as { code?: string }).code ?? ""));
+    }
+  }
+
+  async function handleResetPassword() {
+    if (!email) {
+      setError("Enter your email above first, then click \"Forgot password?\".");
+      return;
+    }
+    await sendPasswordResetEmail(firebaseAuth, email);
+    setResetSent(true);
+  }
+
+  return (
+    <Card className="w-full max-w-sm">
+      <CardHeader><CardTitle className="text-xl">Sign in to PermitTorch</CardTitle></CardHeader>
+      <CardContent className="space-y-4">
+        <form className="space-y-4" onSubmit={handleSubmit}>
+          <div className="space-y-1.5">
+            <Label htmlFor="email">Email</Label>
+            <Input id="email" type="email" required autoComplete="email"
+              value={email} onChange={(e) => setEmail(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="password">Password</Label>
+            <Input id="password" type="password" required autoComplete="current-password"
+              value={password} onChange={(e) => setPassword(e.target.value)} />
+          </div>
+          {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+          {resetSent && <p className="text-sm text-green-600">Password reset email sent.</p>}
+          <Button type="submit" disabled={submitting} className="w-full bg-orange-500 hover:bg-orange-600">
+            Sign in
+          </Button>
+        </form>
+        <button type="button" onClick={handleResetPassword}
+          className="text-sm font-medium text-orange-600 hover:underline">
+          Forgot password?
+        </button>
+        <Button type="button" variant="outline" className="w-full" onClick={handleGoogle}>
+          Continue with Google
+        </Button>
+        <p className="text-center text-sm text-gray-500">
+          No account? <a href="/signup" className="font-medium text-orange-600 hover:underline">Sign up</a>
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+```
+
+- [ ] **Step 3: Implement the route** — `apps/web/app/(auth)/login/page.tsx`
+
+```tsx
+import type { Metadata } from "next";
+import { LoginForm } from "@/components/app/auth/login-form";
+
+export const metadata: Metadata = { title: "Sign in · PermitTorch" };
+
+export default function LoginPage() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-gray-50 p-6">
+      <LoginForm />
+    </div>
+  );
+}
+```
+
+- [ ] **Step 4: Run tests + type check to verify pass**
+
+```bash
+cd apps/web && pnpm vitest run __tests__/app/login-form.test.tsx && pnpm tsc --noEmit
+```
+
+Expected: PASS.
+
+- [ ] **Step 5: Visual verify**
+
+Run: `cd apps/web && NEXT_PUBLIC_API_MOCK=1 pnpm dev`, open `http://localhost:3000/login`.
+Check: centered light-theme card, orange "Sign in" button, focus rings visible on Tab, "Continue with Google" button, "Forgot password?" link, submitting wrong credentials shows the inline red error text without a page reload.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add "apps/web/app/(auth)/login" apps/web/components/app/auth/login-form.tsx apps/web/__tests__/app/login-form.test.tsx
+git commit -m "Add Firebase email/password and Google sign-in page"
+```
+
+---
+
+### Task 6: Signup page — `/signup`
+
+**Files:**
+- Create: `apps/web/app/(auth)/signup/page.tsx`, `apps/web/components/app/auth/signup-form.tsx`
+- Test: `apps/web/__tests__/app/signup-form.test.tsx`
+
+**Interfaces:**
+- Consumes: `createUserWithEmailAndPassword`, `signInWithPopup`, `GoogleAuthProvider` from `firebase/auth`; `firebaseAuth` from `@/lib/firebase/client` (WS0-frozen); same shadcn primitives as Task 5.
+- Produces:
+  - `SignupForm()` (client) — email/password account creation, "Continue with Google" button, inline error messages
+  - the `/signup` route (public per the WS0-locked route list)
+
+- [ ] **Step 1: Write the failing test first** — `apps/web/__tests__/app/signup-form.test.tsx`
+
+```tsx
+// @vitest-environment jsdom
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+
+const push = vi.fn();
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
+vi.mock("@/lib/firebase/client", () => ({ firebaseAuth: {} }));
+vi.mock("firebase/auth", () => ({
+  createUserWithEmailAndPassword: vi.fn(),
+  signInWithPopup: vi.fn(),
+  GoogleAuthProvider: vi.fn(),
+}));
+vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true }));
+
+import { createUserWithEmailAndPassword } from "firebase/auth";
+import { SignupForm } from "@/components/app/auth/signup-form";
+
+beforeEach(() => vi.clearAllMocks());
+
+describe("SignupForm", () => {
+  it("creates the account, sets the session cookie, and redirects to /app/leads", async () => {
+    vi.mocked(createUserWithEmailAndPassword).mockResolvedValue({
+      user: { getIdToken: vi.fn().mockResolvedValue("id-token-456") },
+    } as never);
+
+    render(<SignupForm />);
+    await userEvent.type(screen.getByLabelText("Email"), "new@example.com");
+    await userEvent.type(screen.getByLabelText("Password"), "hunter2!!");
+    await userEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/app/leads"));
+    expect(fetch).toHaveBeenCalledWith("/api/login", {
+      method: "POST",
+      headers: { Authorization: "Bearer id-token-456" },
+    });
+  });
+
+  it("shows an inline error when the email is already registered", async () => {
+    vi.mocked(createUserWithEmailAndPassword).mockRejectedValue({ code: "auth/email-already-in-use" });
+
+    render(<SignupForm />);
+    await userEvent.type(screen.getByLabelText("Email"), "new@example.com");
+    await userEvent.type(screen.getByLabelText("Password"), "hunter2!!");
+    await userEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+    expect(await screen.findByText("An account with this email already exists.")).toBeInTheDocument();
+    expect(push).not.toHaveBeenCalled();
+  });
+});
+```
+
+Run: `cd apps/web && pnpm vitest run __tests__/app/signup-form.test.tsx` — Expected: FAIL (module not found).
+
+- [ ] **Step 2: Implement `signup-form.tsx`**
+
+```tsx
+// components/app/auth/signup-form.tsx
+"use client";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { GoogleAuthProvider, createUserWithEmailAndPassword, signInWithPopup } from "firebase/auth";
+import { firebaseAuth } from "@/lib/firebase/client";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+
+const ERROR_MESSAGES: Record<string, string> = {
+  "auth/email-already-in-use": "An account with this email already exists.",
+  "auth/weak-password": "Choose a password with at least 6 characters.",
+  "auth/invalid-email": "Enter a valid email address.",
+  "auth/network-request-failed": "Network error — check your connection and try again.",
+};
+
+function messageFor(code: string): string {
+  return ERROR_MESSAGES[code] ?? "Something went wrong. Please try again.";
+}
+
+async function completeSignIn(idToken: string, router: ReturnType<typeof useRouter>) {
+  await fetch("/api/login", { method: "POST", headers: { Authorization: `Bearer ${idToken}` } });
+  router.push("/app/leads");
+}
+
+export function SignupForm() {
+  const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    try {
+      const credential = await createUserWithEmailAndPassword(firebaseAuth, email, password);
+      await completeSignIn(await credential.user.getIdToken(), router);
+    } catch (err) {
+      setError(messageFor((err as { code?: string }).code ?? ""));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleGoogle() {
+    setError(null);
+    try {
+      const credential = await signInWithPopup(firebaseAuth, new GoogleAuthProvider());
+      await completeSignIn(await credential.user.getIdToken(), router);
+    } catch (err) {
+      setError(messageFor((err as { code?: string }).code ?? ""));
+    }
+  }
+
+  return (
+    <Card className="w-full max-w-sm">
+      <CardHeader><CardTitle className="text-xl">Create your PermitTorch account</CardTitle></CardHeader>
+      <CardContent className="space-y-4">
+        <form className="space-y-4" onSubmit={handleSubmit}>
+          <div className="space-y-1.5">
+            <Label htmlFor="email">Email</Label>
+            <Input id="email" type="email" required autoComplete="email"
+              value={email} onChange={(e) => setEmail(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="password">Password</Label>
+            <Input id="password" type="password" required autoComplete="new-password"
+              value={password} onChange={(e) => setPassword(e.target.value)} />
+          </div>
+          {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+          <Button type="submit" disabled={submitting} className="w-full bg-orange-500 hover:bg-orange-600">
+            Create account
+          </Button>
+        </form>
+        <Button type="button" variant="outline" className="w-full" onClick={handleGoogle}>
+          Continue with Google
+        </Button>
+        <p className="text-center text-sm text-gray-500">
+          Already have an account? <a href="/login" className="font-medium text-orange-600 hover:underline">Sign in</a>
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+```
+
+- [ ] **Step 3: Implement the route** — `apps/web/app/(auth)/signup/page.tsx`
+
+```tsx
+import type { Metadata } from "next";
+import { SignupForm } from "@/components/app/auth/signup-form";
+
+export const metadata: Metadata = { title: "Sign up · PermitTorch" };
+
+export default function SignupPage() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-gray-50 p-6">
+      <SignupForm />
+    </div>
+  );
+}
+```
+
+- [ ] **Step 4: Run tests + type check to verify pass**
+
+```bash
+cd apps/web && pnpm vitest run __tests__/app/signup-form.test.tsx && pnpm tsc --noEmit
+```
+
+Expected: PASS.
+
+- [ ] **Step 5: Visual verify**
+
+Run: `cd apps/web && NEXT_PUBLIC_API_MOCK=1 pnpm dev`, open `http://localhost:3000/signup`.
+Check: same card styling as `/login`; creating an account with an already-registered email shows the inline error; successful signup redirects to `/app/leads`.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add "apps/web/app/(auth)/signup" apps/web/components/app/auth/signup-form.tsx apps/web/__tests__/app/signup-form.test.tsx
+git commit -m "Add Firebase email/password and Google signup page"
+```
+
+---
+
+### Task 7: Leads URL-state utilities + FilterBar (TDD)
 
 **Files:**
 - Create: `apps/web/components/app/leads/query.ts`, `apps/web/components/app/leads/filter-bar.tsx`
@@ -1461,7 +1899,7 @@ git commit -m "Add app shell with role-gated sidebar and command-K top bar"
 
 **Interfaces:**
 - Consumes: `LeadsQuery` from `@/lib/api`; `FireCategory`, `PermitStatus` from `@permittorch/types`; `CATEGORY_LABELS` from Task 3; shadcn `Select`.
-- Produces (used by Tasks 6–7 and the top bar’s q links):
+- Produces (used by Tasks 8–9 and the top bar’s q links):
   - `parseLeadsSearchParams(sp: Record<string, string | string[] | undefined>): LeadsQuery` — validates enums, coerces ints, drops junk
   - `buildLeadsSearch(query: LeadsQuery): string` — `""` or `"?category=…&minScore=…"`, omits defaults/undefined, page omitted when 1
   - `FilterBar({ query }: { query: LeadsQuery })` (client) — Category / Score / Age / Status selects + labeled by `aria-label`; every change resets `page` and pushes `/app/leads` + `buildLeadsSearch`
@@ -1732,15 +2170,15 @@ git commit -m "Add URL-driven leads filters with validated query parsing"
 
 ---
 
-### Task 6: Lead table, pagination, freshness line (TDD)
+### Task 8: Lead table, pagination, freshness line (TDD)
 
 **Files:**
 - Create: `apps/web/components/app/leads/lead-table.tsx`, `apps/web/components/app/leads/pagination.tsx`, `apps/web/components/app/leads/freshness-line.tsx`
 - Test: `apps/web/__tests__/app/lead-table.test.tsx`
 
 **Interfaces:**
-- Consumes: `LeadSummary`, `Freshness` from `@permittorch/types`; `ScoreBadge`, `formatRelative`, `formatValueShort` (Task 3); `buildLeadsSearch` + `LeadsQuery` (Task 5); shadcn `Table`, `Badge`.
-- Produces (used by Task 7):
+- Consumes: `LeadSummary`, `Freshness` from `@permittorch/types`; `ScoreBadge`, `formatRelative`, `formatValueShort` (Task 3); `buildLeadsSearch` + `LeadsQuery` (Task 7); shadcn `Table`, `Badge`.
+- Produces (used by Task 9):
   - `LeadTable({ leads }: { leads: LeadSummary[] })` — table per mockup; whole row is a link to `/app/leads/[id]`; renders the empty state when `leads` is empty
   - `LeadsPagination({ query, total }: { query: LeadsQuery; total: number })` — prev/next + "Showing X to Y of Z results"
   - `FreshnessLine({ freshness }: { freshness: Freshness })` — "Updated 12 minutes ago" (PRD §61; renders "Freshness unknown" when null — never fakes currency)
@@ -1970,13 +2408,13 @@ git commit -m "Add score-badged lead table with pagination and freshness line"
 
 ---
 
-### Task 7: Leads page + loading skeleton
+### Task 9: Leads page + loading skeleton
 
 **Files:**
 - Create: `apps/web/app/app/leads/page.tsx`, `apps/web/app/app/leads/loading.tsx`
 
 **Interfaces:**
-- Consumes: `getLeads(params: LeadsQuery, token: string): Promise<LeadsResponse>` from `@/lib/api`; `parseLeadsSearchParams`, `FilterBar`, `LeadTable`, `LeadsPagination`, `FreshnessLine`, `getApiToken` (Tasks 4–6); shadcn `Skeleton`.
+- Consumes: `getLeads(params: LeadsQuery, token: string): Promise<LeadsResponse>` from `@/lib/api`; `parseLeadsSearchParams`, `FilterBar`, `LeadTable`, `LeadsPagination`, `FreshnessLine`, `getApiToken` (Tasks 4, 7, and 8); shadcn `Skeleton`.
 - Produces: the `/app/leads` route (linked from sidebar, top-bar search, market selector, overview).
 
 - [ ] **Step 1: Implement `page.tsx`**
@@ -2048,7 +2486,7 @@ export default function LeadsLoading() {
 - [ ] **Step 3: Visual verify**
 
 Run: `cd apps/web && NEXT_PUBLIC_API_MOCK=1 pnpm dev`, open `/app/leads`.
-Check against the mockup: filter row (Category/Score/Age/Status) above a white card table with columns Lead / Score / Location / Date / Value / Why this matters; hot leads (94, 92, 91) show orange badge with flame; 80s show soft orange; 70s amber; below 70 gray; "New" badges on recent leads; relative dates ("2 days ago"); "Updated 12 minutes ago" under the h1. Interactions: pick Category=Fire Alarm → URL becomes `?category=FIRE_ALARM` and only alarm rows remain; Score=90+ → three rows; Age=Today → only leads filed <24h; search "warehouse" from the top bar → filtered rows; combine filters until "No leads match these filters" appears; set pageSize by visiting `/app/leads?page=2` after choosing filters wide enough (25 fixtures on one page of 25 — verify pagination text "Showing 1 to 25 of 25 results" and disabled arrows); row click navigates to `/app/leads/lead-001` (404 until Task 8 — expected). Throttle network in devtools to see the skeleton.
+Check against the mockup: filter row (Category/Score/Age/Status) above a white card table with columns Lead / Score / Location / Date / Value / Why this matters; hot leads (94, 92, 91) show orange badge with flame; 80s show soft orange; 70s amber; below 70 gray; "New" badges on recent leads; relative dates ("2 days ago"); "Updated 12 minutes ago" under the h1. Interactions: pick Category=Fire Alarm → URL becomes `?category=FIRE_ALARM` and only alarm rows remain; Score=90+ → three rows; Age=Today → only leads filed <24h; search "warehouse" from the top bar → filtered rows; combine filters until "No leads match these filters" appears; set pageSize by visiting `/app/leads?page=2` after choosing filters wide enough (25 fixtures on one page of 25 — verify pagination text "Showing 1 to 25 of 25 results" and disabled arrows); row click navigates to `/app/leads/lead-001` (404 until Task 10 — expected). Throttle network in devtools to see the skeleton.
 
 - [ ] **Step 4: Type check, run owned suite, commit**
 
@@ -2060,14 +2498,14 @@ git commit -m "Add filterable leads page with loading skeleton"
 
 ---
 
-### Task 8: Lead detail page — score explanation (TDD), save button
+### Task 10: Lead detail page — score explanation (TDD), save button
 
 **Files:**
 - Create: `apps/web/components/app/lead-detail/signal-list.tsx`, `apps/web/components/app/lead-detail/save-button.tsx`, `apps/web/app/app/leads/[id]/page.tsx`
 - Test: `apps/web/__tests__/app/signal-list.test.tsx`
 
 **Interfaces:**
-- Consumes: `getLead(id, token): Promise<LeadDetail>`, `getSavedLeads(token)`, `saveLead(fireOpportunityId, token): Promise<SavedLeadItem>`, `unsaveLead(id, token)` from `@/lib/api`; `LeadSignal`, `LeadDetail` types; `ScoreBadge`, `CategoryChip`, `formatDate`, `formatRelative`, `formatValueShort` (Task 3); `useApiToken` (Task 4); shadcn `Card`, `Badge`, `Button`.
+- Consumes: `getLead(id, token): Promise<LeadDetail>`, `getSavedLeads(token)`, `saveLead(fireOpportunityId, token): Promise<SavedLeadItem>`, `unsaveLead(id, token)`, `ApiError` from `@/lib/api`; `LeadSignal`, `LeadDetail` types; `ScoreBadge`, `CategoryChip`, `formatDate`, `formatRelative`, `formatValueShort` (Task 3); `useApiToken` (Task 4); shadcn `Card`, `Badge`, `Button`.
 - Produces:
   - `SignalList({ score, signals }: { score: number; signals: LeadSignal[] })` — "Why this is a {score}" with signed rows, green positive / red negative weights (`data-testid="signal-weight"`)
   - `SaveButton({ leadId, savedId }: { leadId: string; savedId: string | null })` (client, optimistic)
@@ -2217,7 +2655,8 @@ export function SaveButton({ leadId, savedId }: { leadId: string; savedId: strin
 
 ```tsx
 import { ExternalLink } from "lucide-react";
-import { getLead, getSavedLeads } from "@/lib/api";
+import { notFound, redirect } from "next/navigation";
+import { ApiError, getLead, getSavedLeads } from "@/lib/api";
 import { getApiToken } from "@/components/app/get-token";
 import { ScoreBadge } from "@/components/app/score-badge";
 import { CategoryChip } from "@/components/app/category-chip";
@@ -2239,7 +2678,16 @@ function Field({ label, value }: { label: string; value: string | number | null 
 export default async function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const token = await getApiToken();
-  const [lead, savedLeads] = await Promise.all([getLead(id, token), getSavedLeads(token)]);
+  let lead, savedLeads;
+  try {
+    [lead, savedLeads] = await Promise.all([getLead(id, token), getSavedLeads(token)]);
+  } catch (err) {
+    // WS0 final-review fix B: lib/api.ts throws ApiError (carries `status`) on any
+    // non-2xx response — branch on the status code, never on the error message.
+    if (err instanceof ApiError && err.status === 404) notFound();
+    if (err instanceof ApiError && err.status === 401) redirect("/login");
+    throw err;
+  }
   const savedItem = savedLeads.find((s) => s.lead.id === lead.id) ?? null;
 
   return (
@@ -2358,7 +2806,7 @@ git commit -m "Add lead detail page with explainable score breakdown and save bu
 
 ---
 
-### Task 9: Saved leads page — optimistic status toggle (TDD)
+### Task 11: Saved leads page — optimistic status toggle (TDD)
 
 **Files:**
 - Create: `apps/web/components/app/saved/saved-list.tsx`, `apps/web/app/app/saved/page.tsx`
@@ -2584,7 +3032,7 @@ git commit -m "Add saved leads page with optimistic status toggle and removal"
 
 ---
 
-### Task 10: Overview page — stat cards, right rail, sparkline
+### Task 12: Overview page — stat cards, right rail, sparkline
 
 **Files:**
 - Create: `apps/web/components/app/overview/stat-cards.tsx`, `apps/web/components/app/overview/source-health-panel.tsx`, `apps/web/components/app/overview/digest-preview.tsx`, `apps/web/components/app/overview/activity-sparkline.tsx`, `apps/web/app/app/page.tsx`
@@ -2842,7 +3290,7 @@ git commit -m "Add overview dashboard with stat cards, right rail, and activity 
 
 ---
 
-### Task 11: Alerts page — digest frequency
+### Task 13: Alerts page — digest frequency
 
 **Files:**
 - Create: `apps/web/components/app/alerts/digest-form.tsx`, `apps/web/app/app/alerts/page.tsx`
@@ -2970,7 +3418,7 @@ git commit -m "Add alerts page with email digest frequency preferences"
 
 ---
 
-### Task 12: Account page
+### Task 14: Account page
 
 **Files:**
 - Create: `apps/web/components/app/account/billing-buttons.tsx`, `apps/web/app/app/account/page.tsx`
@@ -3138,7 +3586,7 @@ git commit -m "Add account page with plan, entitled markets, and billing actions
 
 ---
 
-### Task 13: Markets page
+### Task 15: Markets page
 
 **Files:**
 - Create: `apps/web/app/app/markets/page.tsx`
@@ -3246,14 +3694,14 @@ git commit -m "Add markets page with entitled lead counts and locked upgrade car
 
 ---
 
-### Task 14: Admin pages — sources, runs, users, subscriptions (role-gated)
+### Task 16: Admin pages — sources, runs, users, subscriptions (role-gated)
 
 **Files:**
 - Create: `apps/web/components/app/require-admin.ts`, `apps/web/components/app/admin/source-table.tsx`, `apps/web/components/app/admin/runs-table.tsx`, `apps/web/app/app/admin/sources/page.tsx`, `apps/web/app/app/admin/runs/page.tsx`, `apps/web/app/app/admin/users/page.tsx`, `apps/web/app/app/admin/subscriptions/page.tsx`
 - Test: `apps/web/__tests__/app/admin-gate.test.ts`
 
 **Interfaces:**
-- Consumes: `getAccountMe(token)`, `getAdminSources(token): Promise<AdminSource[]>`, `getAdminRuns(params: { sourceId?: string; page?: number }, token): Promise<Paged<ScraperRunSummary>>`, `setSourceActive(id: string, active: boolean, token): Promise<void>` from `@/lib/api`; `HEALTH_DOT`, `HEALTH_LABEL` (Task 10); `formatRelative` (Task 3); `getApiToken`, `useApiToken` (Task 4); `redirect` from `next/navigation`.
+- Consumes: `getAccountMe(token)`, `getAdminSources(token): Promise<AdminSource[]>`, `getAdminRuns(params: { sourceId?: string; page?: number }, token): Promise<Paged<ScraperRunSummary>>`, `setSourceActive(id: string, active: boolean, token): Promise<void>` from `@/lib/api`; `HEALTH_DOT`, `HEALTH_LABEL` (Task 12); `formatRelative` (Task 3); `getApiToken`, `useApiToken` (Task 4); `redirect` from `next/navigation`.
 - Produces:
   - `requireSuperAdmin(): Promise<string>` — returns the API token when `role === "SUPER_ADMIN"`, otherwise `redirect("/app")` (server-side gate for ALL four admin routes)
   - `SourceTable({ sources }: { sources: AdminSource[] })` (client)
@@ -3612,427 +4060,6 @@ git commit -m "Add role-gated admin pages for sources, runs, users, and subscrip
 
 ---
 
-### Task 15: Login page — `/login`
-
-**Files:**
-- Create: `apps/web/app/(auth)/login/page.tsx`, `apps/web/components/app/auth/login-form.tsx`
-- Test: `apps/web/__tests__/app/login-form.test.tsx`
-
-**Interfaces:**
-- Consumes: `signInWithEmailAndPassword`, `signInWithPopup`, `GoogleAuthProvider`, `sendPasswordResetEmail` from `firebase/auth`; `firebaseAuth` from `@/lib/firebase/client` (WS0-frozen); `useRouter` from `next/navigation`; `Card`, `CardHeader`, `CardTitle`, `CardContent`, `Input`, `Button`, `Label` from `@/components/ui/*`.
-- Produces:
-  - `LoginForm()` (client) — email/password sign-in, "Continue with Google" button, "Forgot password?" link, inline error messages
-  - the `/login` route (public per the WS0-locked route list in `lib/auth/config.ts` — this task only renders the page; it does not touch routing)
-
-- [ ] **Step 1: Write the failing test first** — `apps/web/__tests__/app/login-form.test.tsx`
-
-```tsx
-// @vitest-environment jsdom
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-
-const push = vi.fn();
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
-vi.mock("@/lib/firebase/client", () => ({ firebaseAuth: {} }));
-vi.mock("firebase/auth", () => ({
-  signInWithEmailAndPassword: vi.fn(),
-  signInWithPopup: vi.fn(),
-  GoogleAuthProvider: vi.fn(),
-  sendPasswordResetEmail: vi.fn(),
-}));
-vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true }));
-
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { LoginForm } from "@/components/app/auth/login-form";
-
-beforeEach(() => vi.clearAllMocks());
-
-describe("LoginForm", () => {
-  it("signs in with email/password, sets the session cookie, and redirects to /app/leads", async () => {
-    vi.mocked(signInWithEmailAndPassword).mockResolvedValue({
-      user: { getIdToken: vi.fn().mockResolvedValue("id-token-123") },
-    } as never);
-
-    render(<LoginForm />);
-    await userEvent.type(screen.getByLabelText("Email"), "rep@example.com");
-    await userEvent.type(screen.getByLabelText("Password"), "hunter2!!");
-    await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
-
-    await waitFor(() => expect(push).toHaveBeenCalledWith("/app/leads"));
-    expect(fetch).toHaveBeenCalledWith("/api/login", {
-      method: "POST",
-      headers: { Authorization: "Bearer id-token-123" },
-    });
-  });
-
-  it("shows an inline error for invalid credentials instead of redirecting", async () => {
-    vi.mocked(signInWithEmailAndPassword).mockRejectedValue({ code: "auth/invalid-credential" });
-
-    render(<LoginForm />);
-    await userEvent.type(screen.getByLabelText("Email"), "rep@example.com");
-    await userEvent.type(screen.getByLabelText("Password"), "wrong");
-    await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
-
-    expect(await screen.findByText("Incorrect email or password.")).toBeInTheDocument();
-    expect(push).not.toHaveBeenCalled();
-  });
-});
-```
-
-Run: `cd apps/web && pnpm vitest run __tests__/app/login-form.test.tsx` — Expected: FAIL (module not found).
-
-- [ ] **Step 2: Implement `login-form.tsx`**
-
-```tsx
-// components/app/auth/login-form.tsx
-"use client";
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import {
-  GoogleAuthProvider, sendPasswordResetEmail, signInWithEmailAndPassword, signInWithPopup,
-} from "firebase/auth";
-import { firebaseAuth } from "@/lib/firebase/client";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-
-const ERROR_MESSAGES: Record<string, string> = {
-  "auth/invalid-credential": "Incorrect email or password.",
-  "auth/user-not-found": "Incorrect email or password.",
-  "auth/wrong-password": "Incorrect email or password.",
-  "auth/too-many-requests": "Too many attempts. Try again in a few minutes.",
-  "auth/network-request-failed": "Network error — check your connection and try again.",
-};
-
-function messageFor(code: string): string {
-  return ERROR_MESSAGES[code] ?? "Something went wrong. Please try again.";
-}
-
-async function completeSignIn(idToken: string, router: ReturnType<typeof useRouter>) {
-  await fetch("/api/login", { method: "POST", headers: { Authorization: `Bearer ${idToken}` } });
-  router.push("/app/leads");
-}
-
-export function LoginForm() {
-  const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [resetSent, setResetSent] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setSubmitting(true);
-    try {
-      const credential = await signInWithEmailAndPassword(firebaseAuth, email, password);
-      await completeSignIn(await credential.user.getIdToken(), router);
-    } catch (err) {
-      setError(messageFor((err as { code?: string }).code ?? ""));
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function handleGoogle() {
-    setError(null);
-    try {
-      const credential = await signInWithPopup(firebaseAuth, new GoogleAuthProvider());
-      await completeSignIn(await credential.user.getIdToken(), router);
-    } catch (err) {
-      setError(messageFor((err as { code?: string }).code ?? ""));
-    }
-  }
-
-  async function handleResetPassword() {
-    if (!email) {
-      setError("Enter your email above first, then click \"Forgot password?\".");
-      return;
-    }
-    await sendPasswordResetEmail(firebaseAuth, email);
-    setResetSent(true);
-  }
-
-  return (
-    <Card className="w-full max-w-sm">
-      <CardHeader><CardTitle className="text-xl">Sign in to PermitTorch</CardTitle></CardHeader>
-      <CardContent className="space-y-4">
-        <form className="space-y-4" onSubmit={handleSubmit}>
-          <div className="space-y-1.5">
-            <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" required autoComplete="email"
-              value={email} onChange={(e) => setEmail(e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="password">Password</Label>
-            <Input id="password" type="password" required autoComplete="current-password"
-              value={password} onChange={(e) => setPassword(e.target.value)} />
-          </div>
-          {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-          {resetSent && <p className="text-sm text-green-600">Password reset email sent.</p>}
-          <Button type="submit" disabled={submitting} className="w-full bg-orange-500 hover:bg-orange-600">
-            Sign in
-          </Button>
-        </form>
-        <button type="button" onClick={handleResetPassword}
-          className="text-sm font-medium text-orange-600 hover:underline">
-          Forgot password?
-        </button>
-        <Button type="button" variant="outline" className="w-full" onClick={handleGoogle}>
-          Continue with Google
-        </Button>
-        <p className="text-center text-sm text-gray-500">
-          No account? <a href="/signup" className="font-medium text-orange-600 hover:underline">Sign up</a>
-        </p>
-      </CardContent>
-    </Card>
-  );
-}
-```
-
-- [ ] **Step 3: Implement the route** — `apps/web/app/(auth)/login/page.tsx`
-
-```tsx
-import type { Metadata } from "next";
-import { LoginForm } from "@/components/app/auth/login-form";
-
-export const metadata: Metadata = { title: "Sign in · PermitTorch" };
-
-export default function LoginPage() {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 p-6">
-      <LoginForm />
-    </div>
-  );
-}
-```
-
-- [ ] **Step 4: Run tests + type check to verify pass**
-
-```bash
-cd apps/web && pnpm vitest run __tests__/app/login-form.test.tsx && pnpm tsc --noEmit
-```
-
-Expected: PASS.
-
-- [ ] **Step 5: Visual verify**
-
-Run: `cd apps/web && NEXT_PUBLIC_API_MOCK=1 pnpm dev`, open `http://localhost:3000/login`.
-Check: centered light-theme card, orange "Sign in" button, focus rings visible on Tab, "Continue with Google" button, "Forgot password?" link, submitting wrong credentials shows the inline red error text without a page reload.
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add "apps/web/app/(auth)/login" apps/web/components/app/auth/login-form.tsx apps/web/__tests__/app/login-form.test.tsx
-git commit -m "Add Firebase email/password and Google sign-in page"
-```
-
----
-
-### Task 16: Signup page — `/signup`
-
-**Files:**
-- Create: `apps/web/app/(auth)/signup/page.tsx`, `apps/web/components/app/auth/signup-form.tsx`
-- Test: `apps/web/__tests__/app/signup-form.test.tsx`
-
-**Interfaces:**
-- Consumes: `createUserWithEmailAndPassword`, `signInWithPopup`, `GoogleAuthProvider` from `firebase/auth`; `firebaseAuth` from `@/lib/firebase/client` (WS0-frozen); same shadcn primitives as Task 15.
-- Produces:
-  - `SignupForm()` (client) — email/password account creation, "Continue with Google" button, inline error messages
-  - the `/signup` route (public per the WS0-locked route list)
-
-- [ ] **Step 1: Write the failing test first** — `apps/web/__tests__/app/signup-form.test.tsx`
-
-```tsx
-// @vitest-environment jsdom
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-
-const push = vi.fn();
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
-vi.mock("@/lib/firebase/client", () => ({ firebaseAuth: {} }));
-vi.mock("firebase/auth", () => ({
-  createUserWithEmailAndPassword: vi.fn(),
-  signInWithPopup: vi.fn(),
-  GoogleAuthProvider: vi.fn(),
-}));
-vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true }));
-
-import { createUserWithEmailAndPassword } from "firebase/auth";
-import { SignupForm } from "@/components/app/auth/signup-form";
-
-beforeEach(() => vi.clearAllMocks());
-
-describe("SignupForm", () => {
-  it("creates the account, sets the session cookie, and redirects to /app/leads", async () => {
-    vi.mocked(createUserWithEmailAndPassword).mockResolvedValue({
-      user: { getIdToken: vi.fn().mockResolvedValue("id-token-456") },
-    } as never);
-
-    render(<SignupForm />);
-    await userEvent.type(screen.getByLabelText("Email"), "new@example.com");
-    await userEvent.type(screen.getByLabelText("Password"), "hunter2!!");
-    await userEvent.click(screen.getByRole("button", { name: "Create account" }));
-
-    await waitFor(() => expect(push).toHaveBeenCalledWith("/app/leads"));
-    expect(fetch).toHaveBeenCalledWith("/api/login", {
-      method: "POST",
-      headers: { Authorization: "Bearer id-token-456" },
-    });
-  });
-
-  it("shows an inline error when the email is already registered", async () => {
-    vi.mocked(createUserWithEmailAndPassword).mockRejectedValue({ code: "auth/email-already-in-use" });
-
-    render(<SignupForm />);
-    await userEvent.type(screen.getByLabelText("Email"), "new@example.com");
-    await userEvent.type(screen.getByLabelText("Password"), "hunter2!!");
-    await userEvent.click(screen.getByRole("button", { name: "Create account" }));
-
-    expect(await screen.findByText("An account with this email already exists.")).toBeInTheDocument();
-    expect(push).not.toHaveBeenCalled();
-  });
-});
-```
-
-Run: `cd apps/web && pnpm vitest run __tests__/app/signup-form.test.tsx` — Expected: FAIL (module not found).
-
-- [ ] **Step 2: Implement `signup-form.tsx`**
-
-```tsx
-// components/app/auth/signup-form.tsx
-"use client";
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { GoogleAuthProvider, createUserWithEmailAndPassword, signInWithPopup } from "firebase/auth";
-import { firebaseAuth } from "@/lib/firebase/client";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-
-const ERROR_MESSAGES: Record<string, string> = {
-  "auth/email-already-in-use": "An account with this email already exists.",
-  "auth/weak-password": "Choose a password with at least 6 characters.",
-  "auth/invalid-email": "Enter a valid email address.",
-  "auth/network-request-failed": "Network error — check your connection and try again.",
-};
-
-function messageFor(code: string): string {
-  return ERROR_MESSAGES[code] ?? "Something went wrong. Please try again.";
-}
-
-async function completeSignIn(idToken: string, router: ReturnType<typeof useRouter>) {
-  await fetch("/api/login", { method: "POST", headers: { Authorization: `Bearer ${idToken}` } });
-  router.push("/app/leads");
-}
-
-export function SignupForm() {
-  const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setSubmitting(true);
-    try {
-      const credential = await createUserWithEmailAndPassword(firebaseAuth, email, password);
-      await completeSignIn(await credential.user.getIdToken(), router);
-    } catch (err) {
-      setError(messageFor((err as { code?: string }).code ?? ""));
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function handleGoogle() {
-    setError(null);
-    try {
-      const credential = await signInWithPopup(firebaseAuth, new GoogleAuthProvider());
-      await completeSignIn(await credential.user.getIdToken(), router);
-    } catch (err) {
-      setError(messageFor((err as { code?: string }).code ?? ""));
-    }
-  }
-
-  return (
-    <Card className="w-full max-w-sm">
-      <CardHeader><CardTitle className="text-xl">Create your PermitTorch account</CardTitle></CardHeader>
-      <CardContent className="space-y-4">
-        <form className="space-y-4" onSubmit={handleSubmit}>
-          <div className="space-y-1.5">
-            <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" required autoComplete="email"
-              value={email} onChange={(e) => setEmail(e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="password">Password</Label>
-            <Input id="password" type="password" required autoComplete="new-password"
-              value={password} onChange={(e) => setPassword(e.target.value)} />
-          </div>
-          {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-          <Button type="submit" disabled={submitting} className="w-full bg-orange-500 hover:bg-orange-600">
-            Create account
-          </Button>
-        </form>
-        <Button type="button" variant="outline" className="w-full" onClick={handleGoogle}>
-          Continue with Google
-        </Button>
-        <p className="text-center text-sm text-gray-500">
-          Already have an account? <a href="/login" className="font-medium text-orange-600 hover:underline">Sign in</a>
-        </p>
-      </CardContent>
-    </Card>
-  );
-}
-```
-
-- [ ] **Step 3: Implement the route** — `apps/web/app/(auth)/signup/page.tsx`
-
-```tsx
-import type { Metadata } from "next";
-import { SignupForm } from "@/components/app/auth/signup-form";
-
-export const metadata: Metadata = { title: "Sign up · PermitTorch" };
-
-export default function SignupPage() {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 p-6">
-      <SignupForm />
-    </div>
-  );
-}
-```
-
-- [ ] **Step 4: Run tests + type check to verify pass**
-
-```bash
-cd apps/web && pnpm vitest run __tests__/app/signup-form.test.tsx && pnpm tsc --noEmit
-```
-
-Expected: PASS.
-
-- [ ] **Step 5: Visual verify**
-
-Run: `cd apps/web && NEXT_PUBLIC_API_MOCK=1 pnpm dev`, open `http://localhost:3000/signup`.
-Check: same card styling as `/login`; creating an account with an already-registered email shows the inline error; successful signup redirects to `/app/leads`.
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add "apps/web/app/(auth)/signup" apps/web/components/app/auth/signup-form.tsx apps/web/__tests__/app/signup-form.test.tsx
-git commit -m "Add Firebase email/password and Google signup page"
-```
-
----
-
 ### Task 17: Final verification pass
 
 **Files:**
@@ -4053,6 +4080,8 @@ Run: `cd apps/web && pnpm tsc --noEmit && NEXT_PUBLIC_API_MOCK=1 pnpm build`
 Expected: zero type errors; build succeeds (dynamic `/app` routes are fine — they render per-request with Firebase Auth).
 
 - [ ] **Step 3: Full visual walkthrough** (`cd apps/web && NEXT_PUBLIC_API_MOCK=1 pnpm dev`)
+
+> **Real Firebase env required for the `/app/**` rows below.** `NEXT_PUBLIC_API_MOCK=1` does not bypass `middleware.ts`'s session-cookie check — there is no mock bypass, and hand-setting a cookie is not supported. `/login` and `/signup` are public and can be walked through now under mock env; every `/app/**` row is instead verified by its Vitest component test (already green from its task) and gets its real signed-in browser walkthrough once WS5 supplies real `NEXT_PUBLIC_FIREBASE_*` values and a test user — do not block this task on signing in locally.
 
 - [ ] `/app` — headline, 4 stat cards, top-5 table, right rail (Source Health → Digest → Sparkline), freshness line
 - [ ] `/app/leads` — all four filters round-trip through the URL; ⌘K search; empty state; skeleton on slow load
