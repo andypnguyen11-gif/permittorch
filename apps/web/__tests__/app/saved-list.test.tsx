@@ -4,7 +4,8 @@ import "./dom-cleanup";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { SavedLeadItem } from "@permittorch/types";
 
-vi.mock("@/lib/api", () => ({
+vi.mock("@/lib/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api")>()),
   updateSavedLead: vi.fn(),
   unsaveLead: vi.fn(),
 }));

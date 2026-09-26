@@ -1,5 +1,5 @@
 import type { LeadDetail, LeadSignal, LeadSummary, LeadsResponse } from "@permittorch/types";
-import type { LeadsQuery } from "@/lib/api";
+import { ApiError, type LeadsQuery } from "@/lib/api";
 import { daysAgo, hoursAgo, minutesAgo } from "./time";
 
 // Mock data mirrors the API's scoring contract (00-overview §5, WS1 ScoringEngine):
@@ -478,6 +478,7 @@ export function mockLeadsResponse(query: LeadsQuery = {}): LeadsResponse {
 
 export function mockLeadDetail(id: string): LeadDetail {
   const detail = mockLeadDetails.find((d) => d.id === id);
-  if (!detail) throw new Error(`No fixture lead with id ${id}`);
+  // Same shape the real API client throws, so the page's notFound() mapping runs.
+  if (!detail) throw new ApiError("Lead not found", 404);
   return detail;
 }

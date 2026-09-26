@@ -13,6 +13,7 @@ vi.mock("@/components/app/get-token", () => ({ getApiToken: async () => "mock-to
 
 import LeadsPage from "@/app/app/leads/page";
 import * as api from "@/lib/api";
+import { SESSION_EXPIRED_DIGEST } from "@/components/app/session-digest";
 
 beforeAll(() => vi.stubEnv("NEXT_PUBLIC_API_MOCK", "1"));
 
@@ -45,9 +46,12 @@ describe("/app/leads page (mock API)", () => {
     expect(screen.getByText("No results")).toBeInTheDocument();
   });
 
-  it("sends an expired session back to /login", async () => {
+  it("tags a 401 for the session-recovery boundary instead of redirecting to /login", async () => {
     const spy = vi.spyOn(api, "getLeads").mockRejectedValueOnce(new api.ApiError("expired", 401));
-    await expect(renderPage({})).rejects.toThrow("REDIRECT:/login");
+    await expect(renderPage({})).rejects.toMatchObject({
+      status: 401,
+      digest: SESSION_EXPIRED_DIGEST,
+    });
     spy.mockRestore();
   });
 });

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import type { SavedLeadItem, SavedLeadStatus } from "@permittorch/types";
 import { unsaveLead, updateSavedLead } from "@/lib/api";
 import { useApiToken } from "@/components/app/use-api-token";
+import { reportMutationError } from "@/components/app/sign-out";
 import { ScoreBadge } from "@/components/app/score-badge";
 import { CategoryIcon } from "@/components/app/category-chip";
 import { EmptyState } from "@/components/app/leads/lead-table";
@@ -34,9 +35,9 @@ export function SavedList({ initialItems }: { initialItems: SavedLeadItem[] }) {
     setStatus(item.id, next); // optimistic
     try {
       await updateSavedLead(item.id, next, await getToken());
-    } catch {
+    } catch (err) {
       setStatus(item.id, item.status); // revert
-      toast.error("Could not update lead status");
+      reportMutationError(err, "Could not update lead status");
     }
   };
 
@@ -46,10 +47,10 @@ export function SavedList({ initialItems }: { initialItems: SavedLeadItem[] }) {
     try {
       await unsaveLead(item.id, await getToken());
       toast("Lead removed from saved");
-    } catch {
+    } catch (err) {
       // revert into its original position
       setItems((prev) => [...prev.slice(0, index), item, ...prev.slice(index)]);
-      toast.error("Could not remove lead");
+      reportMutationError(err, "Could not remove lead");
     }
   };
 

@@ -8,7 +8,7 @@ import type {
   AccountMe, AdminSource, DigestFrequency, LeadDetail, LeadsResponse,
   Market, Paged, PlanTier, SavedLeadItem, SavedLeadStatus, ScraperRunSummary,
 } from "@permittorch/types";
-import type { LeadsQuery } from "@/lib/api";
+import { ApiError, type LeadsQuery } from "@/lib/api";
 import { mockLeads, mockLeadsResponse, mockLeadDetail } from "./leads";
 import { mockSavedLeads } from "./saved";
 import { mockAccountMarkets, mockAccountMe } from "./account";
@@ -22,7 +22,7 @@ export async function getLead(id: string): Promise<LeadDetail> { return mockLead
 export async function getSavedLeads(): Promise<SavedLeadItem[]> { return [...savedState]; }
 export async function saveLead(fireOpportunityId: string): Promise<SavedLeadItem> {
   const lead = mockLeads.find((l) => l.id === fireOpportunityId);
-  if (!lead) throw new Error(`No fixture lead with id ${fireOpportunityId}`);
+  if (!lead) throw new ApiError("Lead not found", 404);
   const existing = savedState.find((s) => s.lead.id === fireOpportunityId);
   if (existing) return existing;
   const item: SavedLeadItem = {

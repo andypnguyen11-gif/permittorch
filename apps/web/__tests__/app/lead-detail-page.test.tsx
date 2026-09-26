@@ -13,6 +13,7 @@ vi.mock("sonner", () => ({ toast: Object.assign(vi.fn(), { success: vi.fn(), err
 
 import LeadDetailPage from "@/app/app/leads/[id]/page";
 import * as api from "@/lib/api";
+import { SESSION_EXPIRED_DIGEST } from "@/components/app/session-digest";
 
 beforeAll(() => vi.stubEnv("NEXT_PUBLIC_API_MOCK", "1"));
 
@@ -44,15 +45,22 @@ describe("/app/leads/[id] page (mock API)", () => {
     expect(screen.getByText("No participants listed on this permit.")).toBeInTheDocument();
   });
 
+  it("renders not-found for an unknown lead id in mock mode", async () => {
+    await expect(renderPage("lead-does-not-exist")).rejects.toThrow("NOT_FOUND");
+  });
+
   it("maps a 404 from the API to the not-found page", async () => {
     const spy = vi.spyOn(api, "getLead").mockRejectedValueOnce(new api.ApiError("nope", 404));
     await expect(renderPage("lead-404")).rejects.toThrow("NOT_FOUND");
     spy.mockRestore();
   });
 
-  it("sends an expired session back to /login", async () => {
+  it("tags a 401 for the session-recovery boundary instead of redirecting to /login", async () => {
     const spy = vi.spyOn(api, "getLead").mockRejectedValueOnce(new api.ApiError("expired", 401));
-    await expect(renderPage("lead-001")).rejects.toThrow("REDIRECT:/login");
+    await expect(renderPage("lead-001")).rejects.toMatchObject({
+      status: 401,
+      digest: SESSION_EXPIRED_DIGEST,
+    });
     spy.mockRestore();
   });
 });

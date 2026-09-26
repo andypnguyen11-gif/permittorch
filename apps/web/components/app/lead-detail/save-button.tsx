@@ -4,6 +4,7 @@ import { Bookmark, BookmarkCheck } from "lucide-react";
 import { toast } from "sonner";
 import { saveLead, unsaveLead } from "@/lib/api";
 import { useApiToken } from "@/components/app/use-api-token";
+import { reportMutationError } from "@/components/app/sign-out";
 import { Button } from "@/components/ui/button";
 
 const OPTIMISTIC = "optimistic";
@@ -30,9 +31,9 @@ export function SaveButton({ leadId, savedId }: { leadId: string; savedId: strin
         setCurrentSavedId(item.id);
         toast.success("Lead saved");
       }
-    } catch {
+    } catch (err) {
       setCurrentSavedId(previous);
-      toast.error("Could not update saved leads");
+      reportMutationError(err, "Could not update saved leads");
     } finally {
       setPending(false);
     }

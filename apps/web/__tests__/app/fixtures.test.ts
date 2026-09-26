@@ -5,6 +5,7 @@ import {
   mockLeadsResponse,
   mockLeadDetail,
 } from "@/lib/fixtures/leads";
+import { ApiError } from "@/lib/api";
 
 const HOURS = 3_600_000;
 
@@ -199,8 +200,9 @@ describe("mockLeadDetail", () => {
     expect(d.permit.permitNumber).not.toBeNull();
   });
 
-  it("throws for an unknown id", () => {
-    expect(() => mockLeadDetail("nope")).toThrowError(/No fixture lead/);
+  it("throws an ApiError 404 for an unknown id, like the real client", () => {
+    expect(() => mockLeadDetail("nope")).toThrow(ApiError);
+    expect(() => mockLeadDetail("nope")).toThrow(expect.objectContaining({ status: 404 }));
   });
 });
 
@@ -260,6 +262,10 @@ describe("fixtures index (lib/api.ts mock contract)", () => {
     expect((await fixtures.getSavedLeads()).find((s) => s.id === item.id)?.status).toBe("CONTACTED");
     await fixtures.unsaveLead(item.id);
     expect(await fixtures.getSavedLeads()).toHaveLength(before);
+  });
+
+  it("saveLead rejects an unknown lead id with an ApiError 404", async () => {
+    await expect(fixtures.saveLead("lead-nope")).rejects.toMatchObject({ name: "ApiError", status: 404 });
   });
 
   it("getAccountMarkets returns the entitled fixture markets matching lead cities", async () => {

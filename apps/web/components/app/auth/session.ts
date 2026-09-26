@@ -1,3 +1,6 @@
+import { signOut } from "firebase/auth";
+import { firebaseAuth } from "@/lib/firebase/client";
+
 // Exchanges a Firebase ID token for the httpOnly session cookie that
 // middleware.ts (next-firebase-auth-edge) checks on every /app request.
 export async function startSession(idToken: string): Promise<void> {
@@ -6,6 +9,20 @@ export async function startSession(idToken: string): Promise<void> {
     headers: { Authorization: `Bearer ${idToken}` },
   });
   if (!res.ok) throw Object.assign(new Error("Session request failed"), { code: "session/failed" });
+}
+
+/**
+ * startSession, but if the cookie exchange fails the Firebase client session is
+ * signed out too — otherwise the browser is half signed in (Firebase user, no
+ * session cookie) and the dashboard would reject every request.
+ */
+export async function startSessionOrSignOut(idToken: string): Promise<void> {
+  try {
+    await startSession(idToken);
+  } catch (err) {
+    await signOut(firebaseAuth).catch(() => undefined);
+    throw err;
+  }
 }
 
 const DEFAULT_TARGET = "/app/leads";

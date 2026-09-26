@@ -14,7 +14,7 @@ import { authErrorMessage, isSilentAuthError } from "./firebase-errors";
 import { Field, FormError, PasswordField } from "./field";
 import { GoogleButton, OrDivider } from "./google-button";
 import { loginSchema, resetSchema, type LoginValues, type ResetValues } from "./schemas";
-import { postSignInTarget, startSession } from "./session";
+import { postSignInTarget, startSessionOrSignOut } from "./session";
 import { zodResolver } from "./zod-resolver";
 
 function ResetPasswordForm({ initialEmail, onBack }: { initialEmail: string; onBack: () => void }) {
@@ -80,7 +80,7 @@ export function LoginForm() {
   });
 
   const finish = async (idToken: string) => {
-    await startSession(idToken);
+    await startSessionOrSignOut(idToken);
     setRedirecting(true);
     router.push(postSignInTarget());
   };

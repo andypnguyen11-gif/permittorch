@@ -7,12 +7,13 @@ const push = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
 vi.mock("@/lib/firebase/client", () => ({ firebaseAuth: {} }));
 vi.mock("firebase/auth", () => ({
+  signOut: vi.fn().mockResolvedValue(undefined),
   createUserWithEmailAndPassword: vi.fn(),
   signInWithPopup: vi.fn(),
   GoogleAuthProvider: vi.fn(),
 }));
 
-import { createUserWithEmailAndPassword, signInWithPopup } from "firebase/auth";
+import { createUserWithEmailAndPassword, signInWithPopup, signOut } from "firebase/auth";
 import { SignupForm } from "@/components/app/auth/signup-form";
 
 const type = (label: string, value: string) =>
@@ -40,6 +41,32 @@ describe("SignupForm", () => {
       method: "POST",
       headers: { Authorization: "Bearer id-token-456" },
     });
+  });
+
+  it("signs out of Firebase and shows an error when the session cookie request fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false }));
+    vi.mocked(createUserWithEmailAndPassword).mockResolvedValue({
+      user: { getIdToken: vi.fn().mockResolvedValue("id-token-456") },
+    } as never);
+    render(<SignupForm />);
+    type("Email", "new@example.com");
+    type("Password", "hunter2!!");
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/couldn.t start your session/);
+    expect(signOut).toHaveBeenCalledWith({});
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it("does not sign out when the session starts normally", async () => {
+    vi.mocked(createUserWithEmailAndPassword).mockResolvedValue({
+      user: { getIdToken: vi.fn().mockResolvedValue("ok") },
+    } as never);
+    render(<SignupForm />);
+    type("Email", "new@example.com");
+    type("Password", "hunter2!!");
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/app/leads"));
+    expect(signOut).not.toHaveBeenCalled();
   });
 
   it("shows an inline error when the email is already registered", async () => {

@@ -1,10 +1,10 @@
 "use client";
 import { useState } from "react";
 import { ArrowUpRight, CreditCard, Loader2 } from "lucide-react";
-import { toast } from "sonner";
 import type { PlanTier } from "@permittorch/types";
 import { createBillingPortal, createCheckout } from "@/lib/api";
 import { useApiToken } from "@/components/app/use-api-token";
+import { reportMutationError } from "@/components/app/sign-out";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -24,7 +24,7 @@ function BillingButton({ children, onClick, variant }: {
       disabled={mocked || busy}
       onClick={async () => {
         setBusy(true);
-        try { await onClick(); } catch { toast.error("Billing is unavailable right now. Please try again."); }
+        try { await onClick(); } catch (err) { reportMutationError(err, "Billing is unavailable right now. Please try again."); }
         finally { setBusy(false); }
       }}
     >

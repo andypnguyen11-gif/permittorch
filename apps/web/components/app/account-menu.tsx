@@ -1,9 +1,8 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { LogOut, Settings } from "lucide-react";
-import { signOut } from "firebase/auth";
 import { toast } from "sonner";
-import { firebaseAuth } from "@/lib/firebase/client";
+import { signOutAndRedirect } from "@/components/app/sign-out";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -20,9 +19,7 @@ export function AccountMenu({ email }: { email: string }) {
 
   async function handleSignOut() {
     try {
-      await signOut(firebaseAuth);
-      await fetch("/api/logout");
-      router.push("/login");
+      await signOutAndRedirect();
     } catch {
       toast.error("Could not sign out. Please try again.");
     }

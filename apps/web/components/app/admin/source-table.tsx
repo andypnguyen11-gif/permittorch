@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import type { AdminSource } from "@permittorch/types";
 import { setSourceActive } from "@/lib/api";
 import { useApiToken } from "@/components/app/use-api-token";
+import { reportMutationError } from "@/components/app/sign-out";
 import { formatRelative } from "@/components/app/format";
 import { HEALTH_DOT, HEALTH_LABEL, HEALTH_TEXT } from "@/components/app/overview/source-health-panel";
 import { Button } from "@/components/ui/button";
@@ -24,9 +25,9 @@ export function SourceTable({ sources }: { sources: AdminSource[] }) {
     try {
       await setSourceActive(source.id, nextActive, await getToken());
       toast.success(`${source.name} ${nextActive ? "enabled" : "disabled"}`);
-    } catch {
+    } catch (err) {
       setRows((prev) => prev.map((s) => (s.id === source.id ? { ...s, active: source.active } : s)));
-      toast.error("Could not update source");
+      reportMutationError(err, "Could not update source");
     } finally {
       setBusyId(null);
     }

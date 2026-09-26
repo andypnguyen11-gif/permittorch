@@ -12,7 +12,7 @@ import { authErrorMessage, isSilentAuthError } from "./firebase-errors";
 import { Field, FormError, PasswordField } from "./field";
 import { GoogleButton, OrDivider } from "./google-button";
 import { signupSchema, type SignupValues } from "./schemas";
-import { postSignInTarget, startSession } from "./session";
+import { postSignInTarget, startSessionOrSignOut } from "./session";
 import { zodResolver } from "./zod-resolver";
 
 export function SignupForm() {
@@ -27,7 +27,7 @@ export function SignupForm() {
   });
 
   const finish = async (idToken: string) => {
-    await startSession(idToken);
+    await startSessionOrSignOut(idToken);
     setRedirecting(true);
     router.push(postSignInTarget());
   };

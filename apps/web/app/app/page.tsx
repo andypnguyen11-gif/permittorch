@@ -4,6 +4,7 @@ import { ArrowRight } from "lucide-react";
 import { getAccountMe, getAdminSources, getLeads } from "@/lib/api";
 import { getApiToken } from "@/components/app/get-token";
 import { handleApiError } from "@/components/app/api-errors";
+import { isUnauthorized } from "@/components/app/session-digest";
 import { StatCards, computeOverviewStats } from "@/components/app/overview/stat-cards";
 import { SourceHealthPanel } from "@/components/app/overview/source-health-panel";
 import { DigestPreview } from "@/components/app/overview/digest-preview";
@@ -20,7 +21,11 @@ export default async function OverviewPage() {
     getLeads({ pageSize: 100 }, token),
   ]).catch((err) => handleApiError(err));
   const isSuperAdmin = me.role === "SUPER_ADMIN";
-  const sources = isSuperAdmin ? await getAdminSources(token).catch(() => []) : [];
+  // A source-health failure must not take down the overview, but it must not
+  // look like "no sources" either: null renders an explicit unavailable state.
+  const sources = isSuperAdmin
+    ? await getAdminSources(token).catch((err) => (isUnauthorized(err) ? handleApiError(err) : null))
+    : null;
   const stats = computeOverviewStats(leadsRes.items);
   const topLeads = [...leadsRes.items].sort((a, b) => b.score - a.score).slice(0, 5);
 

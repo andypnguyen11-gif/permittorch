@@ -16,11 +16,16 @@ export const HEALTH_TEXT: Record<HealthStatus, string> = {
   FAILED: "text-red-600", DISABLED: "text-stone-400",
 };
 
-export function SourceHealthPanel({ sources }: { sources: AdminSource[] }) {
+/** `sources: null` means the health check could not be loaded — never shown as "no sources". */
+export function SourceHealthPanel({ sources }: { sources: AdminSource[] | null }) {
   return (
     <SectionCard title="Source health"
       action={<Link href="/app/admin/sources" className="text-sm font-medium text-orange-600 hover:underline">View all</Link>}>
-      {sources.length === 0 ? (
+      {sources === null ? (
+        <p role="status" className="text-sm text-stone-500">
+          Source health is unavailable right now. Check the Sources page or try again shortly.
+        </p>
+      ) : sources.length === 0 ? (
         <p className="text-sm text-stone-500">No sources configured yet.</p>
       ) : (
         <ul className="space-y-2.5">

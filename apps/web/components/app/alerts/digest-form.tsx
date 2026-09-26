@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import type { DigestFrequency } from "@permittorch/types";
 import { updateEmailPreferences } from "@/lib/api";
 import { useApiToken } from "@/components/app/use-api-token";
+import { reportMutationError } from "@/components/app/sign-out";
 import { cn } from "@/lib/utils";
 
 const OPTIONS: Array<{ value: DigestFrequency; label: string; description: string; icon: LucideIcon }> = [
@@ -29,9 +30,9 @@ export function DigestForm({ initialFrequency }: { initialFrequency: DigestFrequ
     try {
       await updateEmailPreferences(value, await getToken());
       toast.success(value === "NONE" ? "Email digest turned off" : `Digest set to ${value.toLowerCase()}`);
-    } catch {
+    } catch (err) {
       setFrequency(previous);
-      toast.error("Could not update email preferences");
+      reportMutationError(err, "Could not update email preferences");
     } finally {
       setSaving(false);
     }

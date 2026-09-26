@@ -9,13 +9,14 @@ const push = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
 vi.mock("@/lib/firebase/client", () => ({ firebaseAuth: {} }));
 vi.mock("firebase/auth", () => ({
+  signOut: vi.fn().mockResolvedValue(undefined),
   signInWithEmailAndPassword: vi.fn(),
   signInWithPopup: vi.fn(),
   GoogleAuthProvider: vi.fn(),
   sendPasswordResetEmail: vi.fn(),
 }));
 
-import { sendPasswordResetEmail, signInWithEmailAndPassword, signInWithPopup } from "firebase/auth";
+import { sendPasswordResetEmail, signInWithEmailAndPassword, signInWithPopup, signOut } from "firebase/auth";
 import { LoginForm } from "@/components/app/auth/login-form";
 
 const type = (label: string, value: string) =>
@@ -103,6 +104,20 @@ describe("LoginForm", () => {
     type("Password", "hunter2!!");
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/couldn.t start your session/);
+    expect(push).not.toHaveBeenCalled();
+    // No half-signed-in state: the Firebase client session is dropped too.
+    expect(signOut).toHaveBeenCalledWith({});
+  });
+
+  it("signs out of Firebase when the Google session cookie request fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false }));
+    vi.mocked(signInWithPopup).mockResolvedValue({
+      user: { getIdToken: vi.fn().mockResolvedValue("g") },
+    } as never);
+    render(<LoginForm />);
+    fireEvent.click(screen.getByRole("button", { name: "Continue with Google" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/couldn.t start your session/);
+    expect(signOut).toHaveBeenCalledTimes(1);
     expect(push).not.toHaveBeenCalled();
   });
 

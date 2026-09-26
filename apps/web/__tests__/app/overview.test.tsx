@@ -73,6 +73,15 @@ describe("/app overview page", () => {
     expect(screen.getByRole("img", { name: /permit filings per day/ })).toBeInTheDocument();
   });
 
+  it("shows an explicit unavailable state when source health fails to load", async () => {
+    const spy = vi.spyOn(api, "getAdminSources").mockRejectedValue(new api.ApiError("boom", 500));
+    render(await OverviewPage());
+    const panel = screen.getByRole("region", { name: "Source health" });
+    expect(panel).toHaveTextContent("Source health is unavailable right now");
+    expect(panel).not.toHaveTextContent("No sources configured yet.");
+    spy.mockRestore();
+  });
+
   it("hides source health from non-admin members", async () => {
     const spy = vi.spyOn(api, "getAccountMe").mockResolvedValue({ ...mockAccountMe, role: "MEMBER" });
     const sources = vi.spyOn(api, "getAdminSources");

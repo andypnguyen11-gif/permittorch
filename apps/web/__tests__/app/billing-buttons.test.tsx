@@ -3,7 +3,8 @@ import "./dom-cleanup";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-vi.mock("@/lib/api", () => ({ createBillingPortal: vi.fn(), createCheckout: vi.fn() }));
+vi.mock("@/lib/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api")>()), createBillingPortal: vi.fn(), createCheckout: vi.fn() }));
 vi.mock("@/components/app/use-api-token", () => ({ useApiToken: () => async () => "mock-token" }));
 vi.mock("sonner", () => ({ toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }) }));
 
