@@ -176,7 +176,7 @@ WS5-specific rules:
   # --- API (apps/api) ---
   DATABASE_URL=postgresql://permittorch:permittorch@localhost:5432/permittorch
   APIFY_TOKEN=                                   # leave empty locally -> seeder inserts sample permits
-  APIFY_ACTOR_ID=
+  APIFY_TASK_ID=xatpyth2FgbUydjLd                # scrapelabmax/permittorch-daily (master §10)
   CLERK_SECRET_KEY=sk_test_replace
   CLERK_JWKS_URL=https://your-subdomain.clerk.accounts.dev/.well-known/jwks.json
   CLERK_ISSUER=https://your-subdomain.clerk.accounts.dev
@@ -240,7 +240,7 @@ WS5-specific rules:
 ## Task 8: Dev seed script (DevSeeder + `dotnet run -- seed`)
 
 **Files:** `apps/api/Data/Seed/DevSeeder.cs` (create), `apps/api/Program.cs` (modify: seed entry + startup-migration flag), `apps/api/tests/PermitTorch.Api.Tests/Data/DevSeederTests.cs` (create).
-**Interfaces:** `public static Task DevSeeder.SeedAsync(AppDbContext db, IConfiguration config, CancellationToken ct = default)`; CLI entry `dotnet run --project apps/api -- seed`; deterministic IDs `Guid G(int n) => 00000000-0000-4000-8000-{n:D12}` — opportunity `G(201)` is a Dallas lead used by the entitlement E2E 404 test; startup migrations gated by `RUN_MIGRATIONS_ON_STARTUP=true`.
+**Interfaces:** `public static Task DevSeeder.SeedAsync(AppDbContext db, IConfiguration config, CancellationToken ct = default)`; CLI entry `dotnet run --project apps/api -- seed`; deterministic IDs `Guid G(int n) => 00000000-0000-4000-8000-{n:D12}` — opportunity `G(201)` is a San Antonio lead used by the entitlement E2E 404 test; startup migrations gated by `RUN_MIGRATIONS_ON_STARTUP=true`.
 
 Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the WS0 entity model and migrations, stays idempotent, and runs identically locally and against Railway. It is invoked explicitly via a `seed` CLI arg, never automatically.
 
@@ -275,21 +275,100 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
               $"permits={await db.Permits.CountAsync(ct)} opportunities={await db.FireOpportunities.CountAsync(ct)}");
       }
 
+      // Registry captured from scraper task run cH1rI8svA59YgyW58 (2026-09-26) — see
+      // docs/superpowers/plans/2026-08-19-permittorch-mvp/scraper-source-registry.json (31 markets, 40 sources).
+      // Source.Jurisdiction MUST equal the scraper's source.sourceId / COVERAGE_REPORT sourceStats[].sourceId.
+      private const string ScraperUrl = "https://apify.com/scrapelabmax/us-fire-permit-leads-scraper";
+
+      private static readonly (string Slug, string Name, string City, string State)[] MarketDefs =
+      {
+              ("austin-tx", "Austin", "Austin", "TX"),
+              ("baltimore-md", "Baltimore", "Baltimore", "MD"),
+              ("boston-ma", "Boston", "Boston", "MA"),
+              ("charlotte-nc", "Charlotte", "Charlotte", "NC"),
+              ("chicago-il", "Chicago", "Chicago", "IL"),
+              ("colorado-springs-co", "Colorado Springs", "Colorado Springs", "CO"),
+              ("columbus-oh", "Columbus", "Columbus", "OH"),
+              ("detroit-mi", "Detroit", "Detroit", "MI"),
+              ("fort-worth-tx", "Fort Worth", "Fort Worth", "TX"),
+              ("kansas-city-mo", "Kansas City", "Kansas City", "MO"),
+              ("los-angeles-ca", "Los Angeles", "Los Angeles", "CA"),
+              ("louisville-ky", "Louisville", "Louisville", "KY"),
+              ("memphis-tn", "Memphis", "Memphis", "TN"),
+              ("mesa-az", "Mesa", "Mesa", "AZ"),
+              ("miami-fl", "Miami", "Miami", "FL"),
+              ("minneapolis-mn", "Minneapolis", "Minneapolis", "MN"),
+              ("nashville-tn", "Nashville", "Nashville", "TN"),
+              ("new-orleans-la", "New Orleans", "New Orleans", "LA"),
+              ("new-york-city-ny", "New York City", "New York City", "NY"),
+              ("omaha-ne", "Omaha", "Omaha", "NE"),
+              ("philadelphia-pa", "Philadelphia", "Philadelphia", "PA"),
+              ("portland-or", "Portland", "Portland", "OR"),
+              ("raleigh-nc", "Raleigh", "Raleigh", "NC"),
+              ("sacramento-ca", "Sacramento", "Sacramento", "CA"),
+              ("san-antonio-tx", "San Antonio", "San Antonio", "TX"),
+              ("san-francisco-ca", "San Francisco", "San Francisco", "CA"),
+              ("seattle-wa", "Seattle", "Seattle", "WA"),
+              ("tucson-az", "Tucson", "Tucson", "AZ"),
+              ("tulsa-ok", "Tulsa", "Tulsa", "OK"),
+              ("virginia-beach-va", "Virginia Beach", "Virginia Beach", "VA"),
+              ("washington-dc", "Washington", "Washington", "DC"),
+      };
+
+      // PortalType is a best-effort label from the scraper README (records carry the authoritative provider in source.provider).
+      private static readonly (string SourceId, string MarketSlug, string Name, string PortalType)[] SourceDefs =
+      {
+              ("austin-construction-permits", "austin-tx", "Austin Issued Construction Permits", "socrata"),
+              ("baltimore-building-permits", "baltimore-md", "Open Baltimore Building Permits", "arcgis"),
+              ("boston-building-permits", "boston-ma", "Boston Approved Building Permits", "ckan"),
+              ("charlotte-building-permits", "charlotte-nc", "Mecklenburg County Building Permits", "arcgis"),
+              ("chicago-building-permits", "chicago-il", "Chicago Building Permits", "socrata"),
+              ("cosprings-fire-permits", "colorado-springs-co", "Colorado Springs Fire Department Records", "accela"),
+              ("columbus-building-permits", "columbus-oh", "Columbus Building Permits", "arcgis"),
+              ("detroit-bseed-permits", "detroit-mi", "Detroit BSEED Building Permits", "arcgis"),
+              ("fortworth-permits", "fort-worth-tx", "Fort Worth Permits (CIVIC)", "arcgis"),
+              ("kcmo-issued-permits", "kansas-city-mo", "Kansas City, MO Issued Building Permits", "socrata"),
+              ("la-building-permits", "los-angeles-ca", "LA Building Permits", "socrata"),
+              ("la-electrical-permits", "los-angeles-ca", "LA Electrical Permits", "socrata"),
+              ("louisville-construction-permits", "louisville-ky", "Louisville Active Construction Permits", "arcgis"),
+              ("memphis-dpd-permits", "memphis-tn", "Memphis DPD Building Permits", "socrata"),
+              ("mesa-building-permits", "mesa-az", "Mesa Building Permits", "socrata"),
+              ("miami-building-permits", "miami-fl", "Miami Building Permits (Since 2014)", "arcgis"),
+              ("minneapolis-ccs-permits", "minneapolis-mn", "Minneapolis CCS Permits", "arcgis"),
+              ("nashville-building-permits", "nashville-tn", "Nashville Building Permits Issued", "arcgis"),
+              ("nola-permits", "new-orleans-la", "New Orleans Permits", "socrata"),
+              ("nyc-dobnow-permits", "new-york-city-ny", "NYC DOB NOW Build Approved Permits", "socrata"),
+              ("omaha-fire-permits", "omaha-ne", "Omaha Fire Prevention Records", "accela"),
+              ("philly-permits", "philadelphia-pa", "Philadelphia L&I Building & Trade Permits", "carto"),
+              ("portland-bds-permits", "portland-or", "Portland BDS All Permits", "arcgis"),
+              ("raleigh-building-permits", "raleigh-nc", "Raleigh Building Permits", "arcgis"),
+              ("sacramento-fire-permits-current", "sacramento-ca", "Sacramento Issued Building Permits (County Fire, current year)", "arcgis"),
+              ("sacramento-permits-current", "sacramento-ca", "Sacramento Issued Building Permits (keyword, current year)", "arcgis"),
+              ("sacramento-fire-permits-archive", "sacramento-ca", "Sacramento Issued Building Permits (County Fire, archive)", "arcgis"),
+              ("sacramento-permits-archive", "sacramento-ca", "Sacramento Issued Building Permits (keyword, archive)", "arcgis"),
+              ("sanantonio-permits", "san-antonio-tx", "San Antonio Permits Issued", "ckan"),
+              ("sf-dbi-permits", "san-francisco-ca", "SF DBI Building Permits", "socrata"),
+              ("sf-fire-permits", "san-francisco-ca", "SFFD Fire Permits", "socrata"),
+              ("sf-fire-inspections", "san-francisco-ca", "SFFD Fire Inspections", "socrata"),
+              ("sf-fire-violations", "san-francisco-ca", "SFFD Fire Violations", "socrata"),
+              ("seattle-trade-permits", "seattle-wa", "Seattle Trade Permits", "socrata"),
+              ("tucson-commercial-permits", "tucson-az", "Tucson Commercial Building Permits", "arcgis"),
+              ("tulsa-fire-permits", "tulsa-ok", "Tulsa Fire Prevention Records", "energov"),
+              ("virginia-beach-fire-permits", "virginia-beach-va", "Virginia Beach Building Permits (Fire permit type)", "arcgis"),
+              ("virginia-beach-building-permits", "virginia-beach-va", "Virginia Beach Building Permits (keyword)", "arcgis"),
+              ("dc-permits-2025", "washington-dc", "DC Building Permits 2025", "arcgis"),
+              ("dc-permits-2026", "washington-dc", "DC Building Permits 2026", "arcgis"),
+      };
+
       private static async Task<Dictionary<string, Market>> UpsertMarketsAsync(AppDbContext db, CancellationToken ct)
       {
-          var defs = new (string Slug, string Name, string City)[]
-          {
-              ("houston-tx", "Houston", "Houston"),
-              ("dallas-tx",  "Dallas",  "Dallas"),
-              ("austin-tx",  "Austin",  "Austin"),
-          };
           var result = new Dictionary<string, Market>();
-          foreach (var d in defs)
+          foreach (var d in MarketDefs)
           {
               var m = await db.Markets.FirstOrDefaultAsync(x => x.Slug == d.Slug, ct);
               if (m is null)
               {
-                  m = new Market { Id = Guid.NewGuid(), Slug = d.Slug, Name = d.Name, City = d.City, State = "TX", Active = true };
+                  m = new Market { Id = Guid.NewGuid(), Slug = d.Slug, Name = d.Name, City = d.City, State = d.State, Active = true };
                   db.Markets.Add(m);
               }
               m.Active = true;
@@ -301,31 +380,23 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
       private static async Task<Dictionary<string, Source>> UpsertSourcesAsync(
           AppDbContext db, Dictionary<string, Market> markets, CancellationToken ct)
       {
-          // Jurisdiction MUST match the scraper's COVERAGE_REPORT jurisdiction keys (verify against scraper README).
-          var defs = new (string Jurisdiction, string MarketSlug, string Name, string PortalType, string Url)[]
-          {
-              ("houston-tx",       "houston-tx", "Houston Permitting Center",       "accela",  "https://www.houstonpermittingcenter.org"),
-              ("harris-county-tx", "houston-tx", "Harris County Permits",           "arcgis",  "https://permits.harriscountytx.gov"),
-              ("dallas-tx",        "dallas-tx",  "Dallas Development Services",     "socrata", "https://www.dallasopendata.com"),
-              ("austin-tx",        "austin-tx",  "Austin Development Services",     "socrata", "https://data.austintexas.gov"),
-          };
           var result = new Dictionary<string, Source>();
-          foreach (var d in defs)
+          foreach (var d in SourceDefs)
           {
               var market = markets[d.MarketSlug];
-              var s = await db.Sources.FirstOrDefaultAsync(x => x.Jurisdiction == d.Jurisdiction, ct);
+              var s = await db.Sources.FirstOrDefaultAsync(x => x.Jurisdiction == d.SourceId, ct);
               if (s is null)
               {
                   s = new Source
                   {
-                      Id = Guid.NewGuid(), MarketId = market.Id, Jurisdiction = d.Jurisdiction,
-                      Name = d.Name, City = market.City, State = "TX",
-                      PortalType = d.PortalType, SourceUrl = d.Url,
+                      Id = Guid.NewGuid(), MarketId = market.Id, Jurisdiction = d.SourceId,
+                      Name = d.Name, City = market.City, State = market.State,
+                      PortalType = d.PortalType, SourceUrl = ScraperUrl,
                       Active = true, HealthStatus = HealthStatus.Healthy, RecordsLastRun = 0,
                   };
                   db.Sources.Add(s);
               }
-              result[d.Jurisdiction] = s;
+              result[d.SourceId] = s;
           }
           return result;
       }
@@ -352,7 +423,7 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
       private static async Task UpsertE2EOrgsAsync(
           AppDbContext db, Dictionary<string, Market> markets, IConfiguration config, CancellationToken ct)
       {
-          // Entitled org: active Pro subscription on houston-tx only.
+          // Entitled org: active Pro subscription on austin-tx only.
           var entitledId = config["E2E_ENTITLED_CLERK_USER_ID"];
           if (!string.IsNullOrWhiteSpace(entitledId) &&
               !await db.AppUsers.AnyAsync(u => u.ClerkUserId == entitledId, ct))
@@ -374,7 +445,7 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
               db.Subscriptions.Add(sub);
               db.SubscriptionMarkets.Add(new SubscriptionMarket
               {
-                  SubscriptionId = sub.Id, MarketId = markets["houston-tx"].Id,
+                  SubscriptionId = sub.Id, MarketId = markets["austin-tx"].Id,
               });
           }
 
@@ -406,7 +477,7 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
           var now = DateTime.UtcNow;
           var leads = new SeedLead[]
           {
-              new(101, "houston-tx", "New commercial warehouse with fire sprinkler system", "Commercial New Construction",
+              new(101, "austin-construction-permits", "New commercial warehouse with fire sprinkler system", "Commercial New Construction",
                   "1215 Industrial Blvd", FireCategory.FireSprinkler, 94, 0.95m,
                   "New commercial construction with fire sprinkler scope detected. Permit filed 2 days ago.",
                   PermitStatusKind.Active, 48, 2_800_000m, 85_000, null,
@@ -416,7 +487,7 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
                           ("HIGH_PROJECT_VALUE", "Project value over $500K", 10),
                           ("LARGE_SQUARE_FOOTAGE", "Large commercial footprint", 10),
                           ("NO_CONTRACTOR_LISTED", "No fire contractor listed", 10) }),
-              new(102, "houston-tx", "Office tenant build-out - fire alarm system upgrade", "Commercial Alteration",
+              new(102, "austin-construction-permits", "Office tenant build-out - fire alarm system upgrade", "Commercial Alteration",
                   "500 Main St Ste 300", FireCategory.FireAlarm, 88, 0.9m,
                   "Fire alarm scope in an active office alteration filed yesterday.",
                   PermitStatusKind.New, 24, 750_000m, 12_000, null,
@@ -424,7 +495,7 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
                           ("PERMIT_RECENT", "Permit filed within 72 hours", 15),
                           ("HIGH_PROJECT_VALUE", "Project value over $500K", 10),
                           ("NO_CONTRACTOR_LISTED", "No fire contractor listed", 10) }),
-              new(103, "houston-tx", "Restaurant kitchen hood suppression install", "Mechanical",
+              new(103, "austin-construction-permits", "Restaurant kitchen hood suppression install", "Mechanical",
                   "8801 Westheimer Rd", FireCategory.KitchenSuppression, 76, 0.85m,
                   "Kitchen suppression system required for new restaurant hood.",
                   PermitStatusKind.Active, 120, 180_000m, 4_500, "Gulf Coast Mechanical",
@@ -436,19 +507,19 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
                   new[] { ("FAILED_INSPECTION", "Failed inspection on record", 20),
                           ("FIRE_SPRINKLER_SCOPE", "Sprinkler system involved", 25),
                           ("NO_CONTRACTOR_LISTED", "No fire contractor listed", 10) }),
-              new(105, "houston-tx", "Annual fire inspection - storage facility", "Fire Inspection",
+              new(105, "austin-construction-permits", "Annual fire inspection - storage facility", "Fire Inspection",
                   "4410 N Freeway", FireCategory.FireInspection, 55, 0.8m,
                   "Scheduled fire inspection at a large storage facility.",
                   PermitStatusKind.Inspection, 480, null, 40_000, "SecureStor Facilities",
                   new[] { ("LARGE_SQUARE_FOOTAGE", "Large commercial footprint", 10) }),
-              new(106, "houston-tx", "Completed sprinkler retrofit - closed", "Fire Protection",
+              new(106, "austin-construction-permits", "Completed sprinkler retrofit - closed", "Fire Protection",
                   "77 Harbor Dr", FireCategory.FireSprinkler, 25, 0.9m,
                   "Older sprinkler permit now closed - low priority.",
                   PermitStatusKind.Closed, 2880, 90_000m, null, "Bayou Fire Systems",
                   new[] { ("FIRE_SPRINKLER_SCOPE", "Sprinkler scope", 25),
                           ("OLD_PERMIT", "Permit older than 90 days", -20),
                           ("CLOSED_PERMIT", "Permit closed", -30) }),
-              new(107, "houston-tx", "Data center clean-agent suppression system", "Commercial New Construction",
+              new(107, "austin-construction-permits", "Data center clean-agent suppression system", "Commercial New Construction",
                   "10550 Katy Fwy", FireCategory.FireSuppression, 90, 0.92m,
                   "New data center build with dedicated suppression scope, filed hours ago.",
                   PermitStatusKind.New, 3, 5_200_000m, 60_000, null,
@@ -456,23 +527,23 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
                           ("FIRE_SPRINKLER_SCOPE", "Suppression scope detected", 25),
                           ("PERMIT_RECENT", "Permit filed within 72 hours", 15),
                           ("HIGH_PROJECT_VALUE", "Project value over $500K", 10) }),
-              new(201, "dallas-tx", "Distribution center fire sprinkler system", "Commercial New Construction",
+              new(201, "sanantonio-permits", "Distribution center fire sprinkler system", "Commercial New Construction",
                   "3900 Irving Blvd", FireCategory.FireSprinkler, 92, 0.94m,
-                  "New distribution center with sprinkler scope in Dallas.",
+                  "New distribution center with sprinkler scope in San Antonio.",
                   PermitStatusKind.Active, 36, 3_100_000m, 110_000, null,
                   new[] { ("NEW_COMMERCIAL_BUILD", "New commercial construction", 25),
                           ("FIRE_SPRINKLER_SCOPE", "Explicit sprinkler scope", 25),
                           ("PERMIT_RECENT", "Permit filed within 72 hours", 15),
                           ("LARGE_SQUARE_FOOTAGE", "Large commercial footprint", 10) }),
-              new(202, "dallas-tx", "Apartment renovation - fire alarm replacement", "Multifamily Alteration",
+              new(202, "sanantonio-permits", "Apartment renovation - fire alarm replacement", "Multifamily Alteration",
                   "6100 Gaston Ave", FireCategory.FireAlarm, 70, 0.85m,
                   "Fire alarm replacement in a multifamily renovation.",
                   PermitStatusKind.Active, 96, 420_000m, null, null,
                   new[] { ("FIRE_ALARM_SCOPE", "Explicit fire alarm scope", 20),
                           ("NO_CONTRACTOR_LISTED", "No fire contractor listed", 10) }),
-              new(301, "austin-tx", "Mixed-use tower fire sprinkler rough-in", "Commercial New Construction",
+              new(301, "fortworth-permits", "Mixed-use tower fire sprinkler rough-in", "Commercial New Construction",
                   "98 Red River St", FireCategory.FireSprinkler, 85, 0.93m,
-                  "High-rise sprinkler rough-in underway in Austin.",
+                  "High-rise sprinkler rough-in underway in Fort Worth.",
                   PermitStatusKind.Active, 60, 1_900_000m, 45_000, "Capitol Fire Protection",
                   new[] { ("NEW_COMMERCIAL_BUILD", "New commercial construction", 25),
                           ("FIRE_SPRINKLER_SCOPE", "Explicit sprinkler scope", 25),
@@ -491,7 +562,7 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
                   ExternalId = $"seed-{l.N}", PermitNumber = $"BP2026-{l.N:D5}",
                   PermitType = l.PermitType, Description = l.Title,
                   Status = l.Status, RawStatus = l.Status.ToString().ToUpperInvariant(),
-                  Address = l.Address, City = source.City, State = "TX", Zip = null,
+                  Address = l.Address, City = source.City, State = source.State, Zip = null,
                   FiledDate = filed, IssuedDate = l.Status == PermitStatusKind.New ? null : filed.AddHours(12),
                   EstimatedValue = l.Value, SquareFootage = l.Sqft,
                   OwnerName = null, ContractorName = l.Contractor,
@@ -522,7 +593,7 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
   }
   ```
   Adjust `DbSet` property names (`db.AppUsers`, `db.FireOpportunities`, `db.SubscriptionMarkets`, …) to whatever `AppDbContext` actually exposes — check the file first; do NOT rename the context's sets.
-- [ ] Verify the seeded `Jurisdiction` keys against the scraper: open the scraper repo README's COVERAGE_REPORT jurisdiction key list (Architecture.md §6.1). If its Houston/Dallas/Austin keys differ from `houston-tx`/`harris-county-tx`/`dallas-tx`/`austin-tx`, change the seeder's strings to match the scraper exactly (the ingestion job joins on this value).
+- [ ] Verify the seeded `Jurisdiction` keys against the scraper registry: `node -e 'const r=require("./docs/superpowers/plans/2026-08-19-permittorch-mvp/scraper-source-registry.json");console.log(r.sources.length, r.markets.length)'` → expect `40 31`, and every `SourceDefs` SourceId above must appear in that file (the registry was captured from a real task run; if the scraper adds jurisdictions later, extend BOTH the JSON and `SourceDefs`).
 - [ ] Wire the CLI entry and the startup-migration flag into `apps/api/Program.cs` — insert immediately after `var app = builder.Build();`:
   ```csharp
   if (args.Contains("seed"))
@@ -539,13 +610,13 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
       await migrateScope.ServiceProvider.GetRequiredService<AppDbContext>().Database.MigrateAsync();
   }
   ```
-- [ ] Add `apps/api/tests/PermitTorch.Api.Tests/Data/DevSeederTests.cs` (xUnit, EF InMemory or the test-DB pattern the suite already uses; note `MigrateAsync` must be skipped for InMemory — extract seeding logic so the test calls the upsert methods or guard `MigrateAsync` with `db.Database.IsRelational()`): asserts (1) two consecutive `SeedAsync` calls yield the same market/source/permit counts (idempotent), (2) `G(201)` opportunity belongs to the `dallas-tx` market, (3) no permits are seeded when `APIFY_TOKEN` is set in the test config.
+- [ ] Add `apps/api/tests/PermitTorch.Api.Tests/Data/DevSeederTests.cs` (xUnit, EF InMemory or the test-DB pattern the suite already uses; note `MigrateAsync` must be skipped for InMemory — extract seeding logic so the test calls the upsert methods or guard `MigrateAsync` with `db.Database.IsRelational()`): asserts (1) two consecutive `SeedAsync` calls yield the same market/source/permit counts (idempotent), (2) `G(201)` opportunity belongs to the `san-antonio-tx` market, (3) no permits are seeded when `APIFY_TOKEN` is set in the test config.
 - [ ] Run it for real:
   ```bash
   set -a; source .env; set +a
   dotnet run --project apps/api -- seed
   ```
-  → expect final line: `Seed complete. markets=3 sources=4 permits=10 opportunities=10`. Run it AGAIN → expect identical counts (idempotent).
+  → expect final line: `Seed complete. markets=31 sources=40 permits=10 opportunities=10`. Run it AGAIN → expect identical counts (idempotent).
 - [ ] Gate + commit:
   ```bash
   dotnet test apps/api/tests/PermitTorch.Api.Tests/PermitTorch.Api.Tests.csproj
@@ -566,16 +637,16 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
   → expect: `Now listening on: http://localhost:5000`. Then `curl -s http://localhost:5000/api/health` → expect `{"status":"ok"}`.
 - [ ] Verify CORS: `curl -s -i -X OPTIONS http://localhost:5000/api/leads -H "Origin: http://localhost:3000" -H "Access-Control-Request-Method: GET" | grep -i access-control` → expect `Access-Control-Allow-Origin: http://localhost:3000`. If absent, add to Program.cs (before `builder.Build()`): `builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.WithOrigins(Environment.GetEnvironmentVariable("WEB_ORIGIN") ?? "http://localhost:3000").AllowAnyHeader().AllowAnyMethod()));` and `app.UseCors();` after build; commit `Allow web origin via CORS policy driven by WEB_ORIGIN`.
 - [ ] Start the web app with mock OFF (terminal 2): `pnpm --dir apps/web dev` → expect Next.js ready on `http://localhost:3000`. Confirm no `NEXT_PUBLIC_API_MOCK` in `apps/web/.env.local`.
-- [ ] Verify unauthenticated market data flows from the real API: `curl -s http://localhost:5000/api/markets` → expect JSON array of 3 markets with slugs `houston-tx`, `dallas-tx`, `austin-tx`. Open `http://localhost:3000/locations/texas/houston` in a browser → expect real aggregate numbers (from `/api/markets/houston-tx/stats`), not fixture numbers.
-- [ ] Verify the full auth flow end-to-end (Architecture §5): in the browser, log in at `http://localhost:3000/login` as `e2e-entitled+clerk_test@permittorch.dev` (password = `E2E_USER_PASSWORD`), land on `/app/leads` → expect the seeded Houston leads table (scores 94, 90, 88, …) and an "Updated … ago" freshness line. This proves: Clerk session → JWT minted with issuer `https://<subdomain>.clerk.accounts.dev` → API validates against `CLERK_JWKS_URL` → entitlement query returns houston-tx rows only.
+- [ ] Verify unauthenticated market data flows from the real API: `curl -s http://localhost:5000/api/markets` → expect JSON array of 31 markets including slugs `austin-tx`, `san-antonio-tx`, `fort-worth-tx`. Open `http://localhost:3000/locations/texas/austin` in a browser → expect real aggregate numbers (from `/api/markets/austin-tx/stats`), not fixture numbers.
+- [ ] Verify the full auth flow end-to-end (Architecture §5): in the browser, log in at `http://localhost:3000/login` as `e2e-entitled+clerk_test@permittorch.dev` (password = `E2E_USER_PASSWORD`), land on `/app/leads` → expect the seeded Austin leads table (scores 94, 90, 88, …) and an "Updated … ago" freshness line. This proves: Clerk session → JWT minted with issuer `https://<subdomain>.clerk.accounts.dev` → API validates against `CLERK_JWKS_URL` → entitlement query returns austin-tx rows only.
 - [ ] Verify entitlement scoping at the API layer directly. In the browser devtools console on `/app/leads` run `await window.Clerk.session.getToken()` and copy the JWT, then:
   ```bash
   TOKEN="<paste>"
   curl -s "http://localhost:5000/api/leads?page=1&pageSize=25" -H "Authorization: Bearer $TOKEN" | head -c 600
-  # → expect: items[] containing only city "Houston" leads, total 7, freshness.lastUpdatedAt non-null
+  # → expect: items[] containing only city "Austin" leads, total 7, freshness.lastUpdatedAt non-null
   curl -s -o /dev/null -w "%{http_code}\n" \
     "http://localhost:5000/api/leads/00000000-0000-4000-8000-000000000201" -H "Authorization: Bearer $TOKEN"
-  # → expect: 404   (Dallas lead is outside the entitled market)
+  # → expect: 404   (San Antonio lead is outside the entitled market)
   ```
 - [ ] Log in as `e2e-unentitled+clerk_test@permittorch.dev` → expect `/app/leads` to show the locked/empty no-subscription state (whatever WS4 built), never another org's data.
 
@@ -865,9 +936,9 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     });
 
-    test("locations page renders seeded Houston market with real stats", async ({ page }) => {
-      await page.goto("/locations/texas/houston");
-      await expect(page.getByRole("heading", { name: /houston/i }).first()).toBeVisible();
+    test("locations page renders seeded Austin market with real stats", async ({ page }) => {
+      await page.goto("/locations/texas/austin");
+      await expect(page.getByRole("heading", { name: /austin/i }).first()).toBeVisible();
       await expect(page.getByText(/last 30 days|opportunities/i).first()).toBeVisible();
       await expect(page.getByText(/updated/i).first()).toBeVisible();
     });
@@ -914,7 +985,7 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
 ## Task 13: E2E specs — leads flow, saved flow, entitlement negative
 
 **Files:** `e2e/tests/leads.spec.ts`, `e2e/tests/saved.spec.ts`, `e2e/tests/entitlement.spec.ts` (create).
-**Interfaces:** consumes seeded data (Task 8): entitled user sees exactly 7 Houston leads; Dallas opportunity id `00000000-0000-4000-8000-000000000201`; score-signal rows render `+NN` weights.
+**Interfaces:** consumes seeded data (Task 8): entitled user sees exactly 7 Austin leads; San Antonio opportunity id `00000000-0000-4000-8000-000000000201`; score-signal rows render `+NN` weights.
 
 - [ ] Create `e2e/tests/leads.spec.ts`:
   ```typescript
@@ -932,7 +1003,7 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
       const rows = page.getByRole("row").or(page.getByTestId("lead-card"));
       const before = await rows.count();
 
-      // Filter to Fire Alarm — seeded Houston data has exactly one alarm lead (score 88)
+      // Filter to Fire Alarm — seeded Austin data has exactly one alarm lead (score 88)
       await page.getByLabel(/category/i).selectOption({ label: /fire alarm/i as unknown as string });
       await expect(page.getByText("88")).toBeVisible();
       await expect(page.getByText("94")).toHaveCount(0);
@@ -954,7 +1025,7 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
       await expect(page.getByText(/why this/i).first()).toBeVisible();
       await expect(page.getByText("+25").first()).toBeVisible(); // NEW_COMMERCIAL_BUILD signal weight
       await expect(page.getByText(/new commercial construction/i).first()).toBeVisible();
-      await expect(page.getByText(/houston permitting center/i)).toBeVisible(); // source block
+      await expect(page.getByText(/austin permitting center/i)).toBeVisible(); // source block
     });
   });
   ```
@@ -984,7 +1055,7 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
   import { test, expect } from "@playwright/test";
   import { signIn, getApiToken, USERS } from "../helpers/auth";
 
-  const DALLAS_LEAD_ID = "00000000-0000-4000-8000-000000000201";
+  const SAN_ANTONIO_LEAD_ID = "00000000-0000-4000-8000-000000000201";
   const API = "http://localhost:5000";
 
   test.describe("market entitlement", () => {
@@ -998,10 +1069,10 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
     });
 
     test("direct API GET of a non-entitled lead returns 404", async ({ page }) => {
-      await signIn(page, USERS.entitled); // entitled to houston-tx ONLY
+      await signIn(page, USERS.entitled); // entitled to austin-tx ONLY
       await page.goto("/app/leads");
       const token = await getApiToken(page);
-      const res = await page.request.get(`${API}/api/leads/${DALLAS_LEAD_ID}`, {
+      const res = await page.request.get(`${API}/api/leads/${SAN_ANTONIO_LEAD_ID}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       expect(res.status()).toBe(404); // master §6: 404 outside entitled markets, never 403 leaking existence
@@ -1016,7 +1087,7 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
       });
       const body = (await res.json()) as { items: { city: string }[]; total: number };
       expect(body.total).toBe(7);
-      expect(body.items.every((i) => i.city === "Houston")).toBe(true);
+      expect(body.items.every((i) => i.city === "Austin")).toBe(true);
     });
   });
   ```
@@ -1058,16 +1129,16 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
     test("SuperAdmin sees source health", async ({ page }) => {
       await signIn(page, USERS.superadmin);
       await page.goto("/app/admin/sources");
-      await expect(page.getByText(/houston permitting center/i)).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText(/austin permitting center/i)).toBeVisible({ timeout: 15_000 });
       await expect(page.getByText(/healthy/i).first()).toBeVisible();
-      await expect(page.getByText(/dallas development services/i)).toBeVisible();
+      await expect(page.getByText(/san antonio permits issued/i)).toBeVisible();
     });
 
     test("member is redirected away from admin", async ({ page }) => {
       await signIn(page, USERS.entitled); // Role: Member
       await page.goto("/app/admin/sources");
       await expect(page).not.toHaveURL(/\/app\/admin/, { timeout: 15_000 });
-      await expect(page.getByText(/houston permitting center/i)).toHaveCount(0);
+      await expect(page.getByText(/austin permitting center/i)).toHaveCount(0);
     });
   });
   ```
@@ -1180,7 +1251,7 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
 - [ ] Commit: `git add apps/web/Dockerfile apps/web/.dockerignore apps/web/next.config.ts && git commit -m "Add standalone Next.js Dockerfile for monorepo web deployment"`.
 - [ ] **HUMAN:** Push the repo to GitHub (create a private repo, `git remote add origin …`, `git push -u origin main`) — Railway deploys from GitHub.
 - [ ] **HUMAN:** Create the Railway project. At https://railway.app → **New Project** → name `permittorch` → **Add PostgreSQL** (provisions the `Postgres` service with private networking).
-- [ ] **HUMAN:** Add the API service: **New → GitHub Repo** → select the repo → open the service **Settings**: set **Service name** `api`; under Build set **Dockerfile Path** `apps/api/Dockerfile` (Root Directory stays `/` — the Dockerfile needs repo-root context); under **Networking** click **Generate Domain** (note it: `https://api-….up.railway.app`); under **Healthcheck** set path `/api/health`. In **Variables** add: `DATABASE_URL=${{Postgres.DATABASE_URL}}` (reference — resolves to the private-network URL), `RUN_MIGRATIONS_ON_STARTUP=true`, `CLERK_SECRET_KEY`, `CLERK_JWKS_URL`, `CLERK_ISSUER`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (production value arrives in Task 17), `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_TERRITORY`, `RESEND_API_KEY`, `EMAIL_FROM`, `SENTRY_DSN`, `APIFY_TOKEN`, `APIFY_ACTOR_ID`, `CLERK_SUPERADMIN_USER_ID`, `CLERK_SUPERADMIN_EMAIL`, and `WEB_ORIGIN=<web public URL from the next step, come back to fill it>`. Deploy → expect healthcheck green.
+- [ ] **HUMAN:** Add the API service: **New → GitHub Repo** → select the repo → open the service **Settings**: set **Service name** `api`; under Build set **Dockerfile Path** `apps/api/Dockerfile` (Root Directory stays `/` — the Dockerfile needs repo-root context); under **Networking** click **Generate Domain** (note it: `https://api-….up.railway.app`); under **Healthcheck** set path `/api/health`. In **Variables** add: `DATABASE_URL=${{Postgres.DATABASE_URL}}` (reference — resolves to the private-network URL), `RUN_MIGRATIONS_ON_STARTUP=true`, `CLERK_SECRET_KEY`, `CLERK_JWKS_URL`, `CLERK_ISSUER`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (production value arrives in Task 17), `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_TERRITORY`, `RESEND_API_KEY`, `EMAIL_FROM`, `SENTRY_DSN`, `APIFY_TOKEN`, `APIFY_TASK_ID`, `CLERK_SUPERADMIN_USER_ID`, `CLERK_SUPERADMIN_EMAIL`, and `WEB_ORIGIN=<web public URL from the next step, come back to fill it>`. Deploy → expect healthcheck green.
 - [ ] **HUMAN:** Add the web service: **New → GitHub Repo** (same repo) → **Service name** `web`; **Dockerfile Path** `apps/web/Dockerfile`; **Generate Domain** (`https://web-….up.railway.app`); Healthcheck path `/`. Variables: `NEXT_PUBLIC_API_URL=https://<api public domain>` (PUBLIC domain — the browser calls it; do not use `api.railway.internal`), `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_SENTRY_DSN`. (These are consumed at build time via the Dockerfile ARGs — Railway passes them automatically.) Deploy → expect `/` returns the homepage. Now go back and set the API service's `WEB_ORIGIN` to this web URL and redeploy the API (CORS + Stripe redirect base).
 - [ ] **HUMAN:** Seed production data (one-time): install Railway CLI (`brew install railway`), `railway login`, `railway link` (pick the `permittorch` project + `api` service environment), then run the seeder against the prod DB from your machine: `railway run --service api bash -c 'dotnet run --project apps/api -- seed'` — OR simpler and dependency-free: temporarily set a variable `SEED_ON_BOOT` is NOT provided; instead run locally with the prod DB URL: copy `DATABASE_URL` from the Postgres service's **Connect** tab (PUBLIC URL variant), then locally `DATABASE_URL="<prod public url>" CLERK_SUPERADMIN_USER_ID=... dotnet run --project apps/api -- seed` → expect the Task 8 seed-complete line. Remove the URL from your shell history afterward.
 
@@ -1198,14 +1269,14 @@ If web hosting ever moves to Vercel: import the GitHub repo at https://vercel.co
 
   | Var | Railway service |
   | --- | --- |
-  | `DATABASE_URL`, `APIFY_TOKEN`, `APIFY_ACTOR_ID`, `CLERK_SECRET_KEY`, `CLERK_JWKS_URL`, `CLERK_ISSUER`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_TERRITORY`, `RESEND_API_KEY`, `EMAIL_FROM`, `SENTRY_DSN`, `WEB_ORIGIN`, `RUN_MIGRATIONS_ON_STARTUP`, `CLERK_SUPERADMIN_USER_ID`, `CLERK_SUPERADMIN_EMAIL` | api |
+  | `DATABASE_URL`, `APIFY_TOKEN`, `APIFY_TASK_ID`, `CLERK_SECRET_KEY`, `CLERK_JWKS_URL`, `CLERK_ISSUER`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_TERRITORY`, `RESEND_API_KEY`, `EMAIL_FROM`, `SENTRY_DSN`, `WEB_ORIGIN`, `RUN_MIGRATIONS_ON_STARTUP`, `CLERK_SUPERADMIN_USER_ID`, `CLERK_SUPERADMIN_EMAIL` | api |
   | `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_SENTRY_DSN` | web |
 
   (`NEXT_PUBLIC_API_MOCK` is deliberately absent everywhere in production.)
 - [ ] Smoke test the deployed system (substitute the real domains):
   ```bash
   curl -s https://<api>/api/health                       # → {"status":"ok"}
-  curl -s https://<api>/api/markets | head -c 300        # → JSON array with houston-tx
+  curl -s https://<api>/api/markets | head -c 300        # → JSON array with austin-tx
   curl -s -o /dev/null -w "%{http_code}\n" https://<web>/            # → 200
   curl -s -o /dev/null -w "%{http_code}\n" https://<web>/pricing     # → 200
   curl -s https://<web>/sitemap.xml | head -5            # → <urlset ...> with absolute URLs
@@ -1225,16 +1296,16 @@ If web hosting ever moves to Vercel: import the GitHub repo at https://vercel.co
   git status --short                                   # → empty (everything committed)
   docker compose up -d && docker compose ps            # → postgres (healthy)
   set -a; source .env; set +a
-  dotnet run --project apps/api -- seed                # → Seed complete. markets=3 sources=4 permits=10 opportunities=10
+  dotnet run --project apps/api -- seed                # → Seed complete. markets=31 sources=40 permits=10 opportunities=10
   dotnet test apps/api/tests/PermitTorch.Api.Tests/PermitTorch.Api.Tests.csproj
                                                        # → Passed! - Failed: 0 (all WS1+WS2+WS5 suites)
   pnpm -r typecheck                                    # → exit 0, zero TS errors
   pnpm --dir apps/web exec vitest run                  # → Test Files N passed (marketing + app + analytics suites)
   pnpm --dir e2e exec playwright test                  # → all specs passed (count recorded in Task 14)
   ```
-- [ ] Manual SEO checks (PRD §50) against the local web server (`pnpm --dir apps/web dev` running) on 3 pages — `/`, `/pricing`, `/locations/texas/houston`:
+- [ ] Manual SEO checks (PRD §50) against the local web server (`pnpm --dir apps/web dev` running) on 3 pages — `/`, `/pricing`, `/locations/texas/austin`:
   ```bash
-  for p in "" "pricing" "locations/texas/houston"; do
+  for p in "" "pricing" "locations/texas/austin"; do
     echo "== /$p"
     curl -s "http://localhost:3000/$p" | grep -oE "<title>[^<]+</title>" | head -1
     curl -s "http://localhost:3000/$p" | grep -coE 'rel="canonical"'
@@ -1247,7 +1318,7 @@ If web hosting ever moves to Vercel: import the GitHub repo at https://vercel.co
 - [ ] Update `Tasks.md` to reflect shipped scope — evidence-gated, edit these exact items:
   - Phase 1.1: check all six items. First reword the hosting line to match reality: `Provision Railway (API + PostgreSQL + web); wire env vars` — then check it.
   - Phase 1.2: check all eleven items (WS1 merged + gates green).
-  - Phase 1.3: check homepage, pricing, how-it-works, Houston page, two additional market pages (dallas/austin seeded + pages verified above), SEO infrastructure, free lead magnet. For `Weekly lead digest to captured emails`: run `grep -rn "SampleLeadRequest" apps/api/Features/EmailDigests/ apps/api/Jobs/` — check the box only if the digest job actually mails captured sample-lead emails; otherwise leave unchecked (known scope gap, note it in the final report).
+  - Phase 1.3: check homepage, pricing, how-it-works, Austin page, two additional market pages (san-antonio/fort-worth seeded + pages verified above), SEO infrastructure, free lead magnet. For `Weekly lead digest to captured emails`: run `grep -rn "SampleLeadRequest" apps/api/Features/EmailDigests/ apps/api/Jobs/` — check the box only if the digest job actually mails captured sample-lead emails; otherwise leave unchecked (known scope gap, note it in the final report).
   - Phase 2.1, 2.2, 2.3: check all items (WS2/WS4 merged, E2E proved auth, entitlement, billing, saved leads, digest prefs, admin).
   - Phase 2.4: check `CSV export` (route exists per master §6 — verify `grep -rn "export.csv" apps/api/Features/Leads/` first) and `PostHog events` (Task 10). For `Free-account gating` run `grep -rn "trial\|locked" apps/web/app/app/leads/` and check only if the 3-visible/rest-locked behavior shipped; for `LLM classification fallback` run `grep -rn "llm\|openai\|anthropic\|Claude" -i apps/api/Domain/Classification/` and check only on evidence; for `Terms of service + privacy policy` run `ls apps/web/app/\(marketing\)/terms apps/web/app/\(marketing\)/privacy 2>/dev/null` and check only if the pages exist. Leave any unshipped item unchecked.
   - Phase 0 and Phase 3: untouched.

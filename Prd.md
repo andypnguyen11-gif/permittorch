@@ -1937,6 +1937,8 @@ CSV export is enough.
 
 # 65. MVP Markets
 
+> **Amendment (2026-09-26):** Houston — used as the illustrative first market throughout this document — turned out to have no record-level permit dataset on any open-data platform, so the scraper cannot support it (Dallas, Phoenix and Denver are unsupported for similar reasons). The MVP launch scope is instead **every jurisdiction the scraper supports: 31 metros across 24 states** (registry in `docs/superpowers/plans/2026-08-19-permittorch-mvp/scraper-source-registry.json`). The Houston examples elsewhere in this PRD remain as illustrations of the product experience; the market-selection criteria below still govern which of the 31 are promoted on the marketing site.
+
 Do not select markets purely by population.
 
 Score potential markets based on:

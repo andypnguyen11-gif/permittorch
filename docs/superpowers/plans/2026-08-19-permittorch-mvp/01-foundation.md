@@ -51,10 +51,9 @@
   dotnet --list-sdks # expect a 10.0.x entry
   docker info --format '{{.ServerVersion}}'  # expect a version (daemon running)
   ```
-- [ ] Commit the pending planning documents so worktrees branched later contain them:
+- [ ] Confirm the planning documents are committed (they were committed on 2026-09-26; only act if `git status --porcelain docs Architecture.md` prints anything):
   ```bash
-  git add docs Architecture.md
-  git commit -m "Add master plan and workstream contracts for MVP build"
+  git status --porcelain docs Architecture.md   # expect: no output
   ```
 - [ ] Create `/Users/andynguyen/Desktop/Permit Torch/.gitignore`:
   ```gitignore
@@ -82,10 +81,11 @@
   .env.*
   !.env.example
 
-  # OS / editor
+  # OS / editor / agent scratch
   .DS_Store
   .idea/
   .vscode/
+  .claude/*.lock
   ```
 - [ ] Create `/Users/andynguyen/Desktop/Permit Torch/pnpm-workspace.yaml`:
   ```yaml
@@ -1981,9 +1981,9 @@
   # ── apps/api ────────────────────────────────────────────────
   # Npgsql connection string
   DATABASE_URL=Host=localhost;Port=5432;Database=permittorch;Username=postgres;Password=postgres
-  # Apify Actor API access
+  # Apify API access — token + the dedicated task id (scrapelabmax/permittorch-daily); see master §9/§10
   APIFY_TOKEN=
-  APIFY_ACTOR_ID=
+  APIFY_TASK_ID=
   # Clerk JWT validation
   CLERK_SECRET_KEY=
   CLERK_JWKS_URL=

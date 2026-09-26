@@ -228,7 +228,8 @@ public record CoverageReport(
     int FailedJurisdictions, int UnsupportedJurisdictions, int SkippedJurisdictions,
     int RecordsFound,
     JsonElement[] UnsupportedDetails, JsonElement[] FailedDetails, JsonElement[] SkippedDetails,
-    SourceStat[] SourceStats);
+    SourceStat[] SourceStats,
+    JsonElement? ChargeLimit = null, JsonElement[]? SkippedSources = null);   // added 2026-09-26 — see §10
 
 public record SourceStat(
     string SourceId, string JurisdictionKey,          // e.g. "tulsa-fire-permits", "ok/tulsa"
@@ -242,7 +243,7 @@ public record SourceCoverage(int Held, int HeldUnknownTypes, int Delivered,
 
 Normalizer mapping into `NormalizedPermit` (which is unchanged — the domain never sees the raw shape): `ExternalId = RecordId` · `Jurisdiction = Source.SourceId` · `PermitType = FireSystemType` (classifier hint) · `Status/RawStatus ← PermitStatus` · `Address = Address.Street`, `City/State/Zip/Latitude/Longitude` from `Address` (fall back to `Jurisdiction.City/State`) · `FiledDate ← ApplicationDate` · `EstimatedValue = ProjectValue` · `SquareFootage = null` (not emitted by this provider) · `OwnerName = Owner.Name ?? Owner.Company`, `ContractorName = Contractor.Name ?? Contractor.Company` · `SourceUrl = Source.Url`.
 
-Rules: dataset capped at 5,000 records/run; per-source completeness judged from `CoverageReport.SourceStats` (`ok`, `coverage.outcome`/`truncatedBy`), never run status alone; scraper `LeadScore`/`LeadSignals`/`FireSystemType` are raw input at most — canonical score comes from `ScoringEngine`, canonical category from `FireClassifier` (which may use the `FireSystemType` hint via `PermitType` before falling back to description regex).
+Rules: the API consumes runs of the dedicated Apify **task** `scrapelabmax/permittorch-daily` (fixed input: all 31 supported cities, `onlyNewRecords: true`, `maxResults: 5000`), never the actor's last run — manual/test actor runs must never reach production; dataset capped at 5,000 records/run; per-source completeness judged from `CoverageReport.SourceStats` (`ok`, `coverage.outcome`/`truncatedBy`), never run status alone; scraper `LeadScore`/`LeadSignals`/`FireSystemType` are raw input at most — canonical score comes from `ScoringEngine`, canonical category from `FireClassifier` (which may use the `FireSystemType` hint via `PermitType` before falling back to description regex).
 
 ---
 
@@ -251,7 +252,9 @@ Rules: dataset capped at 5,000 records/run; per-source completeness judged from 
 ```csharp
 // Infrastructure/IPermitSourceProvider.cs
 public interface IPermitSourceProvider {
-    Task<ProviderRunResult?> FetchLatestRunAsync(CancellationToken ct);
+    // Returns the OLDEST succeeded task run not yet present in scraper_runs (by ApifyRunId); null when caught up.
+    // One run per ingestion pass — backfill runs and missed polls are caught up on successive passes.
+    Task<ProviderRunResult?> FetchNextRunAsync(CancellationToken ct);
 }
 public record ProviderRunResult(string RunId, string Status, DateTime StartedAt,
     DateTime? FinishedAt, IReadOnlyList<RawPermitRecord> Records, CoverageReport? Coverage);
@@ -407,7 +410,7 @@ export interface LeadsQuery {
 | Var | Where | Purpose |
 | --- | --- | --- |
 | `DATABASE_URL` | api | Npgsql connection string |
-| `APIFY_TOKEN`, `APIFY_ACTOR_ID` | api | Actor API access |
+| `APIFY_TOKEN`, `APIFY_TASK_ID` | api | Apify API access — the API polls the runs of the dedicated task `scrapelabmax/permittorch-daily` (id `xatpyth2FgbUydjLd`), never the actor's last run (§10, 2026-09-26) |
 | `CLERK_SECRET_KEY`, `CLERK_JWKS_URL`, `CLERK_ISSUER` | api | JWT validation |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_TERRITORY` | api | Billing |
 | `RESEND_API_KEY`, `EMAIL_FROM` | api | Digest + transactional email |
@@ -428,6 +431,13 @@ export interface LeadsQuery {
 - **API dev base URL:** `http://localhost:5000`. Solution file: `apps/api/PermitTorch.sln`.
 - **Raw scraper shape corrected against real run output (2026-08-20):** §4 was originally written from a relayed description; a real run (`40Atzgu9WPoPC10YU`, captured in `scraper-sample.json`) showed the actual shape is nested (`jurisdiction{}`, `address{}`, `owner{}`, `contractor{}`, `source{}`), keyed by `recordId`, with `applicationDate`/`projectValue` (not `filedDate`/`estimatedValue`), no `squareFootage`, typed numbers for `projectValue`/`leadScore`/`latitude`/`longitude`, plus new fields (`fireSystemType`, `workType`, `expirationDate`, inspection fields, `violations`, `leadSignals`). `COVERAGE_REPORT` jurisdiction counts are integers (not string arrays) and `sourceStats[]` uses `sourceId`/`jurisdictionKey`/`ok`/`emittedCount`/`coverage{}`. §4 now shows the verified shape; blast radius is WS1 only — `NormalizedPermit` and everything downstream are unchanged, except `Permit.SquareFootage` stays null from this provider (the `LARGE_SQUARE_FOOTAGE` signal simply never fires for it).
 
+- **Task-based ingestion + 31-market launch scope (2026-09-26):**
+  - **Houston is unsupported by the scraper** (no record-level permit dataset exists — scraper README §2 lists it under known-unsupported metros alongside Dallas, Phoenix and Denver). Launch scope is therefore **all 31 scraper-supported jurisdictions** (registry in `scraper-source-registry.json`: 31 markets, 40 source IDs, captured from task run `cH1rI8svA59YgyW58`). Market pages still generate only for markets with real data (CLAUDE.md guardrail). Mock fixtures in WS3/WS4 keep their illustrative Houston/Dallas/Austin data — they never reach production.
+  - **Ingestion polls a dedicated Apify task, not the actor.** Env var `APIFY_ACTOR_ID` is replaced by `APIFY_TASK_ID` (task `scrapelabmax/permittorch-daily`, id `xatpyth2FgbUydjLd`; daily schedule `0 6 * * *` UTC exists but stays **disabled** until WS5 deploy). `ApifyClient.GetLastRunAsync` is replaced by `GetTaskRunsAsync` (`GET /v2/actor-tasks/{taskId}/runs?desc=true&limit=50`). `IPermitSourceProvider.FetchLatestRunAsync` is renamed `FetchNextRunAsync` and returns the **oldest** `SUCCEEDED` run whose id is not yet in `scraper_runs` (one run per pass, so deploy-time backfill runs and missed polls are caught up in order). WS1-local helper `ApifyRunEnvelope` becomes `ApifyRunListEnvelope(ApifyRunList Data)` / `ApifyRunList(ApifyRun[] Items)`.
+  - **`CoverageReport` gains two optional fields** the actor now emits: `chargeLimit { leadsWithinLimit, reached }` and `skippedSources[] { sourceId, jurisdictionKey, reason }` (both modelled as nullable `JsonElement` so the 2026-08-20 sample still deserializes). Ingestion treats a source listed in `skippedSources` as **not run** this pass (health unchanged), never as failed.
+  - **Owner runs bill compute only.** The actor is pay-per-event for renters, but the owner account (`scrapelabmax`) is charged platform usage only (verified: 24 charged result events, $0.0019 billed). The task sets an explicit `maxTotalChargeUsd` so the actor never self-caps to the plan balance.
+  - **Dev seeder (WS5)** seeds the 31 markets and 40 sources from the registry; E2E fixtures move from Houston/Dallas/Austin to Austin/San Antonio/Fort Worth.
+
 ## 11. Workstream Plan Files
 
 | File | Workstream |
@@ -438,3 +448,4 @@ export interface LeadsQuery {
 | `04-marketing-site.md` | WS3 — public pages, SEO infra, lead magnet |
 | `05-app-dashboard.md` | WS4 — dashboard, lead detail, saved, account, admin UI (mock API) |
 | `06-integration-e2e.md` | WS5 — real wiring, seeds, Playwright, deploy (serial, last) |
+| `scraper-source-registry.json` | Data — 31 markets ↔ 40 scraper source IDs (seeder input; captured 2026-09-26) |

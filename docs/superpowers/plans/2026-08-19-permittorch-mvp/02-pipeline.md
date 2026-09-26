@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (- [ ]) syntax for tracking.
 
-**Goal:** Build the complete WS1 ingestion pipeline — Apify provider, normalization, deduplication, fire classification, deterministic scoring, ingestion + source-health background jobs, and DI wiring — exactly per the LOCKED contracts in the master plan §4–§5.
+**Goal:** Build the complete WS1 ingestion pipeline — Apify task-run provider, normalization, deduplication, fire classification, deterministic scoring, ingestion + source-health background jobs, and DI wiring — exactly per the LOCKED contracts in the master plan §4–§5.
 
-**Architecture:** A `BackgroundService` polls the latest Apify actor run through the `IPermitSourceProvider` abstraction (Apify structures never leak past `Infrastructure/`), then runs each raw record through the provider-agnostic stages normalize → dedupe → classify → score and persists Permits, FireOpportunities, LeadSignals, ScraperRuns, and per-source health into PostgreSQL via the WS0 EF Core schema. Scoring is deterministic and rule-based with weights bound from configuration; every point is persisted as a `LeadSignal`.
+**Architecture:** A `BackgroundService` polls the runs of the dedicated Apify task `permittorch-daily` (oldest not-yet-ingested succeeded run first) through the `IPermitSourceProvider` abstraction (Apify structures never leak past `Infrastructure/`), then runs each raw record through the provider-agnostic stages normalize → dedupe → classify → score and persists Permits, FireOpportunities, LeadSignals, ScraperRuns, and per-source health into PostgreSQL via the WS0 EF Core schema. Scoring is deterministic and rule-based with weights bound from configuration; every point is persisted as a `LeadSignal`.
 
 **Tech Stack:** .NET 10, ASP.NET Core hosted services, EF Core 10 + Npgsql, System.Text.Json, xUnit, Testcontainers.PostgreSql (all packages already installed by WS0).
 
@@ -66,11 +66,11 @@ WS1-specific constraints:
 - Produces (LOCKED shapes from master §4 — verified against real run `40Atzgu9WPoPC10YU`, see `scraper-sample.json` — plus two WS1-local helper records):
   - `record RawPermitRecord(string RecordId, RawJurisdiction? Jurisdiction, string? BusinessName, string? ProjectName, RawAddress? Address, string? RecordType, string? FireSystemType, string? WorkType, string? PermitNumber, string? PermitStatus, string? ApplicationDate, string? IssuedDate, string? ExpirationDate, string? InspectionDate, string? InspectionStatus, JsonElement[]? Violations, string? Description, decimal? ProjectValue, string? PropertyType, RawParty? Owner, RawContractor? Contractor, int? LeadScore, string[]? LeadSignals, RawSource? Source, string? ScrapedAt)`
   - `record RawJurisdiction(string? City, string? County, string? State)` · `record RawAddress(string? Street, string? City, string? State, string? Zip, double? Latitude, double? Longitude)` · `record RawParty(string? Name, string? Company)` · `record RawContractor(string? Name, string? Company, string? LicenseNumber)` · `record RawSource(string? SourceId, string? Jurisdiction, string? Provider, string? Url)`
-  - `record CoverageReport(int RequestedJurisdictions, int SupportedJurisdictions, int SuccessfulJurisdictions, int FailedJurisdictions, int UnsupportedJurisdictions, int SkippedJurisdictions, int RecordsFound, JsonElement[] UnsupportedDetails, JsonElement[] FailedDetails, JsonElement[] SkippedDetails, SourceStat[] SourceStats)`
+  - `record CoverageReport(int RequestedJurisdictions, int SupportedJurisdictions, int SuccessfulJurisdictions, int FailedJurisdictions, int UnsupportedJurisdictions, int SkippedJurisdictions, int RecordsFound, JsonElement[] UnsupportedDetails, JsonElement[] FailedDetails, JsonElement[] SkippedDetails, SourceStat[] SourceStats, JsonElement? ChargeLimit = null, JsonElement[]? SkippedSources = null)`
   - `record SourceStat(string SourceId, string JurisdictionKey, bool Ok, int RawCount, int EmittedCount, int RequestCount, long DurationMs, string? Error, JsonElement? AddressShortfall, SourceCoverage? Coverage)`
   - `record SourceCoverage(int Held, int HeldUnknownTypes, int Delivered, string? Outcome, string[] TruncatedBy, int TypesSearched, int TypesTotal)`
-  - `record ApifyRun(string Id, string Status, DateTime StartedAt, DateTime? FinishedAt, string DefaultDatasetId, string DefaultKeyValueStoreId)` (WS1 helper — Apify run object)
-  - `record ApifyRunEnvelope(ApifyRun Data)` (WS1 helper — Apify wraps responses in `{ "data": ... }`)
+  - `record ApifyRun(string Id, string Status, DateTime StartedAt, DateTime? FinishedAt, string DefaultDatasetId, string DefaultKeyValueStoreId)` (WS1 helper — Apify run object as returned by the task-runs list)
+  - `record ApifyRunList(ApifyRun[] Items)` · `record ApifyRunListEnvelope(ApifyRunList Data)` (WS1 helpers — the task-runs list endpoint wraps its page as `{ "data": { "items": [...] } }`)
 
 - [ ] **Step 1: Write the failing test**
 
@@ -239,32 +239,50 @@ public class ApifyModelsTests
     }
 
     [Fact]
-    public void ApifyRunEnvelope_DeserializesRunFields()
+    public void ApifyRunListEnvelope_DeserializesRunItems()
     {
+        // Shape of GET /v2/actor-tasks/{taskId}/runs (newest first when desc=true).
         const string json = """
         {
           "data": {
-            "id": "run-abc123",
-            "status": "SUCCEEDED",
-            "startedAt": "2026-08-19T10:00:00.000Z",
-            "finishedAt": "2026-08-19T10:04:30.000Z",
-            "defaultDatasetId": "ds-1",
-            "defaultKeyValueStoreId": "kv-1"
+            "total": 2, "offset": 0, "limit": 50, "desc": true, "count": 2,
+            "items": [
+              {
+                "id": "run-newer",
+                "status": "SUCCEEDED",
+                "startedAt": "2026-08-20T10:00:00.000Z",
+                "finishedAt": "2026-08-20T10:04:30.000Z",
+                "defaultDatasetId": "ds-2",
+                "defaultKeyValueStoreId": "kv-2"
+              },
+              {
+                "id": "run-older",
+                "status": "FAILED",
+                "startedAt": "2026-08-19T10:00:00.000Z",
+                "finishedAt": null,
+                "defaultDatasetId": "ds-1",
+                "defaultKeyValueStoreId": "kv-1"
+              }
+            ]
           }
         }
         """;
 
-        var envelope = JsonSerializer.Deserialize<ApifyRunEnvelope>(json, Web);
+        var envelope = JsonSerializer.Deserialize<ApifyRunListEnvelope>(json, Web);
 
         Assert.NotNull(envelope);
-        var run = envelope!.Data;
-        Assert.Equal("run-abc123", run.Id);
-        Assert.Equal("SUCCEEDED", run.Status);
-        Assert.Equal(new DateTime(2026, 8, 19, 10, 0, 0, DateTimeKind.Utc), run.StartedAt);
-        Assert.Equal(new DateTime(2026, 8, 19, 10, 4, 30, DateTimeKind.Utc), run.FinishedAt);
-        Assert.Equal("ds-1", run.DefaultDatasetId);
-        Assert.Equal("kv-1", run.DefaultKeyValueStoreId);
+        var items = envelope!.Data.Items;
+        Assert.Equal(2, items.Length);
+        Assert.Equal("run-newer", items[0].Id);
+        Assert.Equal("SUCCEEDED", items[0].Status);
+        Assert.Equal(new DateTime(2026, 8, 20, 10, 0, 0, DateTimeKind.Utc), items[0].StartedAt);
+        Assert.Equal(new DateTime(2026, 8, 20, 10, 4, 30, DateTimeKind.Utc), items[0].FinishedAt);
+        Assert.Equal("ds-2", items[0].DefaultDatasetId);
+        Assert.Equal("kv-2", items[0].DefaultKeyValueStoreId);
+        Assert.Equal("FAILED", items[1].Status);
+        Assert.Null(items[1].FinishedAt);
     }
+
 }
 ```
 
@@ -318,7 +336,9 @@ public record CoverageReport(
     int FailedJurisdictions, int UnsupportedJurisdictions, int SkippedJurisdictions,
     int RecordsFound,
     JsonElement[] UnsupportedDetails, JsonElement[] FailedDetails, JsonElement[] SkippedDetails,
-    SourceStat[] SourceStats);
+    SourceStat[] SourceStats,
+    JsonElement? ChargeLimit = null,        // { leadsWithinLimit, reached } — emitted since scraper 0.1.11
+    JsonElement[]? SkippedSources = null);  // [{ sourceId, jurisdictionKey, reason }] — sources not run this pass
 
 // LOCKED shape — master plan §4.
 public record SourceStat(
@@ -331,12 +351,13 @@ public record SourceCoverage(int Held, int HeldUnknownTypes, int Delivered,
     string? Outcome,                    // e.g. "max-records" when the result cap truncated output
     string[] TruncatedBy, int TypesSearched, int TypesTotal);
 
-// WS1 helper: subset of the Apify Run object (GET /v2/acts/{actorId}/runs/last).
+// WS1 helper: subset of the Apify Run object (items of GET /v2/actor-tasks/{taskId}/runs).
 public record ApifyRun(string Id, string Status, DateTime StartedAt, DateTime? FinishedAt,
     string DefaultDatasetId, string DefaultKeyValueStoreId);
 
-// WS1 helper: Apify wraps single-object responses in { "data": ... }.
-public record ApifyRunEnvelope(ApifyRun Data);
+// WS1 helpers: the task-runs list endpoint wraps its page as { "data": { "items": [...] } }.
+public record ApifyRunList(ApifyRun[] Items);
+public record ApifyRunListEnvelope(ApifyRunList Data);
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
@@ -360,10 +381,10 @@ git commit -m "Add Apify scraper contract models"
 - Test: `apps/api/tests/PermitTorch.Api.Tests/Infrastructure/ApifyClientTests.cs`
 
 **Interfaces:**
-- Consumes: `RawPermitRecord`, `CoverageReport`, `ApifyRun`, `ApifyRunEnvelope` (Task 1); `APIFY_TOKEN` / `APIFY_ACTOR_ID` from `IConfiguration` (master §9 env vars).
+- Consumes: `RawPermitRecord`, `CoverageReport`, `ApifyRun`, `ApifyRunListEnvelope` (Task 1); `APIFY_TOKEN` / `APIFY_TASK_ID` from `IConfiguration` (master §9 env vars; task `scrapelabmax/permittorch-daily`, id `xatpyth2FgbUydjLd`).
 - Produces:
-  - `class ApifyClient` with ctor `ApifyClient(HttpClient http, IConfiguration configuration)` (throws `InvalidOperationException` if `APIFY_TOKEN` or `APIFY_ACTOR_ID` missing)
-  - `Task<ApifyRun?> GetLastRunAsync(CancellationToken ct)` — `GET /v2/acts/{actorId}/runs/last?token=…`; null on 404
+  - `class ApifyClient` with ctor `ApifyClient(HttpClient http, IConfiguration configuration)` (throws `InvalidOperationException` if `APIFY_TOKEN` or `APIFY_TASK_ID` missing)
+  - `Task<IReadOnlyList<ApifyRun>> GetTaskRunsAsync(CancellationToken ct)` — `GET /v2/actor-tasks/{taskId}/runs?token=…&desc=true&limit=50` (newest first); empty list on 404
   - `Task<IReadOnlyList<RawPermitRecord>> GetDatasetItemsAsync(string datasetId, CancellationToken ct)` — `GET /v2/datasets/{datasetId}/items?token=…&clean=true&format=json`
   - `Task<CoverageReport?> GetCoverageReportAsync(string keyValueStoreId, CancellationToken ct)` — `GET /v2/key-value-stores/{storeId}/records/COVERAGE_REPORT?token=…`; null on 404
 
@@ -413,7 +434,7 @@ public class ApifyClientTests
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["APIFY_TOKEN"] = "test-token",
-            ["APIFY_ACTOR_ID"] = "acme~permit-scraper",
+            ["APIFY_TASK_ID"] = "pt-task-1",
         }).Build();
         return new ApifyClient(http, config);
     }
@@ -427,49 +448,49 @@ public class ApifyClientTests
         };
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
-            ["APIFY_ACTOR_ID"] = "acme~permit-scraper",
+            ["APIFY_TASK_ID"] = "pt-task-1",
         }).Build();
 
         Assert.Throws<InvalidOperationException>(() => new ApifyClient(http, config));
     }
 
     [Fact]
-    public async Task GetLastRunAsync_CallsLastRunEndpoint_WithActorIdAndToken()
+    public async Task GetTaskRunsAsync_CallsTaskRunsEndpoint_NewestFirst()
     {
         var handler = new FakeHttpMessageHandler(_ => Json("""
         {
           "data": {
-            "id": "run-abc123",
-            "status": "SUCCEEDED",
-            "startedAt": "2026-08-19T10:00:00.000Z",
-            "finishedAt": "2026-08-19T10:04:30.000Z",
-            "defaultDatasetId": "ds-1",
-            "defaultKeyValueStoreId": "kv-1"
+            "total": 2, "offset": 0, "limit": 50, "desc": true, "count": 2,
+            "items": [
+              { "id": "run-newer", "status": "SUCCEEDED", "startedAt": "2026-08-20T10:00:00.000Z", "finishedAt": "2026-08-20T10:04:30.000Z", "defaultDatasetId": "ds-2", "defaultKeyValueStoreId": "kv-2" },
+              { "id": "run-older", "status": "SUCCEEDED", "startedAt": "2026-08-19T10:00:00.000Z", "finishedAt": "2026-08-19T10:04:30.000Z", "defaultDatasetId": "ds-1", "defaultKeyValueStoreId": "kv-1" }
+            ]
           }
         }
         """));
         var client = CreateClient(handler);
 
-        var run = await client.GetLastRunAsync(CancellationToken.None);
+        var runs = await client.GetTaskRunsAsync(CancellationToken.None);
 
-        Assert.NotNull(run);
-        Assert.Equal("run-abc123", run!.Id);
-        Assert.Equal("SUCCEEDED", run.Status);
-        Assert.Equal("ds-1", run.DefaultDatasetId);
+        Assert.Equal(2, runs.Count);
+        Assert.Equal("run-newer", runs[0].Id);
+        Assert.Equal("ds-2", runs[0].DefaultDatasetId);
+        Assert.Equal("run-older", runs[1].Id);
         var uri = Assert.Single(handler.Requests).RequestUri!;
-        Assert.Equal("/v2/acts/acme~permit-scraper/runs/last", uri.AbsolutePath);
+        Assert.Equal("/v2/actor-tasks/pt-task-1/runs", uri.AbsolutePath);
         Assert.Contains("token=test-token", uri.Query);
+        Assert.Contains("desc=true", uri.Query);
     }
 
     [Fact]
-    public async Task GetLastRunAsync_ReturnsNull_On404()
+    public async Task GetTaskRunsAsync_ReturnsEmpty_On404()
     {
         var handler = new FakeHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
         var client = CreateClient(handler);
 
-        var run = await client.GetLastRunAsync(CancellationToken.None);
+        var runs = await client.GetTaskRunsAsync(CancellationToken.None);
 
-        Assert.Null(run);
+        Assert.Empty(runs);
     }
 
     [Fact]
@@ -600,25 +621,28 @@ public sealed class ApifyClient
 
     private readonly HttpClient _http;
     private readonly string _token;
-    private readonly string _actorId;
+    private readonly string _taskId;
 
     public ApifyClient(HttpClient http, IConfiguration configuration)
     {
         _http = http;
         _token = configuration["APIFY_TOKEN"]
             ?? throw new InvalidOperationException("APIFY_TOKEN is not configured");
-        _actorId = configuration["APIFY_ACTOR_ID"]
-            ?? throw new InvalidOperationException("APIFY_ACTOR_ID is not configured");
+        _taskId = configuration["APIFY_TASK_ID"]
+            ?? throw new InvalidOperationException("APIFY_TASK_ID is not configured");
     }
 
-    public async Task<ApifyRun?> GetLastRunAsync(CancellationToken ct)
+    // Runs of the dedicated PermitTorch task, newest first. 50 is ample for one daily run plus
+    // deploy-time backfill runs; the provider picks the oldest not-yet-ingested one.
+    public async Task<IReadOnlyList<ApifyRun>> GetTaskRunsAsync(CancellationToken ct)
     {
-        var url = $"/v2/acts/{Uri.EscapeDataString(_actorId)}/runs/last?token={Uri.EscapeDataString(_token)}";
+        var url = $"/v2/actor-tasks/{Uri.EscapeDataString(_taskId)}/runs" +
+                  $"?token={Uri.EscapeDataString(_token)}&desc=true&limit=50";
         using var response = await _http.GetAsync(url, ct);
-        if (response.StatusCode == HttpStatusCode.NotFound) return null;
+        if (response.StatusCode == HttpStatusCode.NotFound) return Array.Empty<ApifyRun>();
         response.EnsureSuccessStatusCode();
-        var envelope = await response.Content.ReadFromJsonAsync<ApifyRunEnvelope>(JsonOptions, ct);
-        return envelope?.Data;
+        var envelope = await response.Content.ReadFromJsonAsync<ApifyRunListEnvelope>(JsonOptions, ct);
+        return envelope?.Data?.Items ?? Array.Empty<ApifyRun>();
     }
 
     public async Task<IReadOnlyList<RawPermitRecord>> GetDatasetItemsAsync(string datasetId, CancellationToken ct)
@@ -641,7 +665,7 @@ public sealed class ApifyClient
 }
 ```
 
-Note: `Uri.EscapeDataString(_actorId)` keeps `~` intact (unreserved character), so `acme~permit-scraper` produces the path Apify expects.
+Note: Apify task IDs are alphanumeric, so `Uri.EscapeDataString(_taskId)` is a no-op in practice but keeps the URL safe if a `username~task-name` form is ever configured (`~` is unreserved and stays intact).
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -667,9 +691,9 @@ git commit -m "Add typed Apify REST client"
 **Interfaces:**
 - Consumes: `ApifyClient` (Task 2); `RawPermitRecord`, `CoverageReport`, `ApifyRun` (Task 1); WS0 `AppDbContext` (`PermitTorch.Api.Data`) and entity `ScraperRun` (field `ApifyRunId`); `Testcontainers.PostgreSql` (installed by WS0).
 - Produces (LOCKED from master §5):
-  - `interface IPermitSourceProvider { Task<ProviderRunResult?> FetchLatestRunAsync(CancellationToken ct); }`
+  - `interface IPermitSourceProvider { Task<ProviderRunResult?> FetchNextRunAsync(CancellationToken ct); }` (renamed from `FetchLatestRunAsync`, master §10 2026-09-26)
   - `record ProviderRunResult(string RunId, string Status, DateTime StartedAt, DateTime? FinishedAt, IReadOnlyList<RawPermitRecord> Records, CoverageReport? Coverage)`
-  - `class ApifyPermitProvider : IPermitSourceProvider` with ctor `ApifyPermitProvider(ApifyClient client, AppDbContext db, ILogger<ApifyPermitProvider> logger)` — returns null when there is no run, when the latest run's status is not `SUCCEEDED`, or when a `ScraperRun` row with the same `ApifyRunId` already exists.
+  - `class ApifyPermitProvider : IPermitSourceProvider` with ctor `ApifyPermitProvider(ApifyClient client, AppDbContext db, ILogger<ApifyPermitProvider> logger)` — lists the task's runs, keeps only `SUCCEEDED` ones, drops those whose id already exists as `ScraperRun.ApifyRunId`, and returns the **oldest remaining by `StartedAt`** (so backfill runs and missed polls are ingested in order, one per pass); returns null when the task has no runs or every succeeded run is already ingested.
   - Test infrastructure reused by Tasks 7–8: `PostgresFixture` (xUnit collection fixture named `"postgres"`) exposing `string ConnectionString` and `AppDbContext CreateContext()`.
 
 - [ ] **Step 1: Write the shared Postgres fixture**
@@ -739,6 +763,7 @@ using PermitTorch.Api.Data;
 using PermitTorch.Api.Infrastructure;
 using PermitTorch.Api.Infrastructure.Apify;
 using System.Collections.Generic;
+using System.Linq;
 using Xunit;
 
 namespace PermitTorch.Api.Tests.Infrastructure;
@@ -755,18 +780,19 @@ public class ApifyPermitProviderTests
         Content = new StringContent(body, Encoding.UTF8, "application/json")
     };
 
-    private static string LastRunJson(string runId, string status) => $$"""
-    {
-      "data": {
-        "id": "{{runId}}",
-        "status": "{{status}}",
-        "startedAt": "2026-08-19T10:00:00.000Z",
-        "finishedAt": "2026-08-19T10:04:30.000Z",
-        "defaultDatasetId": "ds-1",
-        "defaultKeyValueStoreId": "kv-1"
-      }
-    }
+    private static string RunItemJson(string runId, string status, string startedAt) => $$"""
+        {
+          "id": "{{runId}}",
+          "status": "{{status}}",
+          "startedAt": "{{startedAt}}",
+          "finishedAt": "2026-08-19T10:04:30.000Z",
+          "defaultDatasetId": "ds-1",
+          "defaultKeyValueStoreId": "kv-1"
+        }
     """;
+
+    private static string RunListJson(params (string RunId, string Status, string StartedAt)[] runs) =>
+        "{ \"data\": { \"items\": [" + string.Join(",", runs.Select(r => RunItemJson(r.RunId, r.Status, r.StartedAt))) + "] } }";
 
     // Trimmed real record from scraper-sample.json.
     private const string DatasetJson = """
@@ -807,12 +833,13 @@ public class ApifyPermitProviderTests
     }
     """;
 
-    private static ApifyClient CreateApifyClient(string runId, string status)
+    // runs are given newest-first, exactly as the Apify list endpoint returns them with desc=true.
+    private static ApifyClient CreateApifyClient(params (string RunId, string Status, string StartedAt)[] runs)
     {
         var handler = new FakeHttpMessageHandler(req =>
         {
             var path = req.RequestUri!.AbsolutePath;
-            if (path == "/v2/acts/acme~permit-scraper/runs/last") return Json(LastRunJson(runId, status));
+            if (path == "/v2/actor-tasks/pt-task-1/runs") return Json(RunListJson(runs));
             if (path == "/v2/datasets/ds-1/items") return Json(DatasetJson);
             if (path == "/v2/key-value-stores/kv-1/records/COVERAGE_REPORT") return Json(CoverageJson);
             return new HttpResponseMessage(HttpStatusCode.NotFound);
@@ -821,20 +848,20 @@ public class ApifyPermitProviderTests
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["APIFY_TOKEN"] = "test-token",
-            ["APIFY_ACTOR_ID"] = "acme~permit-scraper",
+            ["APIFY_TASK_ID"] = "pt-task-1",
         }).Build();
         return new ApifyClient(http, config);
     }
 
     [Fact]
-    public async Task FetchLatestRunAsync_ReturnsRecordsAndCoverage_ForNewSucceededRun()
+    public async Task FetchNextRunAsync_ReturnsRecordsAndCoverage_ForNewSucceededRun()
     {
         var runId = $"run-{Guid.NewGuid():N}";
         await using var db = _fixture.CreateContext();
         var provider = new ApifyPermitProvider(
-            CreateApifyClient(runId, "SUCCEEDED"), db, NullLogger<ApifyPermitProvider>.Instance);
+            CreateApifyClient((runId, "SUCCEEDED", "2026-08-19T10:00:00.000Z")), db, NullLogger<ApifyPermitProvider>.Instance);
 
-        var result = await provider.FetchLatestRunAsync(CancellationToken.None);
+        var result = await provider.FetchNextRunAsync(CancellationToken.None);
 
         Assert.NotNull(result);
         Assert.Equal(runId, result!.RunId);
@@ -848,7 +875,63 @@ public class ApifyPermitProviderTests
     }
 
     [Fact]
-    public async Task FetchLatestRunAsync_ReturnsNull_WhenRunAlreadyIngested()
+    public async Task FetchNextRunAsync_ReturnsOldestUningestedRun_WhenSeveralAreNew()
+    {
+        var older = $"run-{Guid.NewGuid():N}";
+        var newer = $"run-{Guid.NewGuid():N}";
+        await using var db = _fixture.CreateContext();
+        var provider = new ApifyPermitProvider(
+            CreateApifyClient(
+                (newer, "SUCCEEDED", "2026-08-20T10:00:00.000Z"),
+                (older, "SUCCEEDED", "2026-08-19T10:00:00.000Z")),
+            db, NullLogger<ApifyPermitProvider>.Instance);
+
+        var result = await provider.FetchNextRunAsync(CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal(older, result!.RunId);   // oldest first — backfill runs are ingested in order
+    }
+
+    [Fact]
+    public async Task FetchNextRunAsync_SkipsIngestedRuns_AndReturnsNextOne()
+    {
+        var ingested = $"run-{Guid.NewGuid():N}";
+        var pending = $"run-{Guid.NewGuid():N}";
+        await using (var seed = _fixture.CreateContext())
+        {
+            seed.Add(new ScraperRun
+            {
+                Id = Guid.NewGuid(),
+                SourceId = null,
+                ApifyRunId = ingested,
+                Status = "SUCCEEDED",
+                StartedAt = DateTime.UtcNow.AddHours(-2),
+                FinishedAt = DateTime.UtcNow.AddHours(-2),
+                RecordsImported = 1,
+                DuplicatesSkipped = 0,
+                Classified = 1,
+                Failures = 0,
+                DurationSeconds = 10,
+                CoverageReportJson = null,
+            });
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = _fixture.CreateContext();
+        var provider = new ApifyPermitProvider(
+            CreateApifyClient(
+                (pending, "SUCCEEDED", "2026-08-20T10:00:00.000Z"),
+                (ingested, "SUCCEEDED", "2026-08-19T10:00:00.000Z")),
+            db, NullLogger<ApifyPermitProvider>.Instance);
+
+        var result = await provider.FetchNextRunAsync(CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal(pending, result!.RunId);
+    }
+
+    [Fact]
+    public async Task FetchNextRunAsync_ReturnsNull_WhenEveryRunAlreadyIngested()
     {
         var runId = $"run-{Guid.NewGuid():N}";
         await using (var seed = _fixture.CreateContext())
@@ -873,43 +956,47 @@ public class ApifyPermitProviderTests
 
         await using var db = _fixture.CreateContext();
         var provider = new ApifyPermitProvider(
-            CreateApifyClient(runId, "SUCCEEDED"), db, NullLogger<ApifyPermitProvider>.Instance);
+            CreateApifyClient((runId, "SUCCEEDED", "2026-08-19T10:00:00.000Z")), db, NullLogger<ApifyPermitProvider>.Instance);
 
-        var result = await provider.FetchLatestRunAsync(CancellationToken.None);
+        var result = await provider.FetchNextRunAsync(CancellationToken.None);
 
         Assert.Null(result);
     }
 
     [Fact]
-    public async Task FetchLatestRunAsync_ReturnsNull_WhenLatestRunNotSucceeded()
+    public async Task FetchNextRunAsync_IgnoresRunsThatDidNotSucceed()
     {
         await using var db = _fixture.CreateContext();
         var provider = new ApifyPermitProvider(
-            CreateApifyClient($"run-{Guid.NewGuid():N}", "FAILED"), db, NullLogger<ApifyPermitProvider>.Instance);
+            CreateApifyClient(
+                ($"run-{Guid.NewGuid():N}", "FAILED", "2026-08-20T10:00:00.000Z"),
+                ($"run-{Guid.NewGuid():N}", "RUNNING", "2026-08-19T10:00:00.000Z")),
+            db, NullLogger<ApifyPermitProvider>.Instance);
 
-        var result = await provider.FetchLatestRunAsync(CancellationToken.None);
+        var result = await provider.FetchNextRunAsync(CancellationToken.None);
 
         Assert.Null(result);
     }
 
     [Fact]
-    public async Task FetchLatestRunAsync_ReturnsNull_WhenActorHasNoRuns()
+    public async Task FetchNextRunAsync_ReturnsNull_WhenTaskHasNoRuns()
     {
         var handler = new FakeHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.apify.com") };
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["APIFY_TOKEN"] = "test-token",
-            ["APIFY_ACTOR_ID"] = "acme~permit-scraper",
+            ["APIFY_TASK_ID"] = "pt-task-1",
         }).Build();
         await using var db = _fixture.CreateContext();
         var provider = new ApifyPermitProvider(
             new ApifyClient(http, config), db, NullLogger<ApifyPermitProvider>.Instance);
 
-        var result = await provider.FetchLatestRunAsync(CancellationToken.None);
+        var result = await provider.FetchNextRunAsync(CancellationToken.None);
 
         Assert.Null(result);
     }
+
 }
 ```
 
@@ -931,10 +1018,11 @@ using PermitTorch.Api.Infrastructure.Apify;
 
 namespace PermitTorch.Api.Infrastructure;
 
-// LOCKED interface — master plan §5. Do not rename.
+// LOCKED interface — master plan §5 (renamed FetchLatestRunAsync → FetchNextRunAsync in §10, 2026-09-26). Do not rename.
 public interface IPermitSourceProvider
 {
-    Task<ProviderRunResult?> FetchLatestRunAsync(CancellationToken ct);
+    // Oldest SUCCEEDED task run not yet in scraper_runs; null when caught up.
+    Task<ProviderRunResult?> FetchNextRunAsync(CancellationToken ct);
 }
 
 // LOCKED shape — master plan §5.
@@ -946,6 +1034,7 @@ Create `apps/api/Infrastructure/ApifyPermitProvider.cs`:
 
 ```csharp
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
@@ -968,26 +1057,32 @@ public sealed class ApifyPermitProvider : IPermitSourceProvider
         _logger = logger;
     }
 
-    public async Task<ProviderRunResult?> FetchLatestRunAsync(CancellationToken ct)
+    public async Task<ProviderRunResult?> FetchNextRunAsync(CancellationToken ct)
     {
-        var run = await _client.GetLastRunAsync(ct);
+        var runs = await _client.GetTaskRunsAsync(ct);
+        var succeeded = runs
+            .Where(r => string.Equals(r.Status, "SUCCEEDED", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (succeeded.Count == 0)
+        {
+            _logger.LogInformation("No succeeded Apify task runs found for configured task");
+            return null;
+        }
+
+        var candidateIds = succeeded.Select(r => r.Id).ToList();
+        var ingestedIds = await _db.Set<ScraperRun>()
+            .Where(r => candidateIds.Contains(r.ApifyRunId))
+            .Select(r => r.ApifyRunId)
+            .ToListAsync(ct);
+
+        // Oldest first so deploy-time backfill runs (and any missed polls) are ingested in order.
+        var run = succeeded
+            .Where(r => !ingestedIds.Contains(r.Id))
+            .OrderBy(r => r.StartedAt)
+            .FirstOrDefault();
         if (run is null)
         {
-            _logger.LogInformation("No Apify runs found for configured actor");
-            return null;
-        }
-
-        if (!string.Equals(run.Status, "SUCCEEDED", StringComparison.OrdinalIgnoreCase))
-        {
-            _logger.LogInformation("Latest Apify run {RunId} has status {Status}; skipping ingestion",
-                run.Id, run.Status);
-            return null;
-        }
-
-        var alreadyIngested = await _db.Set<ScraperRun>().AnyAsync(r => r.ApifyRunId == run.Id, ct);
-        if (alreadyIngested)
-        {
-            _logger.LogInformation("Apify run {RunId} already ingested; skipping", run.Id);
+            _logger.LogInformation("All {Count} succeeded Apify task runs already ingested", succeeded.Count);
             return null;
         }
 
@@ -1001,13 +1096,13 @@ public sealed class ApifyPermitProvider : IPermitSourceProvider
 - [ ] **Step 5: Run test to verify it passes**
 
 Run: `dotnet test apps/api/tests/PermitTorch.Api.Tests --filter "FullyQualifiedName~ApifyPermitProviderTests"`
-Expected: PASS — 4 tests passed (Docker must be running for Testcontainers; the fixture starts one `postgres:17-alpine` container shared by the collection).
+Expected: PASS — 6 tests passed (Docker must be running for Testcontainers; the fixture starts one `postgres:17-alpine` container shared by the collection).
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add apps/api/Infrastructure/IPermitSourceProvider.cs apps/api/Infrastructure/ApifyPermitProvider.cs apps/api/tests/PermitTorch.Api.Tests/Infrastructure/PostgresFixture.cs apps/api/tests/PermitTorch.Api.Tests/Infrastructure/ApifyPermitProviderTests.cs
-git commit -m "Add Apify permit source provider with already-ingested run skip"
+git commit -m "Add Apify task-run provider that ingests the oldest pending run"
 ```
 
 ---
@@ -2027,12 +2122,12 @@ git commit -m "Add configurable deterministic lead scoring engine"
   - `public Task<ScraperRun?> RunOnceAsync(CancellationToken ct)` — one full ingestion pass; returns the persisted `ScraperRun` row or null when the provider has nothing new (used by tests and callable by WS5 seed tooling)
   - Poll interval from configuration key `Ingestion:IntervalMinutes` (default 15)
 - Behavior contract:
-  1. Fetch via `IPermitSourceProvider.FetchLatestRunAsync`; null → do nothing.
+  1. Fetch via `IPermitSourceProvider.FetchNextRunAsync`; null → do nothing. (One run per pass; the next pass picks up the next pending run.)
   2. Per record: `PermitNormalizer.Normalize` → resolve `Source` by matching `NormalizedPermit.Jurisdiction` (which carries the scraper's `source.sourceId`, e.g. `"tulsa-fire-permits"`) against the `Source.Jurisdiction` entity field (which stores the scraper sourceId — master §3), case-insensitive; unknown → log warning, count as failure, skip.
   3. Dedupe upsert: match on `(SourceId, ExternalId)`, else fingerprint fallback within the same source; existing rows get `LastSeenAt`/`UpdatedAt` refreshed and non-null incoming fields merged — never overwrite a non-null column with null (PRD §62). New rows count as imported, matches as duplicates.
   4. `FireClassifier.Classify`; when classified: upsert `FireOpportunity` (preserve `FirstDetectedAt`), recompute `LeadScore`/`Reason` via `ScoringEngine`, and replace all `LeadSignal` rows.
   5. Persist a `ScraperRun` row with counts, duration, and raw `CoverageReportJson`.
-  6. Update per-source health from `CoverageReport.SourceStats` (matched by `stat.SourceId` against `Source.Jurisdiction`): `stat.Ok == false` → `Failed` (log `stat.Error`); truncated — `stat.Coverage != null && (Coverage.TruncatedBy.Length > 0 || Coverage.Outcome == "max-records")` — → `Warning` (+ `LastSuccessfulRunAt`, `RecordsLastRun = stat.EmittedCount`; the run did succeed partially); otherwise → `Healthy` + `LastSuccessfulRunAt`, `RecordsLastRun = stat.EmittedCount`. Sources with `HealthStatus.Disabled` are never touched.
+  6. Sources listed in `CoverageReport.SkippedSources` (not run this pass — cap or charge limit hit before they were reached) are left untouched: no health change, no `LastSuccessfulRunAt` update. Update per-source health from `CoverageReport.SourceStats` (matched by `stat.SourceId` against `Source.Jurisdiction`): `stat.Ok == false` → `Failed` (log `stat.Error`); truncated — `stat.Coverage != null && (Coverage.TruncatedBy.Length > 0 || Coverage.Outcome == "max-records")` — → `Warning` (+ `LastSuccessfulRunAt`, `RecordsLastRun = stat.EmittedCount`; the run did succeed partially); otherwise → `Healthy` + `LastSuccessfulRunAt`, `RecordsLastRun = stat.EmittedCount`. Sources with `HealthStatus.Disabled` are never touched.
   7. Per-record exceptions are caught, logged, and counted as failures — one bad record never kills the run.
 
 - [ ] **Step 1: Write the failing integration test**
@@ -2064,7 +2159,7 @@ public sealed class FakePermitSourceProvider : IPermitSourceProvider
 {
     private readonly ProviderRunResult? _result;
     public FakePermitSourceProvider(ProviderRunResult? result) => _result = result;
-    public Task<ProviderRunResult?> FetchLatestRunAsync(CancellationToken ct) => Task.FromResult(_result);
+    public Task<ProviderRunResult?> FetchNextRunAsync(CancellationToken ct) => Task.FromResult(_result);
 }
 
 [Collection("postgres")]
@@ -2468,7 +2563,7 @@ public sealed class IngestionJob : BackgroundService
         var provider = scope.ServiceProvider.GetRequiredService<IPermitSourceProvider>();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-        var run = await provider.FetchLatestRunAsync(ct);
+        var run = await provider.FetchNextRunAsync(ct);
         if (run is null) return null;
 
         // Source.Jurisdiction stores the scraper sourceId (master §3); records carry it as
@@ -3041,7 +3136,7 @@ public class PipelineSetupTests
         var settings = new Dictionary<string, string?>
         {
             ["APIFY_TOKEN"] = "test-token",
-            ["APIFY_ACTOR_ID"] = "acme~permit-scraper",
+            ["APIFY_TASK_ID"] = "pt-task-1",
         };
         if (extraConfig is not null)
         {

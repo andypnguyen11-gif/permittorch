@@ -1,0 +1,468 @@
+{
+  "capturedFrom": {
+    "taskId": "xatpyth2FgbUydjLd",
+    "runId": "cH1rI8svA59YgyW58",
+    "capturedAt": "2026-09-26"
+  },
+  "markets": [
+    {
+      "slug": "austin-tx",
+      "name": "Austin",
+      "city": "Austin",
+      "state": "TX",
+      "jurisdictionKey": "tx/austin"
+    },
+    {
+      "slug": "baltimore-md",
+      "name": "Baltimore",
+      "city": "Baltimore",
+      "state": "MD",
+      "jurisdictionKey": "md/baltimore"
+    },
+    {
+      "slug": "boston-ma",
+      "name": "Boston",
+      "city": "Boston",
+      "state": "MA",
+      "jurisdictionKey": "ma/boston"
+    },
+    {
+      "slug": "charlotte-nc",
+      "name": "Charlotte",
+      "city": "Charlotte",
+      "state": "NC",
+      "jurisdictionKey": "nc/charlotte"
+    },
+    {
+      "slug": "chicago-il",
+      "name": "Chicago",
+      "city": "Chicago",
+      "state": "IL",
+      "jurisdictionKey": "il/chicago"
+    },
+    {
+      "slug": "colorado-springs-co",
+      "name": "Colorado Springs",
+      "city": "Colorado Springs",
+      "state": "CO",
+      "jurisdictionKey": "co/colorado-springs"
+    },
+    {
+      "slug": "columbus-oh",
+      "name": "Columbus",
+      "city": "Columbus",
+      "state": "OH",
+      "jurisdictionKey": "oh/columbus"
+    },
+    {
+      "slug": "detroit-mi",
+      "name": "Detroit",
+      "city": "Detroit",
+      "state": "MI",
+      "jurisdictionKey": "mi/detroit"
+    },
+    {
+      "slug": "fort-worth-tx",
+      "name": "Fort Worth",
+      "city": "Fort Worth",
+      "state": "TX",
+      "jurisdictionKey": "tx/fort-worth"
+    },
+    {
+      "slug": "kansas-city-mo",
+      "name": "Kansas City",
+      "city": "Kansas City",
+      "state": "MO",
+      "jurisdictionKey": "mo/kansas-city"
+    },
+    {
+      "slug": "los-angeles-ca",
+      "name": "Los Angeles",
+      "city": "Los Angeles",
+      "state": "CA",
+      "jurisdictionKey": "ca/los-angeles"
+    },
+    {
+      "slug": "louisville-ky",
+      "name": "Louisville",
+      "city": "Louisville",
+      "state": "KY",
+      "jurisdictionKey": "ky/louisville"
+    },
+    {
+      "slug": "memphis-tn",
+      "name": "Memphis",
+      "city": "Memphis",
+      "state": "TN",
+      "jurisdictionKey": "tn/memphis"
+    },
+    {
+      "slug": "mesa-az",
+      "name": "Mesa",
+      "city": "Mesa",
+      "state": "AZ",
+      "jurisdictionKey": "az/mesa"
+    },
+    {
+      "slug": "miami-fl",
+      "name": "Miami",
+      "city": "Miami",
+      "state": "FL",
+      "jurisdictionKey": "fl/miami"
+    },
+    {
+      "slug": "minneapolis-mn",
+      "name": "Minneapolis",
+      "city": "Minneapolis",
+      "state": "MN",
+      "jurisdictionKey": "mn/minneapolis"
+    },
+    {
+      "slug": "nashville-tn",
+      "name": "Nashville",
+      "city": "Nashville",
+      "state": "TN",
+      "jurisdictionKey": "tn/nashville"
+    },
+    {
+      "slug": "new-orleans-la",
+      "name": "New Orleans",
+      "city": "New Orleans",
+      "state": "LA",
+      "jurisdictionKey": "la/new-orleans"
+    },
+    {
+      "slug": "new-york-city-ny",
+      "name": "New York City",
+      "city": "New York City",
+      "state": "NY",
+      "jurisdictionKey": "ny/new-york-city"
+    },
+    {
+      "slug": "omaha-ne",
+      "name": "Omaha",
+      "city": "Omaha",
+      "state": "NE",
+      "jurisdictionKey": "ne/omaha"
+    },
+    {
+      "slug": "philadelphia-pa",
+      "name": "Philadelphia",
+      "city": "Philadelphia",
+      "state": "PA",
+      "jurisdictionKey": "pa/philadelphia"
+    },
+    {
+      "slug": "portland-or",
+      "name": "Portland",
+      "city": "Portland",
+      "state": "OR",
+      "jurisdictionKey": "or/portland"
+    },
+    {
+      "slug": "raleigh-nc",
+      "name": "Raleigh",
+      "city": "Raleigh",
+      "state": "NC",
+      "jurisdictionKey": "nc/raleigh"
+    },
+    {
+      "slug": "sacramento-ca",
+      "name": "Sacramento",
+      "city": "Sacramento",
+      "state": "CA",
+      "jurisdictionKey": "ca/sacramento"
+    },
+    {
+      "slug": "san-antonio-tx",
+      "name": "San Antonio",
+      "city": "San Antonio",
+      "state": "TX",
+      "jurisdictionKey": "tx/san-antonio"
+    },
+    {
+      "slug": "san-francisco-ca",
+      "name": "San Francisco",
+      "city": "San Francisco",
+      "state": "CA",
+      "jurisdictionKey": "ca/san-francisco"
+    },
+    {
+      "slug": "seattle-wa",
+      "name": "Seattle",
+      "city": "Seattle",
+      "state": "WA",
+      "jurisdictionKey": "wa/seattle"
+    },
+    {
+      "slug": "tucson-az",
+      "name": "Tucson",
+      "city": "Tucson",
+      "state": "AZ",
+      "jurisdictionKey": "az/tucson"
+    },
+    {
+      "slug": "tulsa-ok",
+      "name": "Tulsa",
+      "city": "Tulsa",
+      "state": "OK",
+      "jurisdictionKey": "ok/tulsa"
+    },
+    {
+      "slug": "virginia-beach-va",
+      "name": "Virginia Beach",
+      "city": "Virginia Beach",
+      "state": "VA",
+      "jurisdictionKey": "va/virginia-beach"
+    },
+    {
+      "slug": "washington-dc",
+      "name": "Washington",
+      "city": "Washington",
+      "state": "DC",
+      "jurisdictionKey": "dc/washington"
+    }
+  ],
+  "sources": [
+    {
+      "sourceId": "austin-construction-permits",
+      "marketSlug": "austin-tx",
+      "name": "Austin Issued Construction Permits",
+      "portalType": "socrata"
+    },
+    {
+      "sourceId": "baltimore-building-permits",
+      "marketSlug": "baltimore-md",
+      "name": "Open Baltimore Building Permits",
+      "portalType": "arcgis"
+    },
+    {
+      "sourceId": "boston-building-permits",
+      "marketSlug": "boston-ma",
+      "name": "Boston Approved Building Permits",
+      "portalType": "ckan"
+    },
+    {
+      "sourceId": "charlotte-building-permits",
+      "marketSlug": "charlotte-nc",
+      "name": "Mecklenburg County Building Permits",
+      "portalType": "arcgis"
+    },
+    {
+      "sourceId": "chicago-building-permits",
+      "marketSlug": "chicago-il",
+      "name": "Chicago Building Permits",
+      "portalType": "socrata"
+    },
+    {
+      "sourceId": "cosprings-fire-permits",
+      "marketSlug": "colorado-springs-co",
+      "name": "Colorado Springs Fire Department Records",
+      "portalType": "accela"
+    },
+    {
+      "sourceId": "columbus-building-permits",
+      "marketSlug": "columbus-oh",
+      "name": "Columbus Building Permits",
+      "portalType": "arcgis"
+    },
+    {
+      "sourceId": "detroit-bseed-permits",
+      "marketSlug": "detroit-mi",
+      "name": "Detroit BSEED Building Permits",
+      "portalType": "arcgis"
+    },
+    {
+      "sourceId": "fortworth-permits",
+      "marketSlug": "fort-worth-tx",
+      "name": "Fort Worth Permits (CIVIC)",
+      "portalType": "arcgis"
+    },
+    {
+      "sourceId": "kcmo-issued-permits",
+      "marketSlug": "kansas-city-mo",
+      "name": "Kansas City, MO Issued Building Permits",
+      "portalType": "socrata"
+    },
+    {
+      "sourceId": "la-building-permits",
+      "marketSlug": "los-angeles-ca",
+      "name": "LA Building Permits",
+      "portalType": "socrata"
+    },
+    {
+      "sourceId": "la-electrical-permits",
+      "marketSlug": "los-angeles-ca",
+      "name": "LA Electrical Permits",
+      "portalType": "socrata"
+    },
+    {
+      "sourceId": "louisville-construction-permits",
+      "marketSlug": "louisville-ky",
+      "name": "Louisville Active Construction Permits",
+      "portalType": "arcgis"
+    },
+    {
+      "sourceId": "memphis-dpd-permits",
+      "marketSlug": "memphis-tn",
+      "name": "Memphis DPD Building Permits",
+      "portalType": "socrata"
+    },
+    {
+      "sourceId": "mesa-building-permits",
+      "marketSlug": "mesa-az",
+      "name": "Mesa Building Permits",
+      "portalType": "socrata"
+    },
+    {
+      "sourceId": "miami-building-permits",
+      "marketSlug": "miami-fl",
+      "name": "Miami Building Permits (Since 2014)",
+      "portalType": "arcgis"
+    },
+    {
+      "sourceId": "minneapolis-ccs-permits",
+      "marketSlug": "minneapolis-mn",
+      "name": "Minneapolis CCS Permits",
+      "portalType": "arcgis"
+    },
+    {
+      "sourceId": "nashville-building-permits",
+      "marketSlug": "nashville-tn",
+      "name": "Nashville Building Permits Issued",
+      "portalType": "arcgis"
+    },
+    {
+      "sourceId": "nola-permits",
+      "marketSlug": "new-orleans-la",
+      "name": "New Orleans Permits",
+      "portalType": "socrata"
+    },
+    {
+      "sourceId": "nyc-dobnow-permits",
+      "marketSlug": "new-york-city-ny",
+      "name": "NYC DOB NOW Build Approved Permits",
+      "portalType": "socrata"
+    },
+    {
+      "sourceId": "omaha-fire-permits",
+      "marketSlug": "omaha-ne",
+      "name": "Omaha Fire Prevention Records",
+      "portalType": "accela"
+    },
+    {
+      "sourceId": "philly-permits",
+      "marketSlug": "philadelphia-pa",
+      "name": "Philadelphia L&I Building & Trade Permits",
+      "portalType": "carto"
+    },
+    {
+      "sourceId": "portland-bds-permits",
+      "marketSlug": "portland-or",
+      "name": "Portland BDS All Permits",
+      "portalType": "arcgis"
+    },
+    {
+      "sourceId": "raleigh-building-permits",
+      "marketSlug": "raleigh-nc",
+      "name": "Raleigh Building Permits",
+      "portalType": "arcgis"
+    },
+    {
+      "sourceId": "sacramento-fire-permits-current",
+      "marketSlug": "sacramento-ca",
+      "name": "Sacramento Issued Building Permits (County Fire, current year)",
+      "portalType": "arcgis"
+    },
+    {
+      "sourceId": "sacramento-permits-current",
+      "marketSlug": "sacramento-ca",
+      "name": "Sacramento Issued Building Permits (keyword, current year)",
+      "portalType": "arcgis"
+    },
+    {
+      "sourceId": "sacramento-fire-permits-archive",
+      "marketSlug": "sacramento-ca",
+      "name": "Sacramento Issued Building Permits (County Fire, archive)",
+      "portalType": "arcgis"
+    },
+    {
+      "sourceId": "sacramento-permits-archive",
+      "marketSlug": "sacramento-ca",
+      "name": "Sacramento Issued Building Permits (keyword, archive)",
+      "portalType": "arcgis"
+    },
+    {
+      "sourceId": "sanantonio-permits",
+      "marketSlug": "san-antonio-tx",
+      "name": "San Antonio Permits Issued",
+      "portalType": "ckan"
+    },
+    {
+      "sourceId": "sf-dbi-permits",
+      "marketSlug": "san-francisco-ca",
+      "name": "SF DBI Building Permits",
+      "portalType": "socrata"
+    },
+    {
+      "sourceId": "sf-fire-permits",
+      "marketSlug": "san-francisco-ca",
+      "name": "SFFD Fire Permits",
+      "portalType": "socrata"
+    },
+    {
+      "sourceId": "sf-fire-inspections",
+      "marketSlug": "san-francisco-ca",
+      "name": "SFFD Fire Inspections",
+      "portalType": "socrata"
+    },
+    {
+      "sourceId": "sf-fire-violations",
+      "marketSlug": "san-francisco-ca",
+      "name": "SFFD Fire Violations",
+      "portalType": "socrata"
+    },
+    {
+      "sourceId": "seattle-trade-permits",
+      "marketSlug": "seattle-wa",
+      "name": "Seattle Trade Permits",
+      "portalType": "socrata"
+    },
+    {
+      "sourceId": "tucson-commercial-permits",
+      "marketSlug": "tucson-az",
+      "name": "Tucson Commercial Building Permits",
+      "portalType": "arcgis"
+    },
+    {
+      "sourceId": "tulsa-fire-permits",
+      "marketSlug": "tulsa-ok",
+      "name": "Tulsa Fire Prevention Records",
+      "portalType": "energov"
+    },
+    {
+      "sourceId": "virginia-beach-fire-permits",
+      "marketSlug": "virginia-beach-va",
+      "name": "Virginia Beach Building Permits (Fire permit type)",
+      "portalType": "arcgis"
+    },
+    {
+      "sourceId": "virginia-beach-building-permits",
+      "marketSlug": "virginia-beach-va",
+      "name": "Virginia Beach Building Permits (keyword)",
+      "portalType": "arcgis"
+    },
+    {
+      "sourceId": "dc-permits-2025",
+      "marketSlug": "washington-dc",
+      "name": "DC Building Permits 2025",
+      "portalType": "arcgis"
+    },
+    {
+      "sourceId": "dc-permits-2026",
+      "marketSlug": "washington-dc",
+      "name": "DC Building Permits 2026",
+      "portalType": "arcgis"
+    }
+  ]
+}

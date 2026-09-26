@@ -9,8 +9,10 @@ Ordering within a phase is roughly dependency order. Every PR includes tests (se
 
 > Owned in the Apify scraper project — tracked here only as the dependency gate for Phase 1+.
 
-- [ ] Fire permit extraction working for first market (Houston)
-- [ ] Actor deployed to Apify with scheduled runs
+- [x] Fire permit extraction working — 31 supported jurisdictions / 40 sources (Houston is unsupported: no record-level permit data; see Architecture.md §6.1 and `docs/superpowers/plans/2026-08-19-permittorch-mvp/scraper-source-registry.json`)
+- [x] Actor deployed to Apify (`scrapelabmax/us-fire-permit-leads-scraper`, build 0.1.11)
+- [x] Dedicated ingestion task `scrapelabmax/permittorch-daily` (id `xatpyth2FgbUydjLd`): all 31 cities, `onlyNewRecords`, 5,000 cap, explicit charge limit (2026-09-26)
+- [ ] Daily schedule `0 6 * * *` UTC created **disabled** — enable at WS5 deploy, after the 90-day backfill (`onlyNewRecords: false`, split by state group so each run stays under 5,000)
 - [x] Stable dataset output shape documented — Zod-validated `PermitLeadSchema`, README §4–5 (see Architecture.md §6.1)
 - [x] Run metadata available — status/timestamps/counts from the Apify Run object; per-source quality from `COVERAGE_REPORT` in the run key-value store
 - [x] `COVERAGE_REPORT` field-level shape captured from a real run (Architecture.md §6.1, `docs/superpowers/plans/2026-08-19-permittorch-mvp/scraper-sample.json`)
@@ -49,8 +51,7 @@ Ordering within a phase is roughly dependency order. Every PR includes tests (se
 - [ ] Homepage (hero: "Find the permits worth chasing", how-it-works, CTAs)
 - [ ] `/pricing` (Starter $49 / Pro $129 / Territory $249)
 - [ ] `/how-it-works`
-- [ ] Houston market page with real aggregate data (`/locations/texas/houston`)
-- [ ] Two additional market pages (once sources are live)
+- [ ] Market pages with real aggregate data for the 31 scraper-supported markets (`/locations/[state]/[city]`, generated only where data exists)
 - [ ] SEO infrastructure: unique metadata, canonical URLs, OpenGraph, sitemap.xml, robots.txt, structured data
 - [ ] Free lead magnet: email capture → 5–10 sample leads
 - [ ] Weekly lead digest to captured emails (Resend)
