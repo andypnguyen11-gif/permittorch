@@ -23,6 +23,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
     public Action<IServiceCollection>? TestServices { get; init; }
 
+    /// <summary>Per-instance configuration overrides applied after the defaults below.</summary>
+    public IReadOnlyDictionary<string, string?> Settings { get; init; } = new Dictionary<string, string?>();
+
     public async Task InitializeAsync()
     {
         await _postgres.StartAsync();
@@ -50,6 +53,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("RESEND_API_KEY", "re_test_unused");
         builder.UseSetting("EMAIL_FROM", "digest@test.permittorch.local");
         builder.UseSetting("RateLimiting:GlobalPermitLimit", "100000");
+        foreach (var (key, value) in Settings)
+            builder.UseSetting(key, value);
         builder.ConfigureServices(services =>
         {
             services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>

@@ -1,5 +1,7 @@
+using System.Security.Claims;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using PermitTorch.Api.Features;
 using PermitTorch.Api.Features.Auth;
@@ -42,14 +44,15 @@ public static class FeaturesSetup
         {
             o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
             o.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
-                RateLimitPartition.GetFixedWindowLimiter(ClientIp(context), _ => new FixedWindowRateLimiterOptions
+                RateLimitPartition.GetFixedWindowLimiter(GlobalPartitionKey(context), _ => new FixedWindowRateLimiterOptions
                 {
                     PermitLimit = globalLimit,
                     Window = TimeSpan.FromMinutes(1),
                     QueueLimit = 0,
                 }));
+            // Anonymous lead-magnet endpoint: always strict per client IP, even if a token is sent.
             o.AddPolicy("sample-leads", context =>
-                RateLimitPartition.GetFixedWindowLimiter(ClientIp(context), _ => new FixedWindowRateLimiterOptions
+                RateLimitPartition.GetFixedWindowLimiter("ip:" + ClientIp(context), _ => new FixedWindowRateLimiterOptions
                 {
                     PermitLimit = 5,
                     Window = TimeSpan.FromMinutes(1),
@@ -94,6 +97,22 @@ public static class FeaturesSetup
     /// the auto-insertion and puts CORS first. No IStartupFilter needed.</summary>
     public static WebApplication MapFeatureEndpoints(this WebApplication app)
     {
+        // Railway terminates TLS at its edge proxy and forwards over a private network whose
+        // addresses are not published, so KnownProxies/KnownIPNetworks are cleared and the
+        // right-most X-Forwarded-For hops are trusted. Trade-off: a client that reaches the
+        // app directly (bypassing the edge) could spoof X-Forwarded-For to pick its own
+        // rate-limit partition. ForwardLimit = 2 bounds how many hops are honored; the
+        // API is only exposed through Railway's edge in production, and authenticated
+        // traffic is partitioned by the verified `sub` claim, not by IP.
+        var forwarded = new ForwardedHeadersOptions
+        {
+            ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
+            ForwardLimit = 2,
+        };
+        forwarded.KnownIPNetworks.Clear();
+        forwarded.KnownProxies.Clear();
+        app.UseForwardedHeaders(forwarded);
+
         app.UseCors(CorsPolicy);
         app.UseAuthentication();
         app.UseAuthorization();
@@ -102,6 +121,15 @@ public static class FeaturesSetup
         return app;
     }
 
-    private static string ClientIp(HttpContext context) =>
+    /// <summary>Authenticated requests share one bucket per Firebase uid (so users behind
+    /// one NAT/office IP don't starve each other); anonymous requests are keyed by the
+    /// forwarded client IP. Runs after UseAuthentication, so User is already resolved.</summary>
+    public static string GlobalPartitionKey(HttpContext context) =>
+        context.User.Identity?.IsAuthenticated == true
+            && context.User.FindFirstValue("sub") is { Length: > 0 } sub
+            ? "sub:" + sub
+            : "ip:" + ClientIp(context);
+
+    public static string ClientIp(HttpContext context) =>
         context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 }
