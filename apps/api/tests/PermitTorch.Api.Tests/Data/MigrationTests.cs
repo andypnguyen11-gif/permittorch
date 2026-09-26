@@ -6,8 +6,7 @@ namespace PermitTorch.Api.Tests.Data;
 
 public class MigrationTests : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder()
-        .WithImage("postgres:17-alpine")
+    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:17-alpine")
         .Build();
 
     public Task InitializeAsync() => _postgres.StartAsync();
