@@ -367,6 +367,103 @@ public class IngestionJobTests
         Assert.DoesNotContain("\"SourceStats\"", scraperRun.CoverageReportJson);
     }
 
+    // Ingests `first`, then applies an admin override (FireAlarm) exactly as the reclassify
+    // endpoint persists it, then ingests `second` (same record id) and returns the opportunity.
+    private async Task<(FireOpportunity Opportunity, List<LeadSignal> Signals)> IngestOverriddenTwiceAsync(
+        string sourceId, RawPermitRecord first, RawPermitRecord second)
+    {
+        var (job1, sp1) = BuildJob(new FakePermitSourceProvider(
+            Run($"run-{Guid.NewGuid():N}", new[] { first }, Stat(sourceId))));
+        await using (sp1) await job1.RunOnceAsync(CancellationToken.None);
+
+        await using (var db = _fixture.CreateContext())
+        {
+            var opp = await db.Set<FireOpportunity>().SingleAsync(o => o.Permit.ExternalId == first.RecordId);
+            opp.Category = FireCategory.FireAlarm;
+            opp.Confidence = 1.0m;
+            opp.CategoryOverridden = true;
+            await db.SaveChangesAsync();
+        }
+
+        var (job2, sp2) = BuildJob(new FakePermitSourceProvider(
+            Run($"run-{Guid.NewGuid():N}", new[] { second }, Stat(sourceId))));
+        await using (sp2) await job2.RunOnceAsync(CancellationToken.None);
+
+        await using var read = _fixture.CreateContext();
+        var opportunity = await read.Set<FireOpportunity>().AsNoTracking()
+            .SingleAsync(o => o.Permit.ExternalId == first.RecordId);
+        var signals = await read.Set<LeadSignal>().AsNoTracking()
+            .Where(s => s.FireOpportunityId == opportunity.Id).ToListAsync();
+        return (opportunity, signals);
+    }
+
+    [Fact]
+    public async Task RunOnce_KeepsManuallyOverriddenCategory_ButRescoresRefreshedFields()
+    {
+        var sourceId = $"src-{Guid.NewGuid():N}";
+        await SeedSourceAsync(sourceId);
+        var recordId = $"ext-{Guid.NewGuid():N}";
+        var first = Record(recordId, sourceId,
+            description: "Install NFPA 13 fire sprinkler system", fireSystemType: "fire_sprinkler");
+        var second = Record(recordId, sourceId,
+            description: "Install NFPA 13 fire sprinkler system", fireSystemType: "fire_sprinkler",
+            projectValue: 750_000m);
+
+        var (opportunity, signals) = await IngestOverriddenTwiceAsync(sourceId, first, second);
+
+        Assert.Equal(FireCategory.FireAlarm, opportunity.Category);   // classifier says sprinkler
+        Assert.True(opportunity.CategoryOverridden);
+        Assert.Equal(1.0m, opportunity.Confidence);
+        Assert.Contains(signals, s => s.SignalType == "FIRE_ALARM_SCOPE");
+        Assert.DoesNotContain(signals, s => s.SignalType == "FIRE_SPRINKLER_SCOPE");
+        Assert.Contains(signals, s => s.SignalType == "HIGH_PROJECT_VALUE");   // rescored with new data
+        Assert.Equal(Math.Clamp(signals.Sum(s => s.Weight), 0, 100), opportunity.LeadScore);
+    }
+
+    [Fact]
+    public async Task RunOnce_KeepsOverriddenOpportunity_EvenWhenRecordNoLongerClassifies()
+    {
+        var sourceId = $"src-{Guid.NewGuid():N}";
+        await SeedSourceAsync(sourceId);
+        var recordId = $"ext-{Guid.NewGuid():N}";
+        var first = Record(recordId, sourceId,
+            description: "Install NFPA 13 fire sprinkler system", fireSystemType: "fire_sprinkler");
+        var second = Record(recordId, sourceId, description: "Water heater replacement");
+
+        var (opportunity, signals) = await IngestOverriddenTwiceAsync(sourceId, first, second);
+
+        Assert.Equal(FireCategory.FireAlarm, opportunity.Category);
+        Assert.True(opportunity.CategoryOverridden);
+        Assert.Contains(signals, s => s.SignalType == "BASE_SCORE");
+    }
+
+    [Fact]
+    public async Task RunOnce_ReclassifiesOpportunitiesWithoutAnOverride()
+    {
+        var sourceId = $"src-{Guid.NewGuid():N}";
+        await SeedSourceAsync(sourceId);
+        var recordId = $"ext-{Guid.NewGuid():N}";
+        var record = Record(recordId, sourceId,
+            description: "Install NFPA 13 fire sprinkler system", fireSystemType: "fire_sprinkler");
+        var (job1, sp1) = BuildJob(new FakePermitSourceProvider(
+            Run($"run-{Guid.NewGuid():N}", new[] { record }, Stat(sourceId))));
+        await using (sp1) await job1.RunOnceAsync(CancellationToken.None);
+        await using (var db = _fixture.CreateContext())
+        {
+            var opp = await db.Set<FireOpportunity>().SingleAsync(o => o.Permit.ExternalId == recordId);
+            opp.Category = FireCategory.FireAlarm;   // drifted, but not an admin override
+            await db.SaveChangesAsync();
+        }
+        var (job2, sp2) = BuildJob(new FakePermitSourceProvider(
+            Run($"run-{Guid.NewGuid():N}", new[] { record }, Stat(sourceId))));
+        await using (sp2) await job2.RunOnceAsync(CancellationToken.None);
+
+        await using var read = _fixture.CreateContext();
+        var stored = await read.Set<FireOpportunity>().SingleAsync(o => o.Permit.ExternalId == recordId);
+        Assert.Equal(FireCategory.FireSprinkler, stored.Category);
+        Assert.False(stored.CategoryOverridden);
+    }
+
     [Fact]
     public async Task RunOnce_ImportsNonFireRecord_WithoutOpportunity()
     {

@@ -98,8 +98,11 @@ public sealed class RescoringJob : BackgroundService
 
             foreach (var opportunity in batch)
             {
-                var result = _scoringEngine.Score(ToNormalized(opportunity.Permit),
-                    new ClassificationResult(opportunity.Category, opportunity.Confidence, "rescore"),
+                var result = _scoringEngine.Score(StoredPermit.ToNormalized(opportunity.Permit),
+                    // Always the stored category — for a manually reclassified opportunity
+                    // (CategoryOverridden) that is the admin's choice, never re-derived.
+                    new ClassificationResult(opportunity.Category, opportunity.Confidence,
+                        opportunity.CategoryOverridden ? "manual" : "rescore"),
                     nowUtc);
                 if (SameSignals(opportunity.Signals, result.Signals)
                     && opportunity.LeadScore == result.Score
@@ -153,13 +156,4 @@ public sealed class RescoringJob : BackgroundService
         var b = next.Select(s => (s.SignalType, s.Description, s.Weight)).OrderBy(x => x.SignalType, StringComparer.Ordinal);
         return a.SequenceEqual(b);
     }
-
-    // Rebuilds the scoring input from the persisted permit (the engine only reads these fields).
-    private static NormalizedPermit ToNormalized(Permit p) => new(
-        ExternalId: p.ExternalId, Jurisdiction: string.Empty, PermitNumber: p.PermitNumber,
-        PermitType: p.PermitType, Description: p.Description, Status: p.Status, RawStatus: p.RawStatus,
-        Address: p.Address, City: p.City, State: p.State, Zip: p.Zip,
-        Latitude: p.Latitude, Longitude: p.Longitude, FiledDate: p.FiledDate, IssuedDate: p.IssuedDate,
-        EstimatedValue: p.EstimatedValue, SquareFootage: p.SquareFootage, OwnerName: p.OwnerName,
-        ContractorName: p.ContractorName, SourceUrl: p.SourceUrl, Fingerprint: p.Fingerprint);
 }

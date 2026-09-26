@@ -112,4 +112,69 @@ public class AdminEndpointTests(ApiFactory factory) : IAsyncLifetime
             $"/api/admin/opportunities/{Guid.NewGuid()}",
             new StringContent("{\"category\":\"FIRE_ALARM\"}", System.Text.Encoding.UTF8, "application/json"))).StatusCode);
     }
+
+    private Task<HttpResponseMessage> PatchCategory(Guid id, string category) =>
+        _admin.PatchAsync($"/api/admin/opportunities/{id}",
+            new StringContent($"{{\"category\":\"{category}\"}}", System.Text.Encoding.UTF8, "application/json"));
+
+    [Fact]
+    public async Task Reclassification_marks_the_override_and_rescores_with_the_manual_category()
+    {
+        // A stale signal from the original classification must not survive the rescore.
+        await factory.SeedAsync(db => db.Add(new LeadSignal
+        {
+            Id = Guid.NewGuid(), FireOpportunityId = _opportunity.Id,
+            SignalType = "STALE_SIGNAL", Description = "stale", Weight = 55,
+        }));
+
+        (await PatchCategory(_opportunity.Id, "FIRE_SPRINKLER")).EnsureSuccessStatusCode();
+
+        var stored = await factory.QueryAsync(db => db.FireOpportunities.Include(o => o.Signals)
+            .SingleAsync(o => o.Id == _opportunity.Id));
+        Assert.True(stored.CategoryOverridden);
+        Assert.Equal(FireCategory.FireSprinkler, stored.Category);
+        Assert.Equal(1.0m, stored.Confidence);
+        Assert.DoesNotContain(stored.Signals, s => s.SignalType == "STALE_SIGNAL");
+        Assert.Contains(stored.Signals, s => s.SignalType == "BASE_SCORE" && s.Weight == 30);
+        Assert.Contains(stored.Signals, s => s.SignalType == "FIRE_SPRINKLER_SCOPE");
+        // Explainable: every point of the score traces to a persisted signal.
+        Assert.Equal(Math.Clamp(stored.Signals.Sum(s => s.Weight), 0, 100), stored.LeadScore);
+        Assert.False(string.IsNullOrWhiteSpace(stored.Reason));
+    }
+
+    [Fact]
+    public async Task Reclassifying_again_replaces_the_category_signals()
+    {
+        (await PatchCategory(_opportunity.Id, "FIRE_SPRINKLER")).EnsureSuccessStatusCode();
+        (await PatchCategory(_opportunity.Id, "FIRE_ALARM")).EnsureSuccessStatusCode();
+
+        var stored = await factory.QueryAsync(db => db.FireOpportunities.Include(o => o.Signals)
+            .SingleAsync(o => o.Id == _opportunity.Id));
+        Assert.Equal(FireCategory.FireAlarm, stored.Category);
+        Assert.DoesNotContain(stored.Signals, s => s.SignalType == "FIRE_SPRINKLER_SCOPE");
+        Assert.Contains(stored.Signals, s => s.SignalType == "FIRE_ALARM_SCOPE");
+        Assert.Single(stored.Signals, s => s.SignalType == "BASE_SCORE");
+        Assert.Equal(Math.Clamp(stored.Signals.Sum(s => s.Weight), 0, 100), stored.LeadScore);
+    }
+
+    [Fact]
+    public async Task Reclassification_rejects_missing_or_unknown_categories()
+    {
+        Assert.Equal(HttpStatusCode.BadRequest, (await _admin.PatchAsync($"/api/admin/opportunities/{_opportunity.Id}",
+            new StringContent("{}", System.Text.Encoding.UTF8, "application/json"))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await PatchCategory(_opportunity.Id, "NOT_A_CATEGORY")).StatusCode);
+        var stored = await factory.QueryAsync(db => db.FireOpportunities.SingleAsync(o => o.Id == _opportunity.Id));
+        Assert.False(stored.CategoryOverridden);
+    }
+
+    [Fact]
+    public async Task Members_cannot_reclassify()
+    {
+        var response = await _member.PatchAsync($"/api/admin/opportunities/{_opportunity.Id}",
+            new StringContent("{\"category\":\"FIRE_ALARM\"}", System.Text.Encoding.UTF8, "application/json"));
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        var stored = await factory.QueryAsync(db => db.FireOpportunities.SingleAsync(o => o.Id == _opportunity.Id));
+        Assert.False(stored.CategoryOverridden);
+        Assert.Equal(FireCategory.GeneralFireProtection, stored.Category);
+    }
 }

@@ -65,4 +65,20 @@ public class MigrationTests : IAsyncLifetime
 
         Assert.Contains("last_sent_at:timestamp with time zone", emailPrefColumns);
     }
+
+    [Fact]
+    public async Task Fire_opportunities_have_category_overridden_defaulting_to_false()
+    {
+        await using var db = CreateContext();
+        await db.Database.MigrateAsync();
+
+        var column = await db.Database
+            .SqlQuery<string>($"SELECT data_type || ':' || is_nullable || ':' || coalesce(column_default, '') AS \"Value\" FROM information_schema.columns WHERE table_name = 'fire_opportunities' AND column_name = 'category_overridden'")
+            .SingleAsync();
+        Assert.Equal("boolean:NO:false", column);
+
+        var applied = await db.Database.GetAppliedMigrationsAsync();
+        Assert.Equal(new[] { "InitialCreate", "AddCategoryOverridden" },
+            applied.Select(m => m[(m.IndexOf('_') + 1)..]).ToArray());
+    }
 }

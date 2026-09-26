@@ -327,7 +327,12 @@ public sealed class IngestionJob : BackgroundService
             permit.UpdatedAt = now;
         }
 
-        var classification = FireClassifier.Classify(normalized);
+        // A manual reclassification (admin) is authoritative: keep the stored category and
+        // confidence and only rescore against the refreshed permit fields. The classifier never
+        // overrides — or drops — an opportunity an admin has categorised.
+        var classification = permit.Opportunity is { CategoryOverridden: true } overridden
+            ? new ClassificationResult(overridden.Category, overridden.Confidence, "manual")
+            : FireClassifier.Classify(normalized);
         if (classification is null) return (isNew, false);
 
         var scoreResult = _scoringEngine.Score(normalized, classification, now);

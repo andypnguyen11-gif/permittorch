@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using PermitTorch.Api.Data;
+using PermitTorch.Api.Domain.Classification;
+using PermitTorch.Api.Domain.Scoring;
 using PermitTorch.Api.Features.Shared;
 
 namespace PermitTorch.Api.Features.Admin;
@@ -66,16 +68,47 @@ public static class AdminEndpoints
         return Results.Ok();
     }
 
+    /// <summary>Manual reclassification: the admin's category is authoritative (confidence 1.0,
+    /// <see cref="FireOpportunity.CategoryOverridden"/> so ingestion keeps it) and the lead is
+    /// rescored with it, replacing its LeadSignal rows in the same transaction so the score
+    /// stays explainable.</summary>
     private static async Task<IResult> Reclassify(
-        Guid id, ReclassifyRequest body, AppDbContext db, CancellationToken ct)
+        Guid id, ReclassifyRequest body, AppDbContext db, ScoringEngine scoring, CancellationToken ct)
     {
         if (body.Category is not { } category) return ApiErrors.BadRequest("category is required");
-        var opportunity = await db.FireOpportunities.FirstOrDefaultAsync(o => o.Id == id, ct);
+        var opportunity = await db.FireOpportunities
+            .Include(o => o.Permit)
+            .Include(o => o.Signals)
+            .AsSplitQuery()
+            .FirstOrDefaultAsync(o => o.Id == id, ct);
         if (opportunity is null) return ApiErrors.NotFound("Opportunity not found");
 
+        var now = DateTime.UtcNow;
+        var result = scoring.Score(StoredPermit.ToNormalized(opportunity.Permit),
+            new ClassificationResult(category, 1.0m, "manual"), now);
+
+        db.RemoveRange(opportunity.Signals);
+        foreach (var signal in result.Signals)
+        {
+            db.Add(new LeadSignal
+            {
+                Id = Guid.NewGuid(),
+                FireOpportunityId = opportunity.Id,
+                SignalType = signal.SignalType,
+                Description = signal.Description,
+                Weight = signal.Weight,
+            });
+        }
         opportunity.Category = category;
-        opportunity.LastUpdatedAt = DateTime.UtcNow;
+        opportunity.Confidence = 1.0m;
+        opportunity.CategoryOverridden = true;
+        opportunity.LeadScore = result.Score;
+        opportunity.Reason = result.Reason;
+        opportunity.LastUpdatedAt = now;
+
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
         await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
         return Results.Ok();
     }
 }

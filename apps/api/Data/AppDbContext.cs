@@ -54,6 +54,7 @@ public class AppDbContext : DbContext
             e.HasOne(o => o.Permit).WithOne(p => p.Opportunity)
                 .HasForeignKey<FireOpportunity>(o => o.PermitId);
             e.HasMany(o => o.Signals).WithOne().HasForeignKey(s => s.FireOpportunityId);
+            e.Property(o => o.CategoryOverridden).HasDefaultValue(false);
         });
 
         modelBuilder.Entity<ScraperRun>(e =>

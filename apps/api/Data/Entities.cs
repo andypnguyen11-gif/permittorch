@@ -80,6 +80,7 @@ public class FireOpportunity
     public int LeadScore { get; set; }                     // 0–100, computed by PermitTorch ScoringEngine
     public decimal Confidence { get; set; }                // 0–1 classification confidence
     public string Reason { get; set; } = null!;            // one-sentence "why this matters"
+    public bool CategoryOverridden { get; set; }           // set by admin reclassification; ingestion keeps Category
     public DateTime FirstDetectedAt { get; set; }
     public DateTime LastUpdatedAt { get; set; }
     public List<LeadSignal> Signals { get; set; } = new();

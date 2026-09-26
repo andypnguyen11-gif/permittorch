@@ -25,7 +25,9 @@ public class RescoringJobTests
     public RescoringJobTests(PostgresFixture fixture) => _fixture = fixture;
 
     // Seeds a permit + opportunity scored as of scoredAt, exactly as ingestion would have stored it.
-    private async Task<Guid> SeedScoredOpportunityAsync(DateTime filedDate, DateTime scoredAt)
+    private async Task<Guid> SeedScoredOpportunityAsync(DateTime filedDate, DateTime scoredAt,
+        FireCategory category = FireCategory.GeneralFireProtection, bool overridden = false,
+        string description = "Fire protection work")
     {
         await using var db = _fixture.CreateContext();
         var market = new Market
@@ -42,12 +44,12 @@ public class RescoringJobTests
         var permit = new Permit
         {
             Id = Guid.NewGuid(), SourceId = source.Id, ExternalId = $"ext-{Guid.NewGuid():N}",
-            Description = "Fire protection work", Status = PermitStatusKind.Active, City = "Tulsa",
+            Description = description, Status = PermitStatusKind.Active, City = "Tulsa",
             State = "OK", FiledDate = filedDate, ContractorName = "Reliable Fire Co",
             SourceUrl = "https://example.test", Fingerprint = Guid.NewGuid().ToString("N"),
             FirstSeenAt = scoredAt, LastSeenAt = scoredAt, CreatedAt = scoredAt, UpdatedAt = scoredAt,
         };
-        var classification = new ClassificationResult(FireCategory.GeneralFireProtection, 0.6m, "test");
+        var classification = new ClassificationResult(category, overridden ? 1.0m : 0.6m, "test");
         var normalized = new NormalizedPermit(permit.ExternalId, source.Jurisdiction, null, null,
             permit.Description, permit.Status, null, null, "Tulsa", "OK", null, null, null,
             filedDate, null, null, null, null, permit.ContractorName, permit.SourceUrl, permit.Fingerprint);
@@ -56,7 +58,7 @@ public class RescoringJobTests
         {
             Id = Guid.NewGuid(), PermitId = permit.Id, Category = classification.Category,
             Confidence = classification.Confidence, LeadScore = score.Score, Reason = score.Reason,
-            FirstDetectedAt = scoredAt, LastUpdatedAt = scoredAt,
+            CategoryOverridden = overridden, FirstDetectedAt = scoredAt, LastUpdatedAt = scoredAt,
         };
         db.AddRange(market, source, permit, opportunity);
         foreach (var s in score.Signals)
@@ -163,5 +165,28 @@ public class RescoringJobTests
         var (after, afterSignals) = await LoadAsync(id);
         Assert.Equal(before.LeadScore, after.LeadScore);
         Assert.Equal(beforeSignals.Length, afterSignals.Length);
+    }
+
+    [Fact]
+    public async Task RescoreOnce_KeepsManuallyOverriddenCategory_AndScoresWithIt()
+    {
+        var now = DateTime.UtcNow;
+        // The text says sprinkler, but an admin reclassified it as a fire alarm job.
+        var id = await SeedScoredOpportunityAsync(now.AddDays(-5), scoredAt: now.AddDays(-4),
+            category: FireCategory.FireAlarm, overridden: true,
+            description: "Install fire sprinkler system throughout warehouse");
+        var (job, sp) = BuildJob();
+        await using var _ = sp;
+
+        await job.RescoreOnceAsync(now, CancellationToken.None);
+
+        var (after, afterSignals) = await LoadAsync(id);
+        Assert.Equal(FireCategory.FireAlarm, after.Category);
+        Assert.True(after.CategoryOverridden);
+        Assert.Equal(1.0m, after.Confidence);
+        Assert.Contains(afterSignals, s => s.SignalType == "FIRE_ALARM_SCOPE");
+        Assert.DoesNotContain(afterSignals, s => s.SignalType == "FIRE_SPRINKLER_SCOPE");
+        Assert.DoesNotContain(afterSignals, s => s.SignalType == "PERMIT_RECENT"); // the rescore did run
+        Assert.Equal(after.LeadScore, afterSignals.Sum(s => s.Weight));
     }
 }
