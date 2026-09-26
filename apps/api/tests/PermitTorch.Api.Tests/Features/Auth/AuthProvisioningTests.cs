@@ -76,4 +76,32 @@ public class AuthProvisioningTests(ApiFactory factory)
         Assert.Equal("https://web.test.permittorch.local",
             Assert.Single(response.Headers.GetValues("Access-Control-Allow-Origin")));
     }
+
+    [Fact]
+    public async Task Unverified_email_claim_is_not_trusted_at_provisioning()
+    {
+        var sub = $"user_{Guid.NewGuid():N}";
+
+        var response = await factory.CreateClientFor(sub, "victim@example.com", emailVerified: false)
+            .GetAsync("/api/account/me");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var user = await factory.QueryAsync(db => db.AppUsers.SingleAsync(u => u.FirebaseUid == sub));
+        Assert.Equal($"{sub}@unknown.permittorch.invalid", user.Email);
+    }
+
+    [Theory]
+    [InlineData("true", "a@example.com", "a@example.com")]
+    [InlineData("True", "a@example.com", "a@example.com")]
+    [InlineData("false", "a@example.com", "uid1@unknown.permittorch.invalid")]
+    [InlineData(null, "a@example.com", "uid1@unknown.permittorch.invalid")]
+    [InlineData("true", null, "uid1@unknown.permittorch.invalid")]
+    public void Verified_email_rule(string? verified, string? email, string expected)
+    {
+        var claims = new List<System.Security.Claims.Claim>();
+        if (email is not null) claims.Add(new("email", email));
+        if (verified is not null) claims.Add(new("email_verified", verified));
+        var principal = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(claims, "test"));
+        Assert.Equal(expected, PermitTorch.Api.Features.Auth.CurrentUserService.VerifiedEmailOrFallback(principal, "uid1"));
+    }
 }

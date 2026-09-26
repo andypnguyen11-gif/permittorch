@@ -60,10 +60,16 @@ public static class LeadQueries
         row.FiledDate, row.EstimatedValue, row.Reason,
         IsNew: row.FirstDetectedAt >= nowUtc.AddHours(-72));
 
+    /// <summary>Latest successful source run across the entitled markets — narrowed to the
+    /// filtered market when one is given, so "Updated N ago" describes what is on screen.</summary>
     public static Task<DateTime?> GetFreshnessAsync(
-        AppDbContext db, IReadOnlyList<Guid> marketIds, CancellationToken ct) =>
-        db.Sources.Where(s => marketIds.Contains(s.MarketId))
-            .MaxAsync(s => (DateTime?)s.LastSuccessfulRunAt, ct);
+        AppDbContext db, IReadOnlyList<Guid> marketIds, string? marketSlug, CancellationToken ct)
+    {
+        var sources = db.Sources.Where(s => marketIds.Contains(s.MarketId));
+        if (marketSlug is not null)
+            sources = sources.Where(s => s.Market.Slug == marketSlug);
+        return sources.MaxAsync(s => (DateTime?)s.LastSuccessfulRunAt, ct);
+    }
 
     public static string EscapeLike(string input) =>
         input.Replace(@"\", @"\\").Replace("%", @"\%").Replace("_", @"\_");

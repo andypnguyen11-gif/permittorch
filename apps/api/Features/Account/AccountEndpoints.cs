@@ -5,7 +5,7 @@ using PermitTorch.Api.Features.Shared;
 
 namespace PermitTorch.Api.Features.Account;
 
-public sealed record UpdateEmailPreferencesRequest(DigestFrequency Frequency);
+public sealed record UpdateEmailPreferencesRequest(DigestFrequency? Frequency);   // nullable: `{}` is a 400
 
 public static class AccountEndpoints
 {
@@ -51,16 +51,17 @@ public static class AccountEndpoints
         UpdateEmailPreferencesRequest body, HttpContext http, AppDbContext db,
         CurrentUserService currentUser, CancellationToken ct)
     {
+        if (body.Frequency is not { } frequency) return ApiErrors.BadRequest("frequency is required");
         var user = await currentUser.RequireAsync(http.User, ct);
         var preference = await db.EmailPreferences.FirstOrDefaultAsync(p => p.UserId == user.Id, ct);
         if (preference is null)
         {
-            preference = new EmailPreference { Id = Guid.NewGuid(), UserId = user.Id, Frequency = body.Frequency };
+            preference = new EmailPreference { Id = Guid.NewGuid(), UserId = user.Id, Frequency = frequency };
             db.EmailPreferences.Add(preference);
         }
         else
         {
-            preference.Frequency = body.Frequency;
+            preference.Frequency = frequency;
         }
         await db.SaveChangesAsync(ct);
         return Results.Ok();

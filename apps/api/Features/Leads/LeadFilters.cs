@@ -9,6 +9,9 @@ public sealed record LeadFilters(
     string? MarketSlug, FireCategory? Category, int? MinScore, int? MaxAgeDays,
     PermitStatusKind? Status, string? Q, int Page, int PageSize)
 {
+    /// <summary>Deep OFFSET pagination is a cheap DoS; nobody pages past this in a lead feed.</summary>
+    public const int MaxPage = 10_000;
+
     public static bool TryParse(string? market, string? category, int? minScore, int? maxAgeDays,
         string? status, string? q, int? page, int? pageSize, out LeadFilters filters, out string error)
     {
@@ -34,7 +37,7 @@ public sealed record LeadFilters(
 
         var parsedPage = page ?? 1;
         var parsedPageSize = pageSize ?? 25;
-        if (parsedPage < 1) { error = "page must be at least 1"; return false; }
+        if (parsedPage is < 1 or > MaxPage) { error = $"page must be between 1 and {MaxPage}"; return false; }
         if (parsedPageSize is < 1 or > 100) { error = "pageSize must be between 1 and 100"; return false; }
 
         var trimmedMarket = string.IsNullOrWhiteSpace(market) ? null : market.Trim();

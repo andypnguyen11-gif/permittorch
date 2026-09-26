@@ -81,11 +81,11 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     }
 
     /// <summary>Client with a Bearer token for the given Firebase uid + email claim.</summary>
-    public HttpClient CreateClientFor(string firebaseUid, string email)
+    public HttpClient CreateClientFor(string firebaseUid, string email, bool emailVerified = true)
     {
         var client = CreateClient();
         client.DefaultRequestHeaders.Authorization =
-            new AuthenticationHeaderValue("Bearer", TestTokens.Issue(firebaseUid, email));
+            new AuthenticationHeaderValue("Bearer", TestTokens.Issue(firebaseUid, email, emailVerified));
         return client;
     }
 

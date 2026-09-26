@@ -19,9 +19,17 @@ public sealed class CurrentUserService(AppDbContext db)
 
         var user = await db.AppUsers.Include(u => u.Organization)
             .FirstOrDefaultAsync(u => u.FirebaseUid == sub, ct);
-        user ??= await ProvisionAsync(sub,
-            principal.FindFirstValue("email") ?? $"{sub}@unknown.permittorch.invalid", ct);
+        user ??= await ProvisionAsync(sub, VerifiedEmailOrFallback(principal, sub), ct);
         return _cached = user;
+    }
+
+    /// <summary>The `email` claim is trusted only when Firebase says it is verified;
+    /// otherwise anyone could sign up as someone else's address and receive their digests.</summary>
+    public static string VerifiedEmailOrFallback(ClaimsPrincipal principal, string sub)
+    {
+        var email = principal.FindFirstValue("email");
+        var verified = string.Equals(principal.FindFirstValue("email_verified"), "true", StringComparison.OrdinalIgnoreCase);
+        return verified && !string.IsNullOrWhiteSpace(email) ? email : $"{sub}@unknown.permittorch.invalid";
     }
 
     public async Task<AppUser> RequireAsync(ClaimsPrincipal principal, CancellationToken ct) =>

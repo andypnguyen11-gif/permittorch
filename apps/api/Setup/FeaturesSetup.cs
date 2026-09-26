@@ -83,6 +83,12 @@ public static class FeaturesSetup
         services.AddRateLimiter(o =>
         {
             o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+            o.OnRejected = async (context, ct) =>
+            {
+                context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+                await context.HttpContext.Response.WriteAsJsonAsync(
+                    new ErrorResponse("Too many requests"), ApiJson.Options, ct);
+            };
             o.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
                 RateLimitPartition.GetFixedWindowLimiter(GlobalPartitionKey(context), _ => new FixedWindowRateLimiterOptions
                 {
@@ -164,6 +170,14 @@ public static class FeaturesSetup
         forwarded.KnownProxies.Clear();
         app.UseForwardedHeaders(forwarded);
 
+        // Every non-2xx body is { "error": string } (master §6) — including framework-generated
+        // ones: unhandled exceptions, and body-less 4xx/5xx from auth challenges, routing,
+        // content-type negotiation, or request-binding failures (malformed JSON).
+        app.UseExceptionHandler(handler => handler.Run(context =>
+            WriteErrorAsync(context, "Internal server error")));
+        app.UseStatusCodePages(context => WriteErrorAsync(context.HttpContext,
+            StatusMessage(context.HttpContext.Response.StatusCode)));
+
         app.UseCors(CorsPolicy);
         app.UseAuthentication();
         app.UseAuthorization();
@@ -171,6 +185,23 @@ public static class FeaturesSetup
         app.MapFeatureEndpointGroups();
         return app;
     }
+
+    private static string StatusMessage(int statusCode) => statusCode switch
+    {
+        StatusCodes.Status400BadRequest => "Invalid request",
+        StatusCodes.Status401Unauthorized => "Unauthorized",
+        StatusCodes.Status403Forbidden => "Forbidden",
+        StatusCodes.Status404NotFound => "Not found",
+        StatusCodes.Status405MethodNotAllowed => "Method not allowed",
+        StatusCodes.Status415UnsupportedMediaType => "Unsupported media type",
+        StatusCodes.Status429TooManyRequests => "Too many requests",
+        _ => Microsoft.AspNetCore.WebUtilities.ReasonPhrases.GetReasonPhrase(statusCode) is { Length: > 0 } phrase
+            ? phrase
+            : "Request failed",
+    };
+
+    private static Task WriteErrorAsync(HttpContext context, string message) =>
+        context.Response.WriteAsJsonAsync(new ErrorResponse(message), ApiJson.Options);
 
     /// <summary>Authenticated requests share one bucket per Firebase uid (so users behind
     /// one NAT/office IP don't starve each other); anonymous requests are keyed by the

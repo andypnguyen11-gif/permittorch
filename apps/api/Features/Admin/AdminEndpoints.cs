@@ -4,7 +4,7 @@ using PermitTorch.Api.Features.Shared;
 
 namespace PermitTorch.Api.Features.Admin;
 
-public sealed record ReclassifyRequest(FireCategory Category);
+public sealed record ReclassifyRequest(FireCategory? Category);   // nullable: `{}` is a 400
 
 public static class AdminEndpoints
 {
@@ -36,7 +36,8 @@ public static class AdminEndpoints
     {
         var currentPage = page ?? 1;
         var currentPageSize = pageSize ?? 25;
-        if (currentPage < 1) return ApiErrors.BadRequest("page must be at least 1");
+        if (currentPage is < 1 or > Leads.LeadFilters.MaxPage)
+            return ApiErrors.BadRequest($"page must be between 1 and {Leads.LeadFilters.MaxPage}");
         if (currentPageSize is < 1 or > 100) return ApiErrors.BadRequest("pageSize must be between 1 and 100");
 
         var query = db.ScraperRuns.AsQueryable();
@@ -68,10 +69,11 @@ public static class AdminEndpoints
     private static async Task<IResult> Reclassify(
         Guid id, ReclassifyRequest body, AppDbContext db, CancellationToken ct)
     {
+        if (body.Category is not { } category) return ApiErrors.BadRequest("category is required");
         var opportunity = await db.FireOpportunities.FirstOrDefaultAsync(o => o.Id == id, ct);
         if (opportunity is null) return ApiErrors.NotFound("Opportunity not found");
 
-        opportunity.Category = body.Category;
+        opportunity.Category = category;
         opportunity.LastUpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
         return Results.Ok();

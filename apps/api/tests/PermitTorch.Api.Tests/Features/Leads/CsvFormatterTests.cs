@@ -29,4 +29,17 @@ public class CsvFormatterTests
         var dataLine = csv.Split("\r\n")[1];
         Assert.Equal("80,\"1 \"\"Corner\"\", Suite 2\",Austin,,FIRE_ALARM,\"line1\nline2\",,,,,https://x.example", dataLine);
     }
+
+    [Theory]
+    [InlineData("=HYPERLINK(\"http://evil\")", "\"'=HYPERLINK(\"\"http://evil\"\")\"")]
+    [InlineData("+1 555", "\"'+1 555\"")]
+    [InlineData("-2+3", "\"'-2+3\"")]
+    [InlineData("@SUM(A1)", "\"'@SUM(A1)\"")]
+    [InlineData("\tcmd", "\"'\tcmd\"")]
+    [InlineData("\rcmd", "\"'\rcmd\"")]
+    [InlineData("Safe = value", "Safe = value")]   // only a leading trigger is dangerous
+    public void Formula_like_cells_are_neutralised(string input, string expected)
+    {
+        Assert.Equal(expected, CsvFormatter.Escape(input));
+    }
 }

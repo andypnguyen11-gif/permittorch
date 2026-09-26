@@ -13,6 +13,7 @@ public class SavedLeadsEndpointTests(ApiFactory factory) : IAsyncLifetime
     private FireOpportunity _entitledOpp = null!;
     private FireOpportunity _foreignOpp = null!;
     private HttpClient _client = null!;
+    private Subscription _subscription = null!;
 
     public async Task InitializeAsync()
     {
@@ -27,6 +28,7 @@ public class SavedLeadsEndpointTests(ApiFactory factory) : IAsyncLifetime
         var sub = $"user_{Guid.NewGuid():N}";
         var (org, user, pref) = TestSeed.User(sub, $"{sub}@example.com");
         var subscription = TestSeed.Subscription(org, PlanTier.Pro, "active", market);
+        _subscription = subscription;
         await factory.SeedAsync(db => db.AddRange(market, foreignMarket, source, foreignSource,
             permit, foreignPermit, _entitledOpp, _foreignOpp, org, user, pref, subscription));
         _client = factory.CreateClientFor(sub, user.Email);
@@ -97,5 +99,25 @@ public class SavedLeadsEndpointTests(ApiFactory factory) : IAsyncLifetime
     {
         Assert.Equal(HttpStatusCode.Unauthorized,
             (await factory.CreateClient().GetAsync("/api/saved-leads")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Saved_leads_in_a_market_the_org_lost_drop_out_of_list_and_patch()
+    {
+        var created = await _client.PostAsync("/api/saved-leads", Json(new { fireOpportunityId = _entitledOpp.Id }));
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var savedId = JsonSerializer.Deserialize<JsonElement>(await created.Content.ReadAsStringAsync())
+            .GetProperty("id").GetString()!;
+
+        // Plan change removes the market from the subscription.
+        await factory.SeedAsync(db => db.SubscriptionMarkets.RemoveRange(
+            db.SubscriptionMarkets.Where(m => m.SubscriptionId == _subscription.Id)));
+
+        var list = JsonSerializer.Deserialize<JsonElement>(await _client.GetStringAsync("/api/saved-leads"));
+        Assert.DoesNotContain(list.EnumerateArray(), i => i.GetProperty("id").GetString() == savedId);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await _client.PatchAsync($"/api/saved-leads/{savedId}", Json(new { status = "CONTACTED" }))).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent,   // cleanup is still allowed
+            (await _client.DeleteAsync($"/api/saved-leads/{savedId}")).StatusCode);
     }
 }

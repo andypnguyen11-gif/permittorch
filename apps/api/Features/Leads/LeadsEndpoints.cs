@@ -7,6 +7,8 @@ namespace PermitTorch.Api.Features.Leads;
 
 public static class LeadsEndpoints
 {
+    public const int ExportCap = 5000;   // export cap (plan gap resolution 6)
+
     public static IEndpointRouteBuilder MapLeadsEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/leads").RequireAuthorization("User");
@@ -39,7 +41,7 @@ public static class LeadsEndpoints
             .Select(LeadQueries.ToRow)
             .ToListAsync(ct);
 
-        var freshness = await LeadQueries.GetFreshnessAsync(db, marketIds, ct);
+        var freshness = await LeadQueries.GetFreshnessAsync(db, marketIds, filters.MarketSlug, ct);
         var items = rows.Select(r => LeadQueries.ToSummary(r, nowUtc)).ToList();
         return Results.Ok(new LeadsResponseDto(items, total, filters.Page, filters.PageSize,
             new FreshnessDto(freshness)));
@@ -104,13 +106,18 @@ public static class LeadsEndpoints
         var nowUtc = DateTime.UtcNow;
         var rows = await LeadQueries.OrderForFeed(
                 LeadQueries.ApplyFilters(LeadQueries.ForEntitledMarkets(db, marketIds), filters, nowUtc))
-            .Take(5000)   // export cap (plan gap resolution 6)
+            .Take(ExportCap + 1)   // one extra row detects truncation
             .Select(o => new LeadExportRow(
                 o.LeadScore, o.Permit.Address, o.Permit.City, o.Permit.PermitType, o.Category,
                 o.Permit.Description, o.Permit.FiledDate, o.Permit.EstimatedValue,
                 o.Permit.OwnerName, o.Permit.ContractorName, o.Permit.SourceUrl))
             .ToListAsync(ct);
 
+        if (rows.Count > ExportCap)
+        {
+            rows.RemoveAt(rows.Count - 1);
+            http.Response.Headers["X-Truncated"] = "true";
+        }
         var csv = CsvFormatter.Write(rows);
         return Results.File(System.Text.Encoding.UTF8.GetBytes(csv), "text/csv", "permittorch-leads.csv");
     }

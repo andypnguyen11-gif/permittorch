@@ -7,8 +7,9 @@ using PermitTorch.Api.Features.Shared;
 
 namespace PermitTorch.Api.Features.SavedLeads;
 
-public sealed record SaveLeadRequest(Guid FireOpportunityId);
-public sealed record UpdateSavedLeadRequest(SavedLeadStatus Status);
+// Nullable so a missing field is a 400, never a silent default (Guid.Empty / SAVED).
+public sealed record SaveLeadRequest(Guid? FireOpportunityId);
+public sealed record UpdateSavedLeadRequest(SavedLeadStatus? Status);
 
 public static class SavedLeadsEndpoints
 {
@@ -23,9 +24,11 @@ public static class SavedLeadsEndpoints
     }
 
     private static async Task<IResult> GetSavedLeads(
-        HttpContext http, AppDbContext db, CurrentUserService currentUser, CancellationToken ct)
+        HttpContext http, AppDbContext db, CurrentUserService currentUser,
+        EntitlementService entitlements, CancellationToken ct)
     {
         var user = await currentUser.RequireAsync(http.User, ct);
+        var marketIds = await entitlements.GetEntitledMarketIdsAsync(user.OrganizationId, ct);
         var nowUtc = DateTime.UtcNow;
 
         var saved = await db.SavedLeads
@@ -33,7 +36,8 @@ public static class SavedLeadsEndpoints
             .OrderByDescending(s => s.CreatedAt)
             .ToListAsync(ct);
         var oppIds = saved.Select(s => s.FireOpportunityId).ToList();
-        var rows = await db.FireOpportunities
+        // Entitlement wall: leads in markets the org no longer pays for drop out of the list.
+        var rows = await LeadQueries.ForEntitledMarkets(db, marketIds)
             .Where(o => oppIds.Contains(o.Id))
             .Select(LeadQueries.ToRow)
             .ToDictionaryAsync(r => r.Id, ct);
@@ -50,18 +54,20 @@ public static class SavedLeadsEndpoints
         SaveLeadRequest body, HttpContext http, AppDbContext db,
         CurrentUserService currentUser, EntitlementService entitlements, CancellationToken ct)
     {
+        if (body.FireOpportunityId is not { } fireOpportunityId)
+            return ApiErrors.BadRequest("fireOpportunityId is required");
         var user = await currentUser.RequireAsync(http.User, ct);
         var marketIds = await entitlements.GetEntitledMarketIdsAsync(user.OrganizationId, ct);
 
         var row = await LeadQueries.ForEntitledMarkets(db, marketIds)
-            .Where(o => o.Id == body.FireOpportunityId)
+            .Where(o => o.Id == fireOpportunityId)
             .Select(LeadQueries.ToRow)
             .FirstOrDefaultAsync(ct);
         if (row is null) return ApiErrors.NotFound("Lead not found");
 
         var savedLead = new SavedLead
         {
-            Id = Guid.NewGuid(), UserId = user.Id, FireOpportunityId = body.FireOpportunityId,
+            Id = Guid.NewGuid(), UserId = user.Id, FireOpportunityId = fireOpportunityId,
             Status = SavedLeadStatus.Saved, CreatedAt = DateTime.UtcNow,
         };
         db.SavedLeads.Add(savedLead);
@@ -81,19 +87,22 @@ public static class SavedLeadsEndpoints
 
     private static async Task<IResult> UpdateSavedLead(
         Guid id, UpdateSavedLeadRequest body, HttpContext http, AppDbContext db,
-        CurrentUserService currentUser, CancellationToken ct)
+        CurrentUserService currentUser, EntitlementService entitlements, CancellationToken ct)
     {
+        if (body.Status is not { } status) return ApiErrors.BadRequest("status is required");
         var user = await currentUser.RequireAsync(http.User, ct);
         var savedLead = await db.SavedLeads.FirstOrDefaultAsync(s => s.Id == id && s.UserId == user.Id, ct);
         if (savedLead is null) return ApiErrors.NotFound("Saved lead not found");
 
-        savedLead.Status = body.Status;
-        await db.SaveChangesAsync(ct);
-
-        var row = await db.FireOpportunities
+        var marketIds = await entitlements.GetEntitledMarketIdsAsync(user.OrganizationId, ct);
+        var row = await LeadQueries.ForEntitledMarkets(db, marketIds)
             .Where(o => o.Id == savedLead.FireOpportunityId)
             .Select(LeadQueries.ToRow)
-            .FirstAsync(ct);
+            .FirstOrDefaultAsync(ct);
+        if (row is null) return ApiErrors.NotFound("Saved lead not found");   // market no longer entitled
+
+        savedLead.Status = status;
+        await db.SaveChangesAsync(ct);
         return Results.Ok(new SavedLeadItemDto(savedLead.Id, savedLead.Status, savedLead.CreatedAt,
             LeadQueries.ToSummary(row, DateTime.UtcNow)));
     }

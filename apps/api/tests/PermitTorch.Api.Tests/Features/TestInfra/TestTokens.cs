@@ -15,12 +15,17 @@ public static class TestTokens
     public static readonly SymmetricSecurityKey SigningKey =
         new(Encoding.UTF8.GetBytes("permittorch-ws2-integration-test-signing-key-0123456789"));
 
-    public static string Issue(string sub, string email)
+    public static string Issue(string sub, string email, bool emailVerified = true)
     {
         var token = new JwtSecurityToken(
             issuer: Issuer,
             audience: null,
-            claims: [new Claim("sub", sub), new Claim("email", email)],
+            claims:
+            [
+                new Claim("sub", sub),
+                new Claim("email", email),
+                new Claim("email_verified", emailVerified ? "true" : "false", ClaimValueTypes.Boolean),
+            ],
             notBefore: DateTime.UtcNow.AddMinutes(-1),
             expires: DateTime.UtcNow.AddHours(1),
             signingCredentials: new SigningCredentials(SigningKey, SecurityAlgorithms.HmacSha256));

@@ -39,9 +39,15 @@ public static class CsvFormatter
         return builder.ToString();
     }
 
+    private static readonly char[] FormulaTriggers = ['=', '+', '-', '@', '\t', '\r'];
+
+    /// <summary>RFC-4180 quoting plus OWASP CSV-injection defence: a cell a spreadsheet
+    /// would evaluate as a formula is prefixed with ' and quoted.</summary>
     public static string Escape(string? field)
     {
         if (string.IsNullOrEmpty(field)) return "";
+        if (Array.IndexOf(FormulaTriggers, field[0]) >= 0)
+            return "\"'" + field.Replace("\"", "\"\"") + "\"";
         return field.Contains(',') || field.Contains('"') || field.Contains('\n') || field.Contains('\r')
             ? "\"" + field.Replace("\"", "\"\"") + "\""
             : field;
