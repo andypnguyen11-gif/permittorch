@@ -24,6 +24,12 @@ public sealed class IngestionJob : BackgroundService
     private readonly ScoringEngine _scoringEngine;
     private readonly ILogger<IngestionJob> _logger;
     private readonly TimeSpan _interval;
+    private readonly int _maxRunFailures;
+
+    // Consecutive run-level failures per Apify run id. In-memory on purpose: a transient error
+    // (Apify 5xx, network blip, DB hiccup) is retried on later passes, and only a run that keeps
+    // failing is persisted as FAILED. Passes are sequential (one ExecuteAsync loop), so no locking.
+    private readonly Dictionary<string, int> _runFailures = new(StringComparer.Ordinal);
 
     public IngestionJob(IServiceScopeFactory scopeFactory, ScoringEngine scoringEngine,
         IConfiguration configuration, ILogger<IngestionJob> logger)
@@ -32,6 +38,7 @@ public sealed class IngestionJob : BackgroundService
         _scoringEngine = scoringEngine;
         _logger = logger;
         _interval = TimeSpan.FromMinutes(configuration.GetValue<int?>("Ingestion:IntervalMinutes") ?? 15);
+        _maxRunFailures = Math.Max(1, configuration.GetValue<int?>("Ingestion:MaxRunFailures") ?? 3);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -77,24 +84,53 @@ public sealed class IngestionJob : BackgroundService
         if (run is null) return null;
 
         var ingestStart = DateTime.UtcNow;
+
+        // The provider reports a run whose output it could not fetch as non-SUCCEEDED with no
+        // records; that is a run-level failure, not an empty run.
+        if (!string.Equals(run.Status, "SUCCEEDED", StringComparison.OrdinalIgnoreCase)
+            && run.Records is { Count: 0 })
+            return await HandleRunFailureAsync(db, run, ingestStart, exception: null, ct);
+
         try
         {
-            return await IngestRunAsync(db, run, ingestStart, ct);
+            var scraperRun = await IngestRunAsync(db, run, ingestStart, ct);
+            _runFailures.Remove(run.RunId);
+            return scraperRun;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // Escape hatch: always record the run so FetchNextRunAsync (which skips any ApifyRunId
-            // already in scraper_runs) moves on instead of retrying this run forever.
-            _logger.LogError(ex,
-                "Ingestion of Apify run {RunId} failed at the run level; recording it as {Status} so newer runs are not blocked",
-                run.RunId, FailedRunStatus);
-            db.ChangeTracker.Clear();
-            var failedRun = BuildScraperRun(run, FailedRunStatus, ingestStart,
-                new RunCounts { Failures = 1 }, coverageJson: null);
-            db.Add(failedRun);
-            await db.SaveChangesAsync(ct);
-            return failedRun;
+            return await HandleRunFailureAsync(db, run, ingestStart, ex, ct);
         }
+    }
+
+    // Retries a failing run on later passes (nothing persisted, so FetchNextRunAsync returns it
+    // again). After MaxRunFailures consecutive failures the escape hatch persists a FAILED
+    // ScraperRun so FetchNextRunAsync (which skips any ApifyRunId already in scraper_runs) moves
+    // on instead of blocking every newer run forever.
+    private async Task<ScraperRun?> HandleRunFailureAsync(AppDbContext db, ProviderRunResult run,
+        DateTime ingestStart, Exception? exception, CancellationToken ct)
+    {
+        db.ChangeTracker.Clear();
+        var attempts = _runFailures.TryGetValue(run.RunId, out var previous) ? previous + 1 : 1;
+
+        if (attempts < _maxRunFailures)
+        {
+            _runFailures[run.RunId] = attempts;
+            _logger.LogWarning(exception,
+                "Ingestion of Apify run {RunId} failed at the run level (status {Status}); attempt {Attempt} of {MaxAttempts}, will retry on the next pass",
+                run.RunId, run.Status, attempts, _maxRunFailures);
+            return null;
+        }
+
+        _runFailures.Remove(run.RunId);
+        _logger.LogError(exception,
+            "Ingestion of Apify run {RunId} failed at the run level {Attempts} times in a row; recording it as {FailedStatus} so newer runs are not blocked",
+            run.RunId, attempts, FailedRunStatus);
+        var failedRun = BuildScraperRun(run, FailedRunStatus, ingestStart,
+            new RunCounts { Failures = 1 }, coverageJson: null);
+        db.Add(failedRun);
+        await db.SaveChangesAsync(ct);
+        return failedRun;
     }
 
     public const string FailedRunStatus = "FAILED";
@@ -125,14 +161,6 @@ public sealed class IngestionJob : BackgroundService
         }
 
         var counts = new RunCounts();
-        if (!string.Equals(run.Status, "SUCCEEDED", StringComparison.OrdinalIgnoreCase)
-            && run.Records.Count == 0)
-        {
-            // The provider could not deliver this run's output (e.g. dataset fetch failed).
-            _logger.LogWarning("Apify run {RunId} reported status {Status} with no records; recording it as a failed run",
-                run.RunId, run.Status);
-            counts.Failures++;
-        }
 
         var recordSourceIds = new HashSet<Guid>();
         var unknownSources = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);

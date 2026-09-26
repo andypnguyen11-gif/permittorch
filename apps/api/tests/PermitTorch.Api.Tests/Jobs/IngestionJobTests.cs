@@ -533,11 +533,17 @@ public class IngestionJobTests
         }
     }
 
-    [Fact]
-    public async Task RunOnce_DatasetFetchFailure_RecordsFailedRun_AndProviderMovesOnToNextRun()
+    // Real ApifyPermitProvider over a fake Apify API: two runs, the older one's dataset fetch
+    // fails (HTTP 500) for its first `failuresBeforeSuccess` calls (int.MaxValue = always).
+    private (IngestionJob Job, ServiceProvider Services) BuildApifyJob(string failing, string next,
+        int failuresBeforeSuccess, string? sourceIdForRecord = null,
+        Dictionary<string, string?>? jobConfig = null)
     {
-        var failing = $"run-{Guid.NewGuid():N}";
-        var next = $"run-{Guid.NewGuid():N}";
+        var brokenCalls = 0;
+        var brokenDataset = sourceIdForRecord is null
+            ? "[]"
+            : "[" + JsonSerializer.Serialize(Record($"ext-{Guid.NewGuid():N}", sourceIdForRecord,
+                description: "Fire alarm install"), new JsonSerializerOptions(JsonSerializerDefaults.Web)) + "]";
         var handler = new FakeHttpMessageHandler(req =>
         {
             var path = req.RequestUri!.AbsolutePath;
@@ -546,11 +552,13 @@ public class IngestionJobTests
                     + RunItem(next, "2026-08-20T10:00:00.000Z", "ds-ok") + ","
                     + RunItem(failing, "2026-08-19T10:00:00.000Z", "ds-broken") + "] } }");
             if (path == "/v2/datasets/ds-broken/items")
-                return new HttpResponseMessage(HttpStatusCode.InternalServerError);
+                return ++brokenCalls <= failuresBeforeSuccess
+                    ? new HttpResponseMessage(HttpStatusCode.InternalServerError)
+                    : JsonResponse(brokenDataset);
             if (path == "/v2/datasets/ds-ok/items") return JsonResponse("[]");
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
-        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        var apifyConfig = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["APIFY_TOKEN"] = "test-token",
             ["APIFY_TASK_ID"] = "pt-task-1",
@@ -560,37 +568,109 @@ public class IngestionJobTests
         services.AddLogging();
         services.AddDbContext<AppDbContext>(o => o.UseNpgsql(_fixture.ConnectionString));
         services.AddScoped(_ => new ApifyClient(
-            new HttpClient(handler) { BaseAddress = new Uri("https://api.apify.com") }, config,
+            new HttpClient(handler) { BaseAddress = new Uri("https://api.apify.com") }, apifyConfig,
             NullLogger<ApifyClient>.Instance));
         services.AddScoped<IPermitSourceProvider, ApifyPermitProvider>();
-        await using var sp = services.BuildServiceProvider();
+        var sp = services.BuildServiceProvider();
         var job = new IngestionJob(sp.GetRequiredService<IServiceScopeFactory>(),
-            new ScoringEngine(new ScoringOptions()), new ConfigurationBuilder().Build(),
+            new ScoringEngine(new ScoringOptions()),
+            new ConfigurationBuilder().AddInMemoryCollection(jobConfig ?? new()).Build(),
             NullLogger<IngestionJob>.Instance);
+        return (job, sp);
+    }
+
+    private async Task<bool> RunRecordedAsync(string runId)
+    {
+        await using var db = _fixture.CreateContext();
+        return await db.Set<ScraperRun>().AnyAsync(r => r.ApifyRunId == runId);
+    }
+
+    private static async Task<string?> NextRunIdAsync(ServiceProvider sp)
+    {
+        using var scope = sp.CreateScope();
+        var provider = scope.ServiceProvider.GetRequiredService<IPermitSourceProvider>();
+        return (await provider.FetchNextRunAsync(CancellationToken.None))?.RunId;
+    }
+
+    [Fact]
+    public async Task RunOnce_DatasetFetchFailure_IsRetried_ThenRecordedAsFailedOnThirdPass()
+    {
+        var failing = $"run-{Guid.NewGuid():N}";
+        var next = $"run-{Guid.NewGuid():N}";
+        var (job, sp) = BuildApifyJob(failing, next, failuresBeforeSuccess: int.MaxValue);
+        await using var _ = sp;
+
+        for (var pass = 1; pass <= 2; pass++)
+        {
+            var result = await job.RunOnceAsync(CancellationToken.None);
+
+            Assert.Null(result);                              // nothing persisted yet
+            Assert.False(await RunRecordedAsync(failing));
+            Assert.Equal(failing, await NextRunIdAsync(sp));  // provider still offers it for retry
+        }
 
         var failedRun = await job.RunOnceAsync(CancellationToken.None);
 
         Assert.NotNull(failedRun);
         Assert.Equal(failing, failedRun!.ApifyRunId);
         Assert.Equal("FAILED", failedRun.Status);
-        Assert.True(failedRun.Failures >= 1);
-        await AssertRunRecordedAsync(failing);
-
-        using var scope = sp.CreateScope();
-        var provider = scope.ServiceProvider.GetRequiredService<IPermitSourceProvider>();
-        var following = await provider.FetchNextRunAsync(CancellationToken.None);
-        Assert.NotNull(following);
-        Assert.Equal(next, following!.RunId);
+        Assert.Equal(1, failedRun.Failures);
+        Assert.True(await RunRecordedAsync(failing));
+        Assert.Equal(next, await NextRunIdAsync(sp));         // skipped from now on
     }
 
     [Fact]
-    public async Task RunOnce_RunLevelException_StillPersistsFailedScraperRun()
+    public async Task RunOnce_TransientFailureThenSuccess_IngestsRunNormally_WithoutFailedRow()
+    {
+        var sourceId = $"src-{Guid.NewGuid():N}";
+        await SeedSourceAsync(sourceId);
+        var failing = $"run-{Guid.NewGuid():N}";
+        var next = $"run-{Guid.NewGuid():N}";
+        var (job, sp) = BuildApifyJob(failing, next, failuresBeforeSuccess: 1, sourceIdForRecord: sourceId);
+        await using var _ = sp;
+
+        var first = await job.RunOnceAsync(CancellationToken.None);
+        Assert.Null(first);
+        Assert.False(await RunRecordedAsync(failing));
+
+        var second = await job.RunOnceAsync(CancellationToken.None);
+
+        Assert.NotNull(second);
+        Assert.Equal(failing, second!.ApifyRunId);
+        Assert.Equal("SUCCEEDED", second.Status);
+        Assert.Equal(1, second.RecordsImported);
+        Assert.Equal(0, second.Failures);
+        await using var db = _fixture.CreateContext();
+        var rows = await db.Set<ScraperRun>().Where(r => r.ApifyRunId == failing).ToListAsync();
+        Assert.Equal("SUCCEEDED", Assert.Single(rows).Status);
+    }
+
+    [Fact]
+    public async Task RunOnce_MaxRunFailures_IsReadFromConfiguration()
+    {
+        var failing = $"run-{Guid.NewGuid():N}";
+        var (job, sp) = BuildApifyJob(failing, $"run-{Guid.NewGuid():N}", int.MaxValue,
+            jobConfig: new Dictionary<string, string?> { ["Ingestion:MaxRunFailures"] = "1" });
+        await using var _ = sp;
+
+        var failedRun = await job.RunOnceAsync(CancellationToken.None);
+
+        Assert.Equal("FAILED", failedRun!.Status);
+        Assert.True(await RunRecordedAsync(failing));
+    }
+
+    [Fact]
+    public async Task RunOnce_RunLevelException_IsRetried_ThenPersistsFailedScraperRun()
     {
         var runId = $"run-{Guid.NewGuid():N}";
         // Records == null makes enumeration throw outside the per-record try/catch.
         var (job, sp) = BuildJob(new FakePermitSourceProvider(new ProviderRunResult(runId, "SUCCEEDED",
             DateTime.UtcNow.AddMinutes(-10), DateTime.UtcNow.AddMinutes(-5), null!, null)));
         await using var _ = sp;
+
+        Assert.Null(await job.RunOnceAsync(CancellationToken.None));
+        Assert.Null(await job.RunOnceAsync(CancellationToken.None));
+        Assert.False(await RunRecordedAsync(runId));
 
         var scraperRun = await job.RunOnceAsync(CancellationToken.None);
 
