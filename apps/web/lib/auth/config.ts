@@ -1,4 +1,4 @@
-// FINAL FORM (WS0). Do not edit in any workstream.
+// FINAL FORM (WS0; WS5 added the metadata convention routes).
 // Shared next-firebase-auth-edge options + the LOCKED public-route list.
 // Server-only: the service-account private key must never reach the browser.
 import "server-only";
@@ -17,6 +17,12 @@ const PUBLIC_PATH_PATTERNS: RegExp[] = [
   /^\/login(\/.*)?$/,
   /^\/signup(\/.*)?$/,
   /^\/api(\/.*)?$/,
+  // Next.js metadata convention routes (social cards and icons) must be
+  // fetchable by crawlers without a session.
+  /^\/opengraph-image(.*)$/,
+  /^\/icon(.*)$/,
+  /^\/apple-icon(.*)$/,
+  /^\/og-image\.png$/,
 ];
 
 export function isPublicPath(pathname: string): boolean {

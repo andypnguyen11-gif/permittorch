@@ -7,13 +7,16 @@ describe("locked public routes", () => {
     "/fire-sprinkler-leads", "/fire-alarm-leads", "/locations", "/locations/texas/austin",
     "/blog", "/blog/post-1", "/login", "/login/reset", "/signup", "/api/login", "/api/logout", "/api/anything",
     "/terms", "/privacy",
+    "/opengraph-image", "/opengraph-image-abc123", "/icon", "/icon.png", "/icon0", "/apple-icon",
+    "/apple-icon.png", "/og-image.png",
   ])("treats %s as public", (path) => {
     expect(isPublicPath(path)).toBe(true);
   });
 
   it.each([
     "/app", "/app/leads", "/app/leads/abc", "/app/saved", "/app/admin/sources", "/pricing/secret",
-    "/fire-sprinkler-leads/x", "/terms/x", "/privacy/x",
+    "/fire-sprinkler-leads/x", "/terms/x", "/privacy/x", "/app/opengraph-image", "/app/icon",
+    "/og-image.png/x",
   ])(
     "treats %s as protected",
     (path) => {

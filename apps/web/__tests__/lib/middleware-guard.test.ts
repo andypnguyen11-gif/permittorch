@@ -1,0 +1,60 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { NextRequest } from "next/server";
+
+const authMiddleware = vi.fn(async () => new Response("auth"));
+const redirectToLogin = vi.fn(() => new Response(null, { status: 307, headers: { location: "/login" } }));
+vi.mock("next-firebase-auth-edge", () => ({ authMiddleware, redirectToLogin }));
+
+const keys: string[] = [];
+vi.mock("@/lib/auth/config", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/auth/config")>();
+  return { ...actual, authConfig: { ...actual.authConfig, cookieSignatureKeys: keys } };
+});
+
+const req = (path: string) => new NextRequest(new URL(path, "http://localhost:3000"));
+
+let warn: ReturnType<typeof vi.spyOn>;
+beforeEach(() => {
+  vi.resetModules();
+  vi.clearAllMocks();
+  keys.length = 0;
+  warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+});
+afterEach(() => warn.mockRestore());
+
+describe("middleware without cookie signature keys", () => {
+  it("serves public pages without calling authMiddleware", async () => {
+    const { middleware } = await import("@/middleware");
+    const res = await middleware(req("/pricing"));
+    expect(res.headers.get("x-middleware-next")).toBe("1");
+    expect(authMiddleware).not.toHaveBeenCalled();
+    expect(redirectToLogin).not.toHaveBeenCalled();
+  });
+
+  it("redirects protected routes to /login instead of throwing", async () => {
+    const { middleware } = await import("@/middleware");
+    const res = await middleware(req("/app/leads"));
+    expect(res.status).toBe(307);
+    expect(redirectToLogin).toHaveBeenCalledWith(expect.anything(), { path: "/login", publicPaths: [] });
+    expect(authMiddleware).not.toHaveBeenCalled();
+  });
+
+  it("warns once, not on every request", async () => {
+    const { middleware } = await import("@/middleware");
+    await middleware(req("/"));
+    await middleware(req("/app"));
+    await middleware(req("/login"));
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toMatch(/AUTH_COOKIE_SIGNATURE_KEY/);
+  });
+});
+
+describe("middleware with cookie signature keys", () => {
+  it("delegates to authMiddleware", async () => {
+    keys.push("k1");
+    const { middleware } = await import("@/middleware");
+    await middleware(req("/app/leads"));
+    expect(authMiddleware).toHaveBeenCalledTimes(1);
+    expect(warn).not.toHaveBeenCalled();
+  });
+});
