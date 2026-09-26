@@ -65,7 +65,11 @@ describe("dailyCounts", () => {
 
 describe("digestScheduleLabel", () => {
   it("describes each frequency honestly", () => {
-    expect(digestScheduleLabel("DAILY")).toMatch(/tomorrow/);
+    expect(digestScheduleLabel("DAILY")).toBe("Next digest: tomorrow morning");
+    expect(digestScheduleLabel("WEEKLY")).toBe("Next digest: Monday morning");
+    for (const f of ["DAILY", "WEEKLY", "NONE"] as const) {
+      expect(digestScheduleLabel(f)).not.toMatch(/\d:\d\d/); // no promised send hour
+    }
     expect(digestScheduleLabel("WEEKLY")).toMatch(/Monday/);
     expect(digestScheduleLabel("NONE")).toMatch(/off/);
   });
@@ -85,7 +89,7 @@ describe("/app overview page", () => {
     const rows = screen.getAllByTestId("score-badge").map((b) => b.textContent);
     expect(rows).toEqual(["100", "100", "100", "95", "90"]);
     expect(screen.getByRole("region", { name: "Source health" })).toBeInTheDocument();
-    expect(screen.getByText("Next digest tomorrow at 6:00 AM")).toBeInTheDocument();
+    expect(screen.getByText("Next digest: tomorrow morning")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: /permit filings per day/ })).toBeInTheDocument();
   });
 

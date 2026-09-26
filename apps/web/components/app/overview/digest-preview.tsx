@@ -6,8 +6,9 @@ import { formatValueShort } from "@/components/app/format";
 import { RECENT_DAYS, sampleScope, type OverviewStats } from "@/components/app/overview/stat-cards";
 
 export function digestScheduleLabel(frequency: AccountMe["digestFrequency"]): string {
-  if (frequency === "DAILY") return "Next digest tomorrow at 6:00 AM";
-  if (frequency === "WEEKLY") return "Next digest Monday at 6:00 AM";
+  // No fixed send hour is promised: the digest job's schedule is server config.
+  if (frequency === "DAILY") return "Next digest: tomorrow morning";
+  if (frequency === "WEEKLY") return "Next digest: Monday morning";
   return "Digest is off — turn it on in Alerts";
 }
 

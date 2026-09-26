@@ -2,8 +2,9 @@ import { RefreshCw, TriangleAlert } from "lucide-react";
 import type { Freshness } from "@permittorch/types";
 import { formatRelative } from "@/components/app/format";
 
-// Ingestion runs daily; anything older than this is surfaced as possibly stale.
-const STALE_AFTER_MS = 26 * 60 * 60 * 1000;
+// Sources are refreshed at least daily; once data is more than a day old we say
+// so rather than implying it is current. (No fixed schedule is assumed.)
+export const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 
 export function FreshnessLine({ freshness }: { freshness: Freshness }) {
   const { lastUpdatedAt } = freshness;
@@ -22,7 +23,7 @@ export function FreshnessLine({ freshness }: { freshness: Freshness }) {
       <time dateTime={lastUpdatedAt} title={new Date(lastUpdatedAt).toUTCString()}>
         Updated {formatRelative(lastUpdatedAt)}
       </time>
-      {stale && <span>· data may be stale</span>}
+      {stale && <span>· Data may be stale</span>}
     </p>
   );
 }

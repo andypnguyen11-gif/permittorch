@@ -45,6 +45,32 @@ describe("SavedList", () => {
     resolveApi();
   });
 
+  it("ignores rapid repeat toggles on an item until its request settles", async () => {
+    let resolveApi!: () => void;
+    vi.mocked(updateSavedLead).mockReturnValue(new Promise((r) => { resolveApi = () => r(); }));
+    const other: SavedLeadItem = { ...item, id: "saved-002",
+      lead: { ...item.lead, id: "lead-007", title: "Restaurant Kitchen Hood Suppression" } };
+    render(<SavedList initialItems={[item, other]} />);
+
+    const [first] = screen.getAllByRole("button", { name: "Mark contacted" });
+    fireEvent.click(first);
+    const flipped = screen.getByRole("button", { name: "Mark saved" });
+    fireEvent.click(flipped);
+    fireEvent.click(flipped);
+    expect(flipped).toBeDisabled();
+    // Other items stay interactive.
+    expect(screen.getByRole("button", { name: "Mark contacted" })).toBeEnabled();
+    await waitFor(() => expect(updateSavedLead).toHaveBeenCalledTimes(1));
+    expect(updateSavedLead).toHaveBeenCalledWith("saved-001", "CONTACTED", "mock-token");
+
+    resolveApi();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Mark saved" })).toBeEnabled());
+    vi.mocked(updateSavedLead).mockResolvedValue(undefined);
+    fireEvent.click(screen.getByRole("button", { name: "Mark saved" }));
+    await waitFor(() => expect(updateSavedLead).toHaveBeenCalledTimes(2));
+    expect(updateSavedLead).toHaveBeenLastCalledWith("saved-001", "SAVED", "mock-token");
+  });
+
   it("reverts the status when the API call fails", async () => {
     vi.mocked(updateSavedLead).mockRejectedValue(new Error("boom"));
     render(<SavedList initialItems={[item]} />);

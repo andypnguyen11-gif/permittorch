@@ -39,6 +39,22 @@ describe("/app/leads page (mock API)", () => {
     ]);
   });
 
+  it("redirects a page past the end to the last page, keeping the filters", async () => {
+    await expect(renderPage({ category: "FIRE_ALARM", page: "7" })).rejects.toThrow(
+      "REDIRECT:/app/leads?category=FIRE_ALARM",
+    );
+    const spy = vi.spyOn(api, "getLeads").mockResolvedValueOnce({
+      items: [], total: 60, page: 5, pageSize: 25, freshness: { lastUpdatedAt: null },
+    });
+    await expect(renderPage({ page: "5" })).rejects.toThrow("REDIRECT:/app/leads?page=3");
+    spy.mockRestore();
+  });
+
+  it("does not redirect an empty result set", async () => {
+    await renderPage({ q: "zzz-no-such-lead", page: "4" });
+    expect(screen.getByText("No results")).toBeInTheDocument();
+  });
+
   it("shows the search term and the empty state when nothing matches", async () => {
     await renderPage({ q: "zzz-no-such-lead" });
     expect(screen.getByText("“zzz-no-such-lead”")).toBeInTheDocument();

@@ -1,15 +1,11 @@
 "use client";
 import { useEffect, useRef } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { MapPin, Search } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Search } from "lucide-react";
 import type { AccountMe, Market, PlanTier } from "@permittorch/types";
 import { AccountMenu } from "@/components/app/account-menu";
 import { MobileNav } from "@/components/app/mobile-nav";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
-
-const ALL = "all";
+import { MarketSelect, leadsHrefWith, useLeadsLocation } from "@/components/app/market-select";
 
 export function TopBar({ markets, email, role = "MEMBER", plan }: {
   markets: Market[];
@@ -18,12 +14,8 @@ export function TopBar({ markets, email, role = "MEMBER", plan }: {
   plan?: PlanTier | null;
 }) {
   const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
+  const { pathname, searchParams, currentQ } = useLeadsLocation();
   const inputRef = useRef<HTMLInputElement>(null);
-  const onLeads = pathname === "/app/leads";
-  const currentMarket = onLeads ? searchParams.get("market") ?? ALL : ALL;
-  const currentQ = onLeads ? searchParams.get("q") ?? "" : "";
 
   // ⌘K / Ctrl+K focuses the search input (command-palette stub).
   useEffect(() => {
@@ -38,21 +30,17 @@ export function TopBar({ markets, email, role = "MEMBER", plan }: {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const items = [
-    { value: ALL, label: "All my markets" },
-    ...markets.map((m) => ({ value: m.slug, label: m.name })),
-  ];
-
   return (
     <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-3 border-b border-border bg-white/90 px-4 backdrop-blur supports-backdrop-filter:bg-white/75 sm:px-6">
-      <MobileNav role={role} plan={plan} />
+      <MobileNav role={role} plan={plan} markets={markets} />
       <form
         role="search"
         className="relative min-w-0 flex-1 max-w-xl"
         onSubmit={(e) => {
           e.preventDefault();
           const q = inputRef.current?.value.trim() ?? "";
-          router.push(q ? `/app/leads?q=${encodeURIComponent(q)}` : "/app/leads");
+          // Keep the other leads filters (market, category, …); reset the page.
+          router.push(leadsHrefWith(pathname, searchParams, { q: q || undefined }));
         }}
       >
         <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-stone-400" aria-hidden />
@@ -71,23 +59,7 @@ export function TopBar({ markets, email, role = "MEMBER", plan }: {
         </kbd>
       </form>
       <div className="ml-auto flex items-center gap-3">
-        <Select
-          items={items}
-          value={currentMarket}
-          onValueChange={(slug) => {
-            router.push(slug && slug !== ALL ? `/app/leads?market=${encodeURIComponent(String(slug))}` : "/app/leads");
-          }}
-        >
-          <SelectTrigger aria-label="Market" className="hidden h-9 w-48 bg-white md:flex">
-            <MapPin className="size-4 text-orange-500" aria-hidden />
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {items.map((item) => (
-              <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <MarketSelect markets={markets} className="hidden md:flex" />
         <AccountMenu email={email} />
       </div>
     </header>

@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 
 const OPTIONS: Array<{ value: DigestFrequency; label: string; description: string; icon: LucideIcon }> = [
   { value: "DAILY", label: "Daily", icon: Sunrise,
-    description: "Every morning at 6:00 AM — best for being first to new permits." },
+    description: "Every morning — best for being first to new permits." },
   { value: "WEEKLY", label: "Weekly", icon: CalendarDays,
     description: "Monday mornings — a summary of the week’s opportunities." },
   { value: "NONE", label: "Off", icon: BellOff,
@@ -23,7 +23,9 @@ export function DigestForm({ initialFrequency }: { initialFrequency: DigestFrequ
   const [saving, setSaving] = useState(false);
 
   const choose = async (value: DigestFrequency) => {
-    if (value === frequency) return;
+    // Ignore input while a save is in flight (instead of disabling the fieldset,
+    // which would drop focus and hide the options from assistive tech).
+    if (saving || value === frequency) return;
     const previous = frequency;
     setFrequency(value); // optimistic
     setSaving(true);
@@ -39,7 +41,7 @@ export function DigestForm({ initialFrequency }: { initialFrequency: DigestFrequ
   };
 
   return (
-    <fieldset disabled={saving} className="space-y-3" aria-busy={saving}>
+    <fieldset className="space-y-3" aria-busy={saving}>
       <legend className="sr-only">Digest frequency</legend>
       {OPTIONS.map(({ value, label, description, icon: Icon }) => {
         const checked = frequency === value;

@@ -17,10 +17,11 @@ export function ScoreBadge({ score, showLabel = false }: { score: number; showLa
   const band = scoreBand(score);
   return (
     <span className="inline-flex flex-col items-center gap-0.5">
+      {/* aria-label on a generic span is not reliably announced; use real text. */}
       <span
         data-testid="score-badge"
         data-band={band}
-        aria-label={`Lead score ${score} of 100 (${BAND_LABELS[band]})`}
+        aria-hidden
         className={cn(
           "inline-flex h-8 min-w-10 items-center justify-center gap-0.5 rounded-lg px-2 text-sm font-semibold tabular-nums",
           BAND_CLASSES[band],
@@ -29,6 +30,7 @@ export function ScoreBadge({ score, showLabel = false }: { score: number; showLa
         {band === "hot" && <Flame className="size-3.5" aria-hidden />}
         {score}
       </span>
+      <span className="sr-only">{`Lead score ${score} of 100 (${BAND_LABELS[band]})`}</span>
       {showLabel && (
         <span className="text-[11px] font-medium text-muted-foreground" aria-hidden>
           {BAND_LABELS[band]}

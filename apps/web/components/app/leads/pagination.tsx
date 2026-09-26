@@ -21,10 +21,22 @@ export function pageWindow(page: number, lastPage: number): PageItem[] {
 
 const box = "inline-flex h-8 min-w-8 items-center justify-center rounded-lg border px-2 text-sm tabular-nums outline-none focus-visible:ring-3 focus-visible:ring-ring/50";
 
-export function LeadsPagination({ query, total }: { query: LeadsQuery; total: number }) {
-  const page = query.page ?? 1;
-  const pageSize = query.pageSize ?? 25;
-  const lastPage = Math.max(1, Math.ceil(total / pageSize));
+export function lastPageFor(total: number, pageSize: number): number {
+  return Math.max(1, Math.ceil(total / Math.max(1, pageSize)));
+}
+
+/**
+ * Driven by what the API actually returned (page, pageSize, total), not by the
+ * request — the API may clamp or default either. The leads page redirects an
+ * out-of-range page to the last page before rendering; the clamp below keeps
+ * "Showing X to Y of Z" sane regardless.
+ */
+export function LeadsPagination({ query, page: rawPage, pageSize: rawPageSize, total }: {
+  query: LeadsQuery; page: number; pageSize: number; total: number;
+}) {
+  const pageSize = Math.max(1, rawPageSize);
+  const lastPage = lastPageFor(total, pageSize);
+  const page = Math.min(Math.max(1, rawPage), lastPage);
   const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const to = Math.min(total, page * pageSize);
   const href = (p: number) => `/app/leads${buildLeadsSearch({ ...query, page: p })}`;

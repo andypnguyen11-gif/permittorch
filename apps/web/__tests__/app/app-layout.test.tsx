@@ -33,6 +33,16 @@ describe("/app layout failure handling", () => {
     expect(screen.getByRole("button", { name: "Account menu" })).toBeInTheDocument();
   });
 
+  it("shows the member view in mock mode when NEXT_PUBLIC_MOCK_ROLE=MEMBER", async () => {
+    vi.stubEnv("NEXT_PUBLIC_MOCK_ROLE", "MEMBER");
+    await renderLayout();
+    expect(screen.queryByRole("link", { name: "Sources" })).not.toBeInTheDocument();
+    vi.stubEnv("NEXT_PUBLIC_MOCK_ROLE", "SUPER_ADMIN");
+    await renderLayout();
+    expect(screen.getAllByRole("link", { name: "Sources" }).length).toBeGreaterThan(0);
+    vi.stubEnv("NEXT_PUBLIC_MOCK_ROLE", "");
+  });
+
   it("renders the session-recovery state on an API 401, without redirecting", async () => {
     vi.spyOn(api, "getAccountMe").mockRejectedValue(new api.ApiError("Unauthorized", 401));
     await renderLayout();

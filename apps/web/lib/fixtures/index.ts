@@ -11,7 +11,7 @@ import type {
 import { ApiError, type LeadsQuery } from "@/lib/api";
 import { mockLeads, mockLeadsResponse, mockLeadDetail } from "./leads";
 import { mockSavedLeads } from "./saved";
-import { mockAccountMarkets, mockAccountMe } from "./account";
+import { mockAccountForRole, mockAccountMarkets } from "./account";
 import { mockAdminSources, mockAdminRuns } from "./admin";
 
 // In-memory saved-leads state so optimistic UI flows work in mock dev.
@@ -43,7 +43,7 @@ export async function unsaveLead(id: string): Promise<void> {
   if (idx >= 0) savedState.splice(idx, 1);
 }
 export async function getAccountMarkets(): Promise<Market[]> { return mockAccountMarkets; }
-export async function getAccountMe(): Promise<AccountMe> { return mockAccountMe; }
+export async function getAccountMe(): Promise<AccountMe> { return mockAccountForRole(); }
 export async function updateEmailPreferences(_frequency: DigestFrequency): Promise<void> { /* mock no-op */ }
 // Mock mode accepts the sample-lead form as a no-op success.
 export async function submitSampleLeadRequest(_input: { name: string; email: string; company: string; marketSlug: string }): Promise<void> {}

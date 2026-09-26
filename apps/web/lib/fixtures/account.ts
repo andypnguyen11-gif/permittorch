@@ -1,5 +1,23 @@
 import type { AccountMe, Market } from "@permittorch/types";
 
+type Role = AccountMe["role"];
+const ROLES: Role[] = ["MEMBER", "ADMIN", "SUPER_ADMIN"];
+
+/**
+ * Mock-mode role switch: NEXT_PUBLIC_MOCK_ROLE=MEMBER|ADMIN|SUPER_ADMIN
+ * (default SUPER_ADMIN) so the member view can be checked without an API.
+ * Read at call time, so a changed env (or a test stub) applies immediately.
+ */
+export function mockRole(): Role {
+  const role = process.env.NEXT_PUBLIC_MOCK_ROLE?.trim().toUpperCase();
+  return ROLES.includes(role as Role) ? (role as Role) : "SUPER_ADMIN";
+}
+
+/** The mock account as the current NEXT_PUBLIC_MOCK_ROLE sees it. */
+export function mockAccountForRole(): AccountMe {
+  return { ...mockAccountMe, role: mockRole() };
+}
+
 export const mockAccountMe: AccountMe = {
   email: "john@davisfireprotection.com",
   role: "SUPER_ADMIN",

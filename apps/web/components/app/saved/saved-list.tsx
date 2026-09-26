@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { Bookmark, CheckCircle2, RotateCcw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -26,11 +26,28 @@ export function SavedList({ initialItems }: { initialItems: SavedLeadItem[] }) {
   const getToken = useApiToken();
   const [items, setItems] = useState(initialItems);
   const [filter, setFilter] = useState<Filter>("ALL");
+  // One in-flight mutation per item: rapid toggles would otherwise race and the
+  // last response to land (not the last click) would win. The ref is the guard
+  // (synchronous); the state only drives the disabled buttons.
+  const inFlight = useRef(new Set<string>());
+  const [pendingIds, setPendingIds] = useState<ReadonlySet<string>>(new Set());
+
+  const begin = (id: string): boolean => {
+    if (inFlight.current.has(id)) return false;
+    inFlight.current.add(id);
+    setPendingIds(new Set(inFlight.current));
+    return true;
+  };
+  const end = (id: string) => {
+    inFlight.current.delete(id);
+    setPendingIds(new Set(inFlight.current));
+  };
 
   const setStatus = (id: string, status: SavedLeadStatus) =>
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, status } : i)));
 
   const toggleStatus = async (item: SavedLeadItem) => {
+    if (!begin(item.id)) return;
     const next: SavedLeadStatus = item.status === "SAVED" ? "CONTACTED" : "SAVED";
     setStatus(item.id, next); // optimistic
     try {
@@ -38,10 +55,13 @@ export function SavedList({ initialItems }: { initialItems: SavedLeadItem[] }) {
     } catch (err) {
       setStatus(item.id, item.status); // revert
       reportMutationError(err, "Could not update lead status");
+    } finally {
+      end(item.id);
     }
   };
 
   const remove = async (item: SavedLeadItem) => {
+    if (!begin(item.id)) return;
     const index = items.findIndex((i) => i.id === item.id);
     setItems((prev) => prev.filter((i) => i.id !== item.id)); // optimistic
     try {
@@ -51,6 +71,8 @@ export function SavedList({ initialItems }: { initialItems: SavedLeadItem[] }) {
       // revert into its original position
       setItems((prev) => [...prev.slice(0, index), item, ...prev.slice(index)]);
       reportMutationError(err, "Could not remove lead");
+    } finally {
+      end(item.id);
     }
   };
 
@@ -113,14 +135,15 @@ export function SavedList({ initialItems }: { initialItems: SavedLeadItem[] }) {
                 {item.status === "CONTACTED" ? "Contacted" : "Saved"}
               </Badge>
               <div className="flex items-center gap-1">
-                <Button variant="outline" size="sm" onClick={() => toggleStatus(item)}>
+                <Button variant="outline" size="sm" disabled={pendingIds.has(item.id)}
+                  aria-busy={pendingIds.has(item.id)} onClick={() => toggleStatus(item)}>
                   {item.status === "SAVED"
                     ? <CheckCircle2 aria-hidden />
                     : <RotateCcw aria-hidden />}
                   {item.status === "SAVED" ? "Mark contacted" : "Mark saved"}
                 </Button>
                 <Button variant="ghost" size="sm" className="text-stone-500 hover:text-red-600"
-                  onClick={() => remove(item)}>
+                  disabled={pendingIds.has(item.id)} onClick={() => remove(item)}>
                   <Trash2 aria-hidden />
                   Remove
                 </Button>

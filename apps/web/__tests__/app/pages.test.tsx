@@ -72,8 +72,9 @@ describe("/app/markets", () => {
     ]);
     render(await MarketsPage());
     const houston = screen.getByRole("heading", { name: "Houston, TX" }).closest("li")!;
-    expect(houston).toHaveTextContent("17open leads");
-    expect(screen.getByRole("heading", { name: "Dallas, TX" }).closest("li")).toHaveTextContent("8open leads");
+    expect(houston).toHaveTextContent("17Leads");
+    expect(houston).not.toHaveTextContent(/open leads/i); // counts include closed permits
+    expect(screen.getByRole("heading", { name: "Dallas, TX" }).closest("li")).toHaveTextContent("8Leads");
     expect(screen.getAllByRole("link", { name: /View leads/ })[0])
       .toHaveAttribute("href", "/app/leads?market=houston-tx");
     const austin = screen.getByRole("heading", { name: "Austin, TX" }).closest("li")!;

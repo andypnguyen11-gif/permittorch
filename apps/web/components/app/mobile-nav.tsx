@@ -1,12 +1,15 @@
 "use client";
 import { useState } from "react";
 import { Menu } from "lucide-react";
-import type { AccountMe, PlanTier } from "@permittorch/types";
+import type { AccountMe, Market, PlanTier } from "@permittorch/types";
+import { MarketSelect } from "@/components/app/market-select";
 import { Sidebar } from "@/components/app/sidebar";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
 /** Below the lg breakpoint the sidebar collapses into this slide-over sheet. */
-export function MobileNav({ role, plan }: { role: AccountMe["role"]; plan?: PlanTier | null }) {
+export function MobileNav({ role, plan, markets = [] }: {
+  role: AccountMe["role"]; plan?: PlanTier | null; markets?: Market[];
+}) {
   const [open, setOpen] = useState(false);
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -18,7 +21,9 @@ export function MobileNav({ role, plan }: { role: AccountMe["role"]; plan?: Plan
       </SheetTrigger>
       <SheetContent side="left" className="gap-0 p-0 data-[side=left]:w-60 data-[side=left]:sm:max-w-60">
         <SheetTitle className="sr-only">Navigation</SheetTitle>
-        <Sidebar role={role} plan={plan} onNavigate={() => setOpen(false)} />
+        {/* The top bar's market selector is hidden on small screens; offer it here. */}
+        <Sidebar role={role} plan={plan} onNavigate={() => setOpen(false)}
+          top={<MarketSelect markets={markets} className="w-full" onChanged={() => setOpen(false)} />} />
       </SheetContent>
     </Sheet>
   );

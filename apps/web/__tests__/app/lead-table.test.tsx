@@ -65,7 +65,16 @@ describe("FreshnessLine staleness", () => {
   it("flags data older than a day as possibly stale instead of presenting it as current", () => {
     render(<FreshnessLine freshness={{ lastUpdatedAt: new Date(Date.now() - 3 * 24 * HOURS).toISOString() }} />);
     expect(screen.getByText(/Updated 3 days ago/)).toBeInTheDocument();
-    expect(screen.getByText(/may be stale/)).toBeInTheDocument();
+    expect(screen.getByText(/Data may be stale/)).toBeInTheDocument();
+  });
+
+  it("switches to stale once data is more than a day old", () => {
+    const { rerender } = render(
+      <FreshnessLine freshness={{ lastUpdatedAt: new Date(Date.now() - 23 * HOURS).toISOString() }} />,
+    );
+    expect(screen.queryByText(/Data may be stale/)).not.toBeInTheDocument();
+    rerender(<FreshnessLine freshness={{ lastUpdatedAt: new Date(Date.now() - 25 * HOURS).toISOString() }} />);
+    expect(screen.getByText(/Data may be stale/)).toBeInTheDocument();
   });
 });
 
@@ -81,8 +90,20 @@ describe("pageWindow", () => {
 });
 
 describe("LeadsPagination", () => {
+  it("uses the page size the API returned, not the requested one", () => {
+    render(<LeadsPagination query={{ page: 2 }} page={2} pageSize={10} total={25} />);
+    expect(screen.getByText("Showing 11 to 20 of 25 results")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Page 3" })).toHaveAttribute("href", "/app/leads?page=3");
+  });
+
+  it("clamps an out-of-range page so the range is never nonsense", () => {
+    render(<LeadsPagination query={{ page: 9 }} page={9} pageSize={25} total={30} />);
+    expect(screen.getByText("Showing 26 to 30 of 30 results")).toBeInTheDocument();
+    expect(screen.getByText("2")).toHaveAttribute("aria-current", "page");
+  });
+
   it("summarises the range and disables prev on the first page", () => {
-    render(<LeadsPagination query={{ category: "FIRE_ALARM" }} total={60} />);
+    render(<LeadsPagination query={{ category: "FIRE_ALARM" }} page={1} pageSize={25} total={60} />);
     expect(screen.getByText("Showing 1 to 25 of 60 results")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Previous page" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Next page" }))
@@ -93,10 +114,10 @@ describe("LeadsPagination", () => {
   });
 
   it("links page 1 without a page param and handles an empty result", () => {
-    const { rerender } = render(<LeadsPagination query={{ page: 3 }} total={60} />);
+    const { rerender } = render(<LeadsPagination query={{ page: 3 }} page={3} pageSize={25} total={60} />);
     expect(screen.getByRole("link", { name: "Previous page" })).toHaveAttribute("href", "/app/leads?page=2");
     expect(screen.getByRole("link", { name: "Page 1" })).toHaveAttribute("href", "/app/leads");
-    rerender(<LeadsPagination query={{}} total={0} />);
+    rerender(<LeadsPagination query={{}} page={1} pageSize={25} total={0} />);
     expect(screen.getByText("No results")).toBeInTheDocument();
   });
 });

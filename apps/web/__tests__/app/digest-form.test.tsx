@@ -29,6 +29,23 @@ describe("DigestForm", () => {
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Digest set to weekly"));
   });
 
+  it("marks itself busy and ignores input while saving, without disabling the options", async () => {
+    let resolve!: () => void;
+    vi.mocked(updateEmailPreferences).mockReturnValue(new Promise<void>((r) => { resolve = r; }));
+    render(<DigestForm initialFrequency="DAILY" />);
+    fireEvent.click(screen.getByRole("radio", { name: /Weekly/ }));
+    const group = screen.getByRole("group", { name: "Digest frequency" });
+    expect(group).toHaveAttribute("aria-busy", "true");
+    expect(group).not.toBeDisabled();
+    expect(screen.getByRole("radio", { name: /Off/ })).toBeEnabled();
+    fireEvent.click(screen.getByRole("radio", { name: /Off/ }));
+    expect(screen.getByRole("radio", { name: /Weekly/ })).toBeChecked();
+    await waitFor(() => expect(updateEmailPreferences).toHaveBeenCalledTimes(1));
+    expect(updateEmailPreferences).toHaveBeenCalledWith("WEEKLY", "mock-token");
+    resolve();
+    await waitFor(() => expect(group).toHaveAttribute("aria-busy", "false"));
+  });
+
   it("reverts the selection when saving fails", async () => {
     vi.mocked(updateEmailPreferences).mockRejectedValue(new Error("boom"));
     render(<DigestForm initialFrequency="DAILY" />);

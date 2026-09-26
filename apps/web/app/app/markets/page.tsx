@@ -61,7 +61,9 @@ export default async function MarketsPage() {
                   <>
                     <p className="mt-4 text-3xl font-bold tracking-tight tabular-nums">
                       {counts.get(market.slug) ?? 0}
-                      <span className="ml-1.5 text-sm font-normal text-stone-500">open leads</span>
+                      <span className="ml-1.5 text-sm font-normal text-stone-500">
+                        {counts.get(market.slug) === 1 ? "Lead" : "Leads"}
+                      </span>
                     </p>
                     <Link href={`/app/leads?market=${encodeURIComponent(market.slug)}`}
                       className={buttonVariants({ variant: "outline", className: "mt-4 self-start" })}>

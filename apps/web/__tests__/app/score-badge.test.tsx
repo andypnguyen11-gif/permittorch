@@ -27,4 +27,13 @@ describe("ScoreBadge", () => {
     rerender(<ScoreBadge score={41} />);
     expect(screen.getByTestId("score-badge").dataset.band).toBe("muted");
   });
+
+  it("exposes the score to screen readers as text, not an aria-label on a span", () => {
+    render(<ScoreBadge score={72} showLabel />);
+    const badge = screen.getByTestId("score-badge");
+    expect(badge).not.toHaveAttribute("aria-label");
+    expect(badge).toHaveAttribute("aria-hidden", "true");
+    const srText = screen.getByText("Lead score 72 of 100 (High)");
+    expect(srText).toHaveClass("sr-only");
+  });
 });

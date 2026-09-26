@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   mockLeads,
   mockLeadDetails,
@@ -271,6 +271,22 @@ describe("fixtures index (lib/api.ts mock contract)", () => {
   it("getAccountMarkets returns the entitled fixture markets matching lead cities", async () => {
     const markets = await fixtures.getAccountMarkets();
     expect(markets.map((m) => m.slug)).toEqual(["houston-tx", "dallas-tx"]);
+  });
+
+  it("getAccountMe follows NEXT_PUBLIC_MOCK_ROLE, defaulting to SUPER_ADMIN", async () => {
+    try {
+      vi.stubEnv("NEXT_PUBLIC_MOCK_ROLE", "");
+      expect((await fixtures.getAccountMe()).role).toBe("SUPER_ADMIN");
+      vi.stubEnv("NEXT_PUBLIC_MOCK_ROLE", "MEMBER");
+      expect((await fixtures.getAccountMe()).role).toBe("MEMBER");
+      vi.stubEnv("NEXT_PUBLIC_MOCK_ROLE", "admin");
+      expect((await fixtures.getAccountMe()).role).toBe("ADMIN");
+      vi.stubEnv("NEXT_PUBLIC_MOCK_ROLE", "OWNER");
+      expect((await fixtures.getAccountMe()).role).toBe("SUPER_ADMIN");
+      expect(mockAccountMe.role).toBe("SUPER_ADMIN"); // base fixture untouched
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("billing fixtures resolve to a non-navigable placeholder url", async () => {

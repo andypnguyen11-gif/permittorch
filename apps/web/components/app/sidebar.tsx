@@ -46,10 +46,12 @@ function NavLink({ href, label, icon: Icon, active, onNavigate }: {
   );
 }
 
-export function Sidebar({ role, plan, onNavigate }: {
+export function Sidebar({ role, plan, onNavigate, top }: {
   role: AccountMe["role"];
   plan?: PlanTier | null;
   onNavigate?: () => void;
+  /** Optional control rendered under the brand (the mobile sheet's market selector). */
+  top?: React.ReactNode;
 }) {
   const pathname = usePathname();
   const isActive = (href: string) =>
@@ -66,6 +68,7 @@ export function Sidebar({ role, plan, onNavigate }: {
       >
         <BrandMark />
       </Link>
+      {top && <div className="-mt-3 mb-4 px-3">{top}</div>}
       <nav aria-label="Main" className="flex-1 space-y-1 overflow-y-auto px-3">
         {MAIN_NAV.map((item) => (
           <NavLink key={item.href} {...item} active={isActive(item.href)} onNavigate={onNavigate} />
