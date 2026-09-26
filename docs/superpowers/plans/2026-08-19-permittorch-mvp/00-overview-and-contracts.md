@@ -311,7 +311,8 @@ Base URL env: web reads `NEXT_PUBLIC_API_URL`; auth = `Authorization: Bearer <Fi
 | `GET /api/account/me` | user | `{ email, role, organizationName, plan, digestFrequency }` |
 | `PUT /api/email-preferences` `{ frequency: "NONE"\|"DAILY"\|"WEEKLY" }` | user | 200 |
 | `POST /api/sample-leads` `{ name, email, company, marketSlug }` | none, rate-limited | 202 |
-| `POST /api/billing/checkout` `{ plan: "STARTER"\|"PRO"\|"TERRITORY" }` | user | `{ url }` (Stripe Checkout) |
+| `POST /api/billing/checkout` `{ plan: "STARTER"\|"PRO"\|"TERRITORY", marketSlugs: string[] }` (exactly 1 slug for STARTER/PRO, 1–5 for TERRITORY; 409 when a live subscription exists) | user | `{ url }` (Stripe Checkout) |
+| `GET` / `POST /api/email/unsubscribe?k=sub\|sample&id=&t=` | public (HMAC token, rate-limited) | GET: HTML confirmation; POST: 204 (List-Unsubscribe one-click) |
 | `POST /api/billing/portal` | user | `{ url }` (Stripe customer portal) |
 | `POST /api/webhooks/stripe` | Stripe signature | 200 |
 | `GET /api/admin/sources` | SuperAdmin | `AdminSource[]` |
@@ -395,7 +396,7 @@ export async function getAccountMarkets(token: string): Promise<Market[]>;
 export async function getAccountMe(token: string): Promise<AccountMe>;
 export async function updateEmailPreferences(frequency: DigestFrequency, token: string): Promise<void>;
 export async function submitSampleLeadRequest(input: { name: string; email: string; company: string; marketSlug: string }): Promise<void>;
-export async function createCheckout(plan: PlanTier, token: string): Promise<{ url: string }>;
+export async function createCheckout(plan: PlanTier, marketSlugs: string[], token: string): Promise<{ url: string }>;   // amended 2026-09-26 (WS2 review) — WS5 updates lib/api.ts + fixtures; WS4 billing UI gains a market picker
 export async function createBillingPortal(token: string): Promise<{ url: string }>;
 export async function getAdminSources(token: string): Promise<AdminSource[]>;
 export async function getAdminRuns(params: { sourceId?: string; page?: number }, token: string): Promise<Paged<ScraperRunSummary>>;
@@ -419,7 +420,7 @@ export class ApiError extends Error { readonly status: number }
 | `APIFY_TOKEN`, `APIFY_TASK_ID` | api | Apify API access — the API polls the runs of the dedicated task `scrapelabmax/permittorch-daily` (id `xatpyth2FgbUydjLd`), never the actor's last run (§10, 2026-09-26) |
 | `FIREBASE_PROJECT_ID` | api | Firebase ID-token validation (OIDC discovery at `https://securetoken.google.com/{projectId}`) |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_TERRITORY` | api | Billing |
-| `RESEND_API_KEY`, `EMAIL_FROM` | api | Digest + transactional email |
+| `RESEND_API_KEY`, `EMAIL_FROM`, `EMAIL_UNSUBSCRIBE_SECRET` | api | Digest + transactional email; HMAC secret for one-click unsubscribe links |
 | `SENTRY_DSN` (api) / `NEXT_PUBLIC_SENTRY_DSN` (web) | api, web | Errors |
 | `WEB_ORIGIN` | api | CORS allowed origin + Stripe checkout success/cancel redirect base |
 | `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_API_MOCK` | web | API client |
@@ -465,6 +466,8 @@ export class ApiError extends Error { readonly status: number }
   - **H. Dev port:** `apps/api/Properties/launchSettings.json` now uses port 5000 (contract, matches §10's API dev base URL).
 
 - **WS1 review rulings (2026-09-26):** the base 30 points are persisted as a `BASE_SCORE` LeadSignal (WS4 renders it as the first, baseline row of the score explanation). `PipelineSetup.AddPipelineServices` honours config `Pipeline:Enabled` (default true): when false the hosted jobs (ingestion, source-health monitor, daily rescoring) are not registered — WS5 sets `Pipeline:Enabled=false` in the API integration-test factory so hosted jobs never run inside `WebApplicationFactory` tests. A daily rescoring pass recomputes scores for opportunities filed in the last 91 days so time-based signals (`PERMIT_RECENT`, `OLD_PERMIT`) stay honest. Source freshness timestamps come from the Apify run's finish time, never ingestion time.
+
+- **WS2 review rulings (2026-09-26):** checkout requires `marketSlugs` (entitlement comes only from the markets attached to the subscription); the frozen web client/fixtures are updated by WS5 (`createCheckout(plan, marketSlugs, token)`), and the dashboard's upgrade flow gets a market picker. The API partitions rate limits per authenticated `sub` and, for anonymous calls, per forwarded client IP (`UseForwardedHeaders` first in `MapFeatureEndpoints`). Stripe webhooks fail closed without a secret, re-fetch the subscription from Stripe on every subscription event, and never resurrect a canceled subscription; a live subscription blocks a second checkout (409); non-Territory plans keep one market. Digest progress is saved per user with Resend idempotency keys; every digest carries a one-click unsubscribe (`EMAIL_UNSUBSCRIBE_SECRET`), sample digests stop after 28 days. Saved-lead listing intersects entitled markets. Startup validation fails fast outside the Testing environment when `FIREBASE_PROJECT_ID`, `STRIPE_*`, or `EMAIL_UNSUBSCRIBE_SECRET` are missing. Manual reclassification must rescore the lead and be respected by ingestion — WS5 adds `FireOpportunity.CategoryOverridden` (schema) after the merges.
 
 ## 11. Workstream Plan Files
 

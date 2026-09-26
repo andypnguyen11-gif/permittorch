@@ -121,6 +121,15 @@ WS5-specific rules:
 
 ## Task 5: Reconcile lib/api.ts mock branch with WS4 fixture exports
 
+> Additional reconciliation items ruled during the workstream reviews (2026-09-26):
+> - **Checkout contract:** update `apps/web/lib/api.ts` `createCheckout(plan, marketSlugs, token)` → POST `{ plan, marketSlugs }`; update `lib/fixtures/index.ts` accordingly; add a market picker to the dashboard upgrade/billing flow (Starter/Pro: one market; Territory: up to five) and pass `?plan=` from the pricing page (`/signup?plan=`) through signup to the account page's checkout CTA.
+> - **`Pipeline:Enabled`:** confirm `ApiFactory` sets it to `false` (WS2 fix wave did) and that `.env`/Railway leave it `true`.
+> - **Manual reclassification:** add `FireOpportunity.CategoryOverridden` (bool, default false) + migration; the admin reclassify endpoint sets it and rescores via `ScoringEngine` with `new ClassificationResult(category, 1.0m, "manual")`; `IngestionJob` skips reclassification for overridden opportunities. Tests on both sides.
+> - **Middleware guard:** in `apps/web/middleware.ts`, when `authConfig.cookieSignatureKeys.length === 0`, log once and treat every request as unauthenticated (public → next, protected → redirect `/login`) instead of throwing.
+> - **Title template:** decide whether pages keep plain titles (WS3/WS4 already dropped their suffixes) — no root layout change needed.
+> - **Stripe portal configuration:** in the Dashboard's Customer Portal settings, either disable plan switching or accept that non-Territory downgrades keep one market (API enforces).
+
+
 **Files:** `apps/web/lib/api.ts` (modify — WS5 now owns it), read-only: `apps/web/lib/fixtures/*`.
 **Interfaces:** the exported function signatures in master §8 are LOCKED and must not change; only the internal mock-mode fixture imports/names are aligned.
 
