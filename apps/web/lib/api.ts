@@ -166,11 +166,14 @@ export async function submitSampleLeadRequest(
   return apiFetch<void>("/api/sample-leads", { method: "POST", body: JSON.stringify(input) });
 }
 
-export async function createCheckout(plan: PlanTier, token: string): Promise<{ url: string }> {
-  if (isMock()) return (await fixtures()).createCheckout(plan);
+// Entitlement comes only from the markets attached to the subscription, so
+// checkout always carries the market selection (exactly 1 slug for
+// STARTER/PRO, 1–5 for TERRITORY — the API validates and returns 400 otherwise).
+export async function createCheckout(plan: PlanTier, marketSlugs: string[], token: string): Promise<{ url: string }> {
+  if (isMock()) return (await fixtures()).createCheckout(plan, marketSlugs);
   return apiFetch<{ url: string }>(
     "/api/billing/checkout",
-    { method: "POST", body: JSON.stringify({ plan }) },
+    { method: "POST", body: JSON.stringify({ plan, marketSlugs }) },
     token,
   );
 }

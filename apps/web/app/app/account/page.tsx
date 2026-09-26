@@ -1,17 +1,18 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { MapPin, Sparkles } from "lucide-react";
-import type { AccountMe, PlanTier } from "@permittorch/types";
-import { getAccountMarkets, getAccountMe } from "@/lib/api";
+import type { AccountMe, Market } from "@permittorch/types";
+import { getAccountMarkets, getAccountMe, getMarkets } from "@/lib/api";
 import { getApiToken } from "@/components/app/get-token";
 import { handleApiError } from "@/components/app/api-errors";
-import { BillingButtons } from "@/components/app/account/billing-buttons";
+import { BillingButtons, CheckoutPicker } from "@/components/app/account/billing-buttons";
+import { PLAN_LABELS, parsePlanTier } from "@/components/app/account/plan-selection";
+import { orderMarkets } from "@/components/app/order-markets";
 import { SectionCard } from "@/components/app/section-card";
 import { Badge } from "@/components/ui/badge";
 
 export const metadata: Metadata = { title: "Account" };
 
-const PLAN_LABELS: Record<PlanTier, string> = { STARTER: "Starter", PRO: "Pro", TERRITORY: "Territory" };
 const ROLE_LABELS: Record<AccountMe["role"], string> = {
   MEMBER: "Member", ADMIN: "Admin", SUPER_ADMIN: "PermitTorch staff",
 };
@@ -25,10 +26,18 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-export default async function AccountPage() {
+export default async function AccountPage({ searchParams }: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+} = {}) {
   const token = await getApiToken();
   const [me, markets] = await Promise.all([getAccountMe(token), getAccountMarkets(token)])
     .catch((err) => handleApiError(err));
+  // ?plan= arrives from /pricing → /signup; it only preselects the picker.
+  const requestedPlan = parsePlanTier((await searchParams)?.plan);
+  // No plan yet: the picker offers the entitled markets first, then the public catalog.
+  const checkoutMarkets: Market[] = me.plan === null
+    ? orderMarkets(await getMarkets().catch((err) => handleApiError(err)), markets)
+    : [];
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -65,7 +74,9 @@ export default async function AccountPage() {
               </ul>
             )}
           </div>
-          <BillingButtons plan={me.plan} />
+          {me.plan === null
+            ? <CheckoutPicker markets={checkoutMarkets} initialPlan={requestedPlan ?? "PRO"} />
+            : <BillingButtons plan={me.plan} />}
         </div>
       </SectionCard>
 

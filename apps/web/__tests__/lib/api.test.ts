@@ -138,4 +138,21 @@ describe("lib/api", () => {
     expect(fetchMock.mock.calls[0][0]).toBe("http://api.test/api/admin/sources/src_1/disable");
     expect(fetchMock.mock.calls[1][0]).toBe("http://api.test/api/admin/sources/src_1/enable");
   });
+
+  it("posts the plan and market selection to checkout", async () => {
+    vi.stubEnv("NEXT_PUBLIC_API_MOCK", "0");
+    vi.stubEnv("NEXT_PUBLIC_API_URL", "http://api.test");
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse({ url: "https://checkout.stripe.test/s" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const api = await import("@/lib/api");
+
+    await expect(api.createCheckout("TERRITORY", ["austin-tx", "dallas-tx"], "tok_123"))
+      .resolves.toEqual({ url: "https://checkout.stripe.test/s" });
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://api.test/api/billing/checkout");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body as string)).toEqual({ plan: "TERRITORY", marketSlugs: ["austin-tx", "dallas-tx"] });
+    expect(new Headers(init.headers).get("Authorization")).toBe("Bearer tok_123");
+  });
 });

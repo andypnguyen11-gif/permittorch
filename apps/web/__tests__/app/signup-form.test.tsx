@@ -107,4 +107,36 @@ describe("SignupForm", () => {
     fireEvent.click(screen.getByRole("button", { name: "Continue with Google" }));
     await waitFor(() => expect(push).toHaveBeenCalledWith("/app/leads"));
   });
+
+  describe("?plan= pass-through from /pricing", () => {
+    const signUpWith = async (search: string) => {
+      window.history.replaceState(null, "", `/signup${search}`);
+      vi.mocked(createUserWithEmailAndPassword).mockResolvedValue({
+        user: { getIdToken: vi.fn().mockResolvedValue("t") },
+      } as never);
+      render(<SignupForm />);
+      type("Email", "new@example.com");
+      type("Password", "hunter2!!");
+      fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+      await waitFor(() => expect(push).toHaveBeenCalled());
+      window.history.replaceState(null, "", "/signup");
+      return push.mock.calls[0][0] as string;
+    };
+
+    it("sends a valid plan to the account page preselected", async () => {
+      expect(await signUpWith("?plan=TERRITORY")).toBe("/app/account?plan=TERRITORY");
+    });
+
+    it("normalizes the plan's case", async () => {
+      expect(await signUpWith("?plan=starter")).toBe("/app/account?plan=STARTER");
+    });
+
+    it("ignores a plan outside the PlanTier union", async () => {
+      expect(await signUpWith("?plan=ENTERPRISE")).toBe("/app/leads");
+    });
+
+    it("ignores an injected plan value", async () => {
+      expect(await signUpWith("?plan=%2F%2Fevil.example")).toBe("/app/leads");
+    });
+  });
 });

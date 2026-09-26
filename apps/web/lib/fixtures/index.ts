@@ -50,7 +50,7 @@ export async function getAccountMe(): Promise<AccountMe> { return mockAccountFor
 export async function updateEmailPreferences(_frequency: DigestFrequency): Promise<void> { /* mock no-op */ }
 // Mock mode accepts the sample-lead form as a no-op success.
 export async function submitSampleLeadRequest(_input: { name: string; email: string; company: string; marketSlug: string }): Promise<void> {}
-export async function createCheckout(_plan: PlanTier): Promise<{ url: string }> { return { url: "#" }; }
+export async function createCheckout(_plan: PlanTier, _marketSlugs: string[]): Promise<{ url: string }> { return { url: "#" }; }
 export async function createBillingPortal(): Promise<{ url: string }> { return { url: "#" }; }
 export async function getAdminSources(): Promise<AdminSource[]> { return mockAdminSources; }
 export async function getAdminRuns(params: { sourceId?: string; page?: number }): Promise<Paged<ScraperRunSummary>> { return mockAdminRuns(params); }

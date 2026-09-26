@@ -52,6 +52,30 @@ describe("/app/account", () => {
     expect(screen.getByText("Houston")).toBeInTheDocument();
     expect(screen.getByText("Dallas")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Upgrade to Territory" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /Subscribe/ })).not.toBeInTheDocument();
+  });
+
+  it("offers the plan + market picker without a plan, preselecting ?plan= and listing the catalog", async () => {
+    const me = vi.spyOn(api, "getAccountMe").mockResolvedValue({
+      email: "new@example.com", role: "MEMBER", organizationName: "New Co", plan: null, digestFrequency: "NONE",
+    });
+    const entitled = vi.spyOn(api, "getAccountMarkets").mockResolvedValue([]);
+    render(<TooltipProvider>{await AccountPage({ searchParams: Promise.resolve({ plan: "territory" }) })}</TooltipProvider>);
+    expect(screen.getByText("No active plan")).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Territory" })).toBeChecked();
+    for (const name of ["Houston", "Dallas", "Austin"])
+      expect(screen.getByRole("checkbox", { name })).toBeInTheDocument();
+    me.mockRestore();
+    entitled.mockRestore();
+  });
+
+  it("falls back to Pro for an invalid ?plan=", async () => {
+    const me = vi.spyOn(api, "getAccountMe").mockResolvedValue({
+      email: "new@example.com", role: "MEMBER", organizationName: "New Co", plan: null, digestFrequency: "NONE",
+    });
+    render(<TooltipProvider>{await AccountPage({ searchParams: Promise.resolve({ plan: "GOLD" }) })}</TooltipProvider>);
+    expect(screen.getByRole("radio", { name: "Pro" })).toBeChecked();
+    me.mockRestore();
   });
 });
 

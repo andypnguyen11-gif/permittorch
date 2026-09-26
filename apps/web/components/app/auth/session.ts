@@ -1,5 +1,6 @@
 import { signOut } from "firebase/auth";
 import { firebaseAuth } from "@/lib/firebase/client";
+import { parsePlanTier } from "@/components/app/account/plan-selection";
 
 // Exchanges a Firebase ID token for the httpOnly session cookie that
 // middleware.ts (next-firebase-auth-edge) checks on every /app request.
@@ -36,4 +37,16 @@ export function postSignInTarget(): string {
   const target = new URLSearchParams(window.location.search).get("redirect");
   if (target && /^\/app(\/|$|\?)/.test(target) && !target.startsWith("//")) return target;
   return DEFAULT_TARGET;
+}
+
+/**
+ * Where to go after creating an account: a valid ?plan= (from /pricing's
+ * /signup?plan=… links) lands on the account page with that plan preselected
+ * in the checkout picker; otherwise the normal post-sign-in target.
+ */
+export function postSignupTarget(): string {
+  if (typeof window === "undefined") return DEFAULT_TARGET;
+  const plan = parsePlanTier(new URLSearchParams(window.location.search).get("plan"));
+  if (plan) return `/app/account?plan=${plan}`;
+  return postSignInTarget();
 }

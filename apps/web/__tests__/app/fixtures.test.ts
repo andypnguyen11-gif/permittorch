@@ -303,7 +303,7 @@ describe("fixtures index (lib/api.ts mock contract)", () => {
   });
 
   it("billing fixtures resolve to a non-navigable placeholder url", async () => {
-    await expect(fixtures.createCheckout("PRO")).resolves.toEqual({ url: "#" });
+    await expect(fixtures.createCheckout("PRO", ["houston-tx"])).resolves.toEqual({ url: "#" });
     await expect(fixtures.createBillingPortal()).resolves.toEqual({ url: "#" });
   });
 });
