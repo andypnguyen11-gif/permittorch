@@ -192,6 +192,9 @@ public sealed class CheckoutEndpointTests(FakeStripeApiFixture fixture) : IClass
     [InlineData("active")]
     [InlineData("trialing")]
     [InlineData("past_due")]
+    [InlineData("unpaid")]
+    [InlineData("paused")]
+    [InlineData("incomplete")]   // a real Stripe subscription awaiting its first payment
     public async Task Org_with_a_live_subscription_gets_409_pointing_to_the_portal(string status)
     {
         var market = TestSeed.Market("Plano");
@@ -205,6 +208,34 @@ public sealed class CheckoutEndpointTests(FakeStripeApiFixture fixture) : IClass
         var body = JsonSerializer.Deserialize<JsonElement>(await response.Content.ReadAsStringAsync());
         Assert.Equal("Manage your plan in the billing portal", body.GetProperty("error").GetString());
         Assert.Empty(Stripe.CallsFor(org.Id));
+    }
+
+    [Theory]
+    [InlineData("incomplete_expired")]
+    [InlineData("canceled")]
+    public async Task Ended_subscriptions_do_not_block_a_new_checkout(string status)
+    {
+        var market = TestSeed.Market("Ended");
+        var (org, _, client) = await SeedUserAsync(market);
+        await Factory.SeedAsync(db => db.Subscriptions.Add(TestSeed.Subscription(org, PlanTier.Pro, status, market)));
+
+        (await client.PostAsync("/api/billing/checkout",
+            Json($"{{\"plan\":\"PRO\",\"marketSlugs\":[\"{market.Slug}\"]}}"))).EnsureSuccessStatusCode();
+        Assert.Single(Stripe.CallsFor(org.Id));
+    }
+
+    [Fact]
+    public async Task Local_incomplete_placeholder_without_a_stripe_subscription_does_not_block_retry()
+    {
+        var market = TestSeed.Market("Retry");
+        var (org, _, client) = await SeedUserAsync(market);
+        var placeholder = TestSeed.Subscription(org, PlanTier.Pro, "incomplete");
+        placeholder.StripeSubscriptionId = null;   // what checkout writes before Stripe creates anything
+        await Factory.SeedAsync(db => db.Subscriptions.Add(placeholder));
+
+        (await client.PostAsync("/api/billing/checkout",
+            Json($"{{\"plan\":\"PRO\",\"marketSlugs\":[\"{market.Slug}\"]}}"))).EnsureSuccessStatusCode();
+        Assert.Equal(7, Assert.Single(Stripe.CallsFor(org.Id)).TrialPeriodDays);
     }
 
     [Fact]

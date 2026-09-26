@@ -14,9 +14,18 @@ public sealed record CheckoutResponse(string Url);
 
 public static class BillingEndpoints
 {
-    /// <summary>Statuses that mean the org already has a live Stripe subscription; a
-    /// second Checkout would create a duplicate, so plan changes go through the portal.</summary>
-    public static readonly string[] LiveStatuses = ["active", "trialing", "past_due"];
+    /// <summary>Stripe statuses that mean the org already has a subscription that still
+    /// exists (paying, owing, paused, or awaiting first payment); a second Checkout would
+    /// create a duplicate, so plan changes go through the portal.</summary>
+    public static readonly string[] LiveStatuses = ["active", "trialing", "past_due", "unpaid", "paused", "incomplete"];
+
+    /// <summary>Live for the checkout guard. The local "incomplete" placeholder written
+    /// before any Stripe subscription exists (no StripeSubscriptionId) is not live, so an
+    /// abandoned checkout can be retried.</summary>
+    public static bool HasLiveSubscription(Subscription? subscription) =>
+        subscription is not null
+        && LiveStatuses.Contains(subscription.Status)
+        && (subscription.Status != "incomplete" || !string.IsNullOrEmpty(subscription.StripeSubscriptionId));
     public const int TrialPeriodDays = 7;   // PRD §27 free trial — offered once per org
 
     public static IEndpointRouteBuilder MapBillingEndpoints(this IEndpointRouteBuilder endpoints)
@@ -70,7 +79,7 @@ public static class BillingEndpoints
 
         var subscription = await db.Subscriptions
             .FirstOrDefaultAsync(s => s.OrganizationId == user.OrganizationId, ct);
-        if (subscription is not null && LiveStatuses.Contains(subscription.Status))
+        if (HasLiveSubscription(subscription))
             return ApiErrors.Conflict("Manage your plan in the billing portal");
         // A Stripe subscription id means this org has subscribed before — the trial is one-time.
         int? trialDays = string.IsNullOrEmpty(subscription?.StripeSubscriptionId) ? TrialPeriodDays : null;

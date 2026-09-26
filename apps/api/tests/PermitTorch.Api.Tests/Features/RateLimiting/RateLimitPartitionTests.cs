@@ -45,7 +45,7 @@ public sealed class RateLimitPartitionTests(LowLimitApiFixture fixture) : IClass
     }
 
     [Fact]
-    public async Task Forwarded_client_ip_selects_the_anonymous_partition()
+    public async Task Proxy_appended_client_ip_selects_the_anonymous_partition()
     {
         var client = fixture.Factory.CreateClient();
         var first = UniqueIp();
@@ -60,6 +60,21 @@ public sealed class RateLimitPartitionTests(LowLimitApiFixture fixture) : IClass
     }
 
     [Fact]
+    public async Task Client_supplied_forwarded_entries_are_ignored_with_a_single_trusted_hop()
+    {
+        // The edge proxy appends the real client IP; whatever the client prepended must not
+        // pick the partition, so rotating the spoofed value cannot escape the limit.
+        var client = fixture.Factory.CreateClient();
+        var real = UniqueIp();
+
+        for (var i = 0; i < LowLimitApiFixture.Limit; i++)
+            Assert.Equal(HttpStatusCode.OK,
+                (await client.SendAsync(Get("/api/health", $"{UniqueIp()}, {real}"))).StatusCode);
+        Assert.Equal(HttpStatusCode.TooManyRequests,
+            (await client.SendAsync(Get("/api/health", $"{UniqueIp()}, {real}"))).StatusCode);
+    }
+
+    [Fact]
     public async Task Anonymous_requests_do_not_consume_an_authenticated_users_bucket()
     {
         var ip = UniqueIp();
@@ -70,5 +85,50 @@ public sealed class RateLimitPartitionTests(LowLimitApiFixture fixture) : IClass
 
         var user = fixture.Factory.CreateClientFor($"user_{Guid.NewGuid():N}", "carol@example.com");
         Assert.Equal(HttpStatusCode.OK, (await user.SendAsync(Get("/api/account/me", ip))).StatusCode);
+    }
+}
+
+public sealed class TwoHopApiFixture : IAsyncLifetime
+{
+    public ApiFactory Factory { get; } = new()
+    {
+        Settings = new Dictionary<string, string?>
+        {
+            ["RateLimiting:GlobalPermitLimit"] = LowLimitApiFixture.Limit.ToString(),
+            ["ForwardedHeaders:ForwardLimit"] = "2",
+        },
+    };
+
+    public Task InitializeAsync() => Factory.InitializeAsync();
+    public async Task DisposeAsync() => await ((IAsyncLifetime)Factory).DisposeAsync();
+}
+
+/// <summary>ForwardedHeaders:ForwardLimit=2 (a CDN in front of the edge) trusts two hops again.</summary>
+public sealed class TwoHopForwardingTests(TwoHopApiFixture fixture) : IClassFixture<TwoHopApiFixture>
+{
+    private static string UniqueIp() => $"203.0.{Random.Shared.Next(1, 254)}.{Random.Shared.Next(1, 254)}";
+
+    private static HttpRequestMessage Get(string forwardedFor)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, "/api/health");
+        request.Headers.Add("X-Forwarded-For", forwardedFor);
+        return request;
+    }
+
+    [Fact]
+    public async Task Second_hop_from_the_right_selects_the_partition()
+    {
+        var client = fixture.Factory.CreateClient();
+        var edge = UniqueIp();
+        var clientA = UniqueIp();
+        var clientB = UniqueIp();
+        while (clientB == clientA) clientB = UniqueIp();
+
+        for (var i = 0; i < LowLimitApiFixture.Limit; i++)
+            Assert.Equal(HttpStatusCode.OK, (await client.SendAsync(Get($"{clientA}, {edge}"))).StatusCode);
+        Assert.Equal(HttpStatusCode.TooManyRequests, (await client.SendAsync(Get($"{clientA}, {edge}"))).StatusCode);
+
+        // Same last hop, different second hop: a separate bucket under the two-hop setting.
+        Assert.Equal(HttpStatusCode.OK, (await client.SendAsync(Get($"{clientB}, {edge}"))).StatusCode);
     }
 }
