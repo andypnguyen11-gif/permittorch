@@ -58,6 +58,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("EMAIL_UNSUBSCRIBE_SECRET", "test-secret");
         builder.UseSetting("API_PUBLIC_URL", "https://api.test.permittorch.local");
         builder.UseSetting("Digests:Enabled", "false");   // tests drive DigestService directly
+        builder.UseSetting("Pipeline:Enabled", "false");  // no ingestion/health jobs racing test data
         builder.UseSetting("RateLimiting:GlobalPermitLimit", "100000");
         foreach (var (key, value) in Settings)
             builder.UseSetting(key, value);
