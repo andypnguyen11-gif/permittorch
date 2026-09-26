@@ -7,10 +7,16 @@ using Stripe.Checkout;
 namespace PermitTorch.Api.Features.Billing;
 
 /// <summary>Maps verified Stripe events onto the local Subscription row.
+/// Handled events: checkout.session.completed, customer.subscription.updated,
+/// customer.subscription.deleted (past_due arrives via subscription.updated; invoice.*
+/// events are intentionally ignored). Stripe does not guarantee delivery order, so
+/// every handled event re-fetches the subscription from Stripe and syncs from the live
+/// object — replays and stale events converge on Stripe's current state. A local row
+/// is never moved out of "canceled" for the same Stripe subscription id.
 /// Unknown customers/subscriptions are logged no-ops (never 500 — stripe trigger
 /// fixtures and replays must always get 200 from the endpoint).</summary>
 public sealed class StripeWebhookProcessor(
-    AppDbContext db, IOptions<BillingOptions> billing, ILogger<StripeWebhookProcessor> logger)
+    AppDbContext db, StripeGateway stripe, IOptions<BillingOptions> billing, ILogger<StripeWebhookProcessor> logger)
 {
     public async Task ProcessAsync(Event stripeEvent, CancellationToken ct)
     {
@@ -20,10 +26,8 @@ public sealed class StripeWebhookProcessor(
                 await HandleCheckoutCompletedAsync((Session)stripeEvent.Data.Object, ct);
                 break;
             case "customer.subscription.updated":
-                await HandleSubscriptionChangedAsync((Stripe.Subscription)stripeEvent.Data.Object, deleted: false, ct);
-                break;
             case "customer.subscription.deleted":
-                await HandleSubscriptionChangedAsync((Stripe.Subscription)stripeEvent.Data.Object, deleted: true, ct);
+                await HandleSubscriptionChangedAsync((Stripe.Subscription)stripeEvent.Data.Object, ct);
                 break;
             default:
                 logger.LogInformation("Ignoring unhandled Stripe event type {EventType}", stripeEvent.Type);
@@ -42,8 +46,24 @@ public sealed class StripeWebhookProcessor(
     {
         var subscription = await FindSubscriptionAsync(session.CustomerId, session.SubscriptionId, session.Metadata, ct);
         if (subscription is null) return;
+        if (string.IsNullOrEmpty(session.SubscriptionId))
+        {
+            logger.LogWarning("checkout.session.completed without a subscription id — no-op");
+            return;
+        }
 
-        subscription.StripeSubscriptionId = session.SubscriptionId ?? subscription.StripeSubscriptionId;
+        var live = await stripe.GetSubscriptionAsync(session.SubscriptionId, ct);
+        if (live is not null)
+        {
+            await SyncAsync(subscription, live, ct);
+            return;
+        }
+
+        // Stripe has no such subscription (fixture/test-mode data): fall back to the session.
+        logger.LogWarning("Subscription {SubscriptionId} not found in Stripe; syncing from session metadata",
+            session.SubscriptionId);
+        if (IsCanceledForSameSubscription(subscription, session.SubscriptionId)) return;
+        subscription.StripeSubscriptionId = session.SubscriptionId;
         if (session.Metadata is not null
             && session.Metadata.TryGetValue("plan", out var planWire)
             && Shared.Wire.TryParse<PermitTorch.Api.Data.PlanTier>(planWire, out var plan))
@@ -54,20 +74,51 @@ public sealed class StripeWebhookProcessor(
         await db.SaveChangesAsync(ct);
     }
 
-    private async Task HandleSubscriptionChangedAsync(Stripe.Subscription stripeSubscription, bool deleted, CancellationToken ct)
+    private async Task HandleSubscriptionChangedAsync(Stripe.Subscription eventSubscription, CancellationToken ct)
     {
         var subscription = await FindSubscriptionAsync(
-            stripeSubscription.CustomerId, stripeSubscription.Id, stripeSubscription.Metadata, ct);
+            eventSubscription.CustomerId, eventSubscription.Id, eventSubscription.Metadata, ct);
         if (subscription is null) return;
 
-        subscription.StripeSubscriptionId = stripeSubscription.Id;
-        subscription.Status = deleted ? "canceled" : stripeSubscription.Status;   // includes past_due
-        subscription.TrialEndsAt = stripeSubscription.TrialEnd;
-        if (PlanFromPrice(stripeSubscription.Items?.Data?.FirstOrDefault()?.Price?.Id) is { } plan)
+        var live = await stripe.GetSubscriptionAsync(eventSubscription.Id, ct);
+        if (live is null)
+            logger.LogWarning("Subscription {SubscriptionId} not found in Stripe; syncing from event payload",
+                eventSubscription.Id);
+        await SyncAsync(subscription, live ?? eventSubscription, ct);
+    }
+
+    private async Task SyncAsync(Data.Subscription subscription, Stripe.Subscription source, CancellationToken ct)
+    {
+        if (IsCanceledForSameSubscription(subscription, source.Id)) return;
+
+        // An event about an older Stripe subscription must not clobber the org's current live one.
+        if (!string.IsNullOrEmpty(subscription.StripeSubscriptionId)
+            && subscription.StripeSubscriptionId != source.Id
+            && BillingEndpoints.LiveStatuses.Contains(subscription.Status)
+            && !BillingEndpoints.LiveStatuses.Contains(source.Status))
+        {
+            logger.LogInformation(
+                "Ignoring {Status} state of superseded subscription {SubscriptionId}", source.Status, source.Id);
+            return;
+        }
+
+        subscription.StripeSubscriptionId = source.Id;
+        subscription.Status = source.Status;   // includes past_due and canceled
+        subscription.TrialEndsAt = source.TrialEnd;
+        if (PlanFromPrice(source.Items?.Data?.FirstOrDefault()?.Price?.Id) is { } plan)
             subscription.Plan = plan;
-        if (!deleted)
-            await AttachMarketsFromMetadataAsync(subscription, stripeSubscription.Metadata, ct);
+        if (source.Status != "canceled")
+            await AttachMarketsFromMetadataAsync(subscription, source.Metadata, ct);   // canceled keeps history
         await db.SaveChangesAsync(ct);
+    }
+
+    private bool IsCanceledForSameSubscription(Data.Subscription subscription, string? stripeSubscriptionId)
+    {
+        if (subscription.Status != "canceled" || subscription.StripeSubscriptionId != stripeSubscriptionId)
+            return false;
+        logger.LogInformation(
+            "Subscription {SubscriptionId} is already canceled locally; ignoring stale event", stripeSubscriptionId);
+        return true;
     }
 
     private async Task<Data.Subscription?> FindSubscriptionAsync(
@@ -120,8 +171,9 @@ public sealed class StripeWebhookProcessor(
             return;
         }
 
-        subscription.Markets.Clear();
-        foreach (var marketId in marketIds)
+        // Diff rather than clear+re-add so replays are true no-ops.
+        subscription.Markets.RemoveAll(m => !marketIds.Contains(m.MarketId));
+        foreach (var marketId in marketIds.Where(id => subscription.Markets.All(m => m.MarketId != id)))
             subscription.Markets.Add(new SubscriptionMarket { SubscriptionId = subscription.Id, MarketId = marketId });
     }
 }

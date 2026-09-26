@@ -44,6 +44,22 @@ public class StripeGateway(IOptions<BillingOptions> options)
         return session.Url;
     }
 
+    /// <summary>Retrieves the live subscription so webhook handling syncs from Stripe's
+    /// current state rather than a possibly stale/out-of-order event payload.
+    /// Returns null when Stripe has no such subscription (e.g. `stripe trigger` fixtures);
+    /// any other Stripe/network failure propagates so the webhook returns 500 and Stripe retries.</summary>
+    public virtual async Task<Stripe.Subscription?> GetSubscriptionAsync(string subscriptionId, CancellationToken ct)
+    {
+        try
+        {
+            return await new SubscriptionService(Client).GetAsync(subscriptionId, cancellationToken: ct);
+        }
+        catch (StripeException exception) when (exception.HttpStatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+    }
+
     /// <summary>"permittorch-checkout-" + 8 random lowercase letters — tags the session for Stripe-side tracing.</summary>
     public static string NewIntegrationIdentifier() =>
         "permittorch-checkout-" + RandomNumberGenerator.GetString("abcdefghijklmnopqrstuvwxyz", 8);

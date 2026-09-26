@@ -23,6 +23,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
     public Action<IServiceCollection>? TestServices { get; init; }
 
+    /// <summary>Host environment; "Testing" relaxes startup secret validation.</summary>
+    public string EnvironmentName { get; init; } = "Testing";
+
     /// <summary>Per-instance configuration overrides applied after the defaults below.</summary>
     public IReadOnlyDictionary<string, string?> Settings { get; init; } = new Dictionary<string, string?>();
 
@@ -41,7 +44,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        builder.UseEnvironment("Testing");
+        builder.UseEnvironment(EnvironmentName);
         builder.UseSetting("DATABASE_URL", _postgres.GetConnectionString());
         builder.UseSetting("WEB_ORIGIN", "https://web.test.permittorch.local");
         builder.UseSetting("FIREBASE_PROJECT_ID", "permittorch-test");

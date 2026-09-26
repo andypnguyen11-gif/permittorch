@@ -5,9 +5,12 @@ using PermitTorch.Api.Tests.Features.TestInfra;
 
 namespace PermitTorch.Api.Tests.Features.Billing;
 
-[Collection("api")]
-public class StripeWebhookEndpointTests(ApiFactory factory)
+/// <summary>Uses the fake gateway: webhook handling re-fetches the live subscription,
+/// which must never reach the network in tests.</summary>
+public class StripeWebhookEndpointTests(FakeStripeApiFixture fixture) : IClassFixture<FakeStripeApiFixture>
 {
+    private ApiFactory factory => fixture.Factory;
+
     private static HttpRequestMessage Request(string payload, string? signature) =>
         new(HttpMethod.Post, "/api/webhooks/stripe")
         {
@@ -15,9 +18,10 @@ public class StripeWebhookEndpointTests(ApiFactory factory)
             Headers = { { "Stripe-Signature", signature ?? "t=1,v1=deadbeef" } },
         };
 
-    private static string SubscriptionUpdatedPayload(string subscriptionId, string customerId, string slug) => $$"""
+    private static string SubscriptionUpdatedPayload(string subscriptionId, string customerId, string slug,
+        string eventId = "evt_test_1", string status = "past_due") => $$"""
         {
-          "id": "evt_test_1",
+          "id": "{{eventId}}",
           "object": "event",
           "api_version": "2026-01-01",
           "type": "customer.subscription.updated",
@@ -26,7 +30,7 @@ public class StripeWebhookEndpointTests(ApiFactory factory)
               "id": "{{subscriptionId}}",
               "object": "subscription",
               "customer": "{{customerId}}",
-              "status": "past_due",
+              "status": "{{status}}",
               "items": {
                 "object": "list",
                 "data": [ { "object": "subscription_item", "price": { "object": "price", "id": "price_pro_test" } } ]
@@ -83,5 +87,25 @@ public class StripeWebhookEndpointTests(ApiFactory factory)
         };
         var response = await factory.CreateClient().SendAsync(request);
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Replaying_the_same_signed_event_twice_has_one_effect()
+    {
+        var markets = new[] { TestSeed.Market("Replay"), TestSeed.Market("Replay") };
+        var (org, user, pref) = TestSeed.User($"user_{Guid.NewGuid():N}", "replay-e@example.com");
+        var local = TestSeed.Subscription(org, PlanTier.Pro, "trialing", markets[0]);
+        await factory.SeedAsync(db => { db.AddRange(markets); db.AddRange(org, user, pref, local); });
+
+        var payload = SubscriptionUpdatedPayload(local.StripeSubscriptionId!, local.StripeCustomerId,
+            markets[1].Slug, eventId: $"evt_{Guid.NewGuid():N}", status: "active");
+        var client = factory.CreateClient();
+        Assert.Equal(HttpStatusCode.OK, (await client.SendAsync(Request(payload, TestStripe.Sign(payload)))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.SendAsync(Request(payload, TestStripe.Sign(payload)))).StatusCode);
+
+        var stored = await factory.QueryAsync(db => db.Subscriptions.Include(s => s.Markets)
+            .SingleAsync(s => s.OrganizationId == org.Id));
+        Assert.Equal("active", stored.Status);
+        Assert.Equal(markets[1].Id, Assert.Single(stored.Markets).MarketId);
     }
 }

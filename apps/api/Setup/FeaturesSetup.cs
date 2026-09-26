@@ -15,8 +15,46 @@ public static class FeaturesSetup
 {
     public const string CorsPolicy = "web";
 
+    /// <summary>Settings without which the API must not start in a deployed environment.</summary>
+    public static readonly string[] RequiredSettings =
+    [
+        "FIREBASE_PROJECT_ID",
+        "STRIPE_SECRET_KEY",
+        "STRIPE_WEBHOOK_SECRET",
+        "STRIPE_PRICE_STARTER",
+        "STRIPE_PRICE_PRO",
+        "STRIPE_PRICE_TERRITORY",
+    ];
+
+    /// <summary>Environments where missing secrets are tolerated: "Testing" (the integration
+    /// test factory supplies its own values) and "Development" (local runs and WS0's bare
+    /// WebApplicationFactory health test, which supplies none).</summary>
+    private static readonly string[] LenientEnvironments = ["Testing", "Development"];
+
+    public static IReadOnlyList<string> MissingRequiredSettings(IConfiguration configuration) =>
+        RequiredSettings.Where(name => string.IsNullOrWhiteSpace(configuration[name])).ToList();
+
+    /// <summary>Throws (listing names only, never values) when a required setting is missing
+    /// outside the lenient environments — fail at boot, not on the first paying customer.</summary>
+    public static void ValidateRequiredSettings(IConfiguration configuration, string environmentName)
+    {
+        if (LenientEnvironments.Contains(environmentName, StringComparer.OrdinalIgnoreCase)) return;
+        var missing = MissingRequiredSettings(configuration);
+        if (missing.Count > 0)
+            throw new InvalidOperationException(
+                $"Missing required configuration for environment '{environmentName}': {string.Join(", ", missing)}");
+    }
+
+    private static string EnvironmentName(IConfiguration configuration) =>
+        configuration[HostDefaults.EnvironmentKey]
+        ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
+        ?? Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT")
+        ?? Environments.Production;
+
     public static IServiceCollection AddFeatureServices(this IServiceCollection services, IConfiguration configuration)
     {
+        ValidateRequiredSettings(configuration, EnvironmentName(configuration));
+
         // LOCKED wire format for every minimal-API request/response body
         services.Configure<Microsoft.AspNetCore.Http.Json.JsonOptions>(o => ApiJson.Configure(o.SerializerOptions));
 

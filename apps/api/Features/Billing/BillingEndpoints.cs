@@ -137,6 +137,15 @@ public static class BillingEndpoints
         HttpRequest request, StripeWebhookProcessor processor,
         IOptions<BillingOptions> options, ILoggerFactory loggerFactory, CancellationToken ct)
     {
+        // Fail closed: with no secret configured, signature verification is meaningless.
+        if (string.IsNullOrWhiteSpace(options.Value.WebhookSecret))
+        {
+            loggerFactory.CreateLogger("StripeWebhook")
+                .LogError("Rejected Stripe webhook: STRIPE_WEBHOOK_SECRET is not configured");
+            return Results.Json(new ErrorResponse("Billing webhooks are not configured"), ApiJson.Options,
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+
         // A missing header reaches Stripe.EventUtility.ConstructEvent as a null string,
         // which throws NullReferenceException deep inside the SDK instead of the
         // StripeException below — guard it here so a malformed/absent header is a

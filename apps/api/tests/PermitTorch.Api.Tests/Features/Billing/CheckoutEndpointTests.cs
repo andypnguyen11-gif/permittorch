@@ -18,6 +18,12 @@ public sealed class FakeStripeGateway(IOptions<BillingOptions> options) : Stripe
     public readonly ConcurrentQueue<string> PortalCustomers = new();
     public readonly ConcurrentQueue<Guid> CustomersCreatedFor = new();
 
+    /// <summary>What GetSubscriptionAsync returns — the "live" Stripe state. Missing id = 404 (null).</summary>
+    public readonly ConcurrentDictionary<string, Stripe.Subscription> LiveSubscriptions = new();
+
+    public override Task<Stripe.Subscription?> GetSubscriptionAsync(string subscriptionId, CancellationToken ct) =>
+        Task.FromResult(LiveSubscriptions.TryGetValue(subscriptionId, out var live) ? live : null);
+
     public override Task<string> CreateCustomerAsync(string email, Guid organizationId, CancellationToken ct)
     {
         CustomersCreatedFor.Enqueue(organizationId);
