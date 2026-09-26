@@ -76,13 +76,27 @@ describe("lib/api", () => {
     expect(new Headers(init.headers).get("Content-Type")).toBe("application/json");
   });
 
-  it("throws the API-provided error message on non-2xx responses", async () => {
+  it("throws a typed ApiError with the API-provided message and status on non-2xx responses", async () => {
     vi.stubEnv("NEXT_PUBLIC_API_MOCK", "0");
     vi.stubEnv("NEXT_PUBLIC_API_URL", "http://api.test");
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ error: "Lead not found" }, 404)));
     const api = await import("@/lib/api");
 
     await expect(api.getLead("missing", "tok_123")).rejects.toThrow("Lead not found");
+    await expect(api.getLead("missing", "tok_123")).rejects.toMatchObject({ name: "ApiError", status: 404 });
+  });
+
+  it("encodes path parameters containing reserved characters", async () => {
+    vi.stubEnv("NEXT_PUBLIC_API_MOCK", "0");
+    vi.stubEnv("NEXT_PUBLIC_API_URL", "http://api.test");
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse({}));
+    vi.stubGlobal("fetch", fetchMock);
+    const api = await import("@/lib/api");
+
+    await api.getLead("a/b", "tok_123");
+
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://api.test/api/leads/a%2Fb");
   });
 
   it("resolves void for 204 responses", async () => {

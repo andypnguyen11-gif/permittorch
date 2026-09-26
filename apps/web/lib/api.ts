@@ -15,6 +15,13 @@ import type {
   ScraperRunSummary,
 } from "@permittorch/types";
 
+export class ApiError extends Error {
+  constructor(message: string, public readonly status: number) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 export interface LeadsQuery {
   market?: string; category?: FireCategory; minScore?: number;
   maxAgeDays?: number; status?: PermitStatus; q?: string; page?: number; pageSize?: number;
@@ -60,7 +67,7 @@ export async function apiFetch<T>(
     } catch {
       // Non-JSON error body: keep the generic message.
     }
-    throw new Error(message);
+    throw new ApiError(message, res.status);
   }
 
   if (res.status === 204) return undefined as T;
@@ -85,7 +92,7 @@ export async function getLeads(params: LeadsQuery, token: string): Promise<Leads
 
 export async function getLead(id: string, token: string): Promise<LeadDetail> {
   if (isMock()) return (await fixtures()).getLead(id);
-  return apiFetch<LeadDetail>(`/api/leads/${id}`, {}, token);
+  return apiFetch<LeadDetail>(`/api/leads/${encodeURIComponent(id)}`, {}, token);
 }
 
 // Markets bypass the fixtures index: WS3 (marketing) needs mock markets in a
@@ -102,7 +109,7 @@ export async function getMarketStats(slug: string): Promise<MarketStats> {
     if (!stats) throw new Error(`Unknown market: ${slug}`);
     return stats;
   }
-  return apiFetch<MarketStats>(`/api/markets/${slug}/stats`);
+  return apiFetch<MarketStats>(`/api/markets/${encodeURIComponent(slug)}/stats`);
 }
 
 export async function getSavedLeads(token: string): Promise<SavedLeadItem[]> {
@@ -122,7 +129,7 @@ export async function saveLead(fireOpportunityId: string, token: string): Promis
 export async function updateSavedLead(id: string, status: SavedLeadStatus, token: string): Promise<void> {
   if (isMock()) return (await fixtures()).updateSavedLead(id, status);
   return apiFetch<void>(
-    `/api/saved-leads/${id}`,
+    `/api/saved-leads/${encodeURIComponent(id)}`,
     { method: "PATCH", body: JSON.stringify({ status }) },
     token,
   );
@@ -130,7 +137,7 @@ export async function updateSavedLead(id: string, status: SavedLeadStatus, token
 
 export async function unsaveLead(id: string, token: string): Promise<void> {
   if (isMock()) return (await fixtures()).unsaveLead(id);
-  return apiFetch<void>(`/api/saved-leads/${id}`, { method: "DELETE" }, token);
+  return apiFetch<void>(`/api/saved-leads/${encodeURIComponent(id)}`, { method: "DELETE" }, token);
 }
 
 export async function getAccountMarkets(token: string): Promise<Market[]> {
@@ -190,7 +197,7 @@ export async function getAdminRuns(
 export async function setSourceActive(id: string, active: boolean, token: string): Promise<void> {
   if (isMock()) return (await fixtures()).setSourceActive(id, active);
   return apiFetch<void>(
-    `/api/admin/sources/${id}/${active ? "enable" : "disable"}`,
+    `/api/admin/sources/${encodeURIComponent(id)}/${active ? "enable" : "disable"}`,
     { method: "POST" },
     token,
   );
