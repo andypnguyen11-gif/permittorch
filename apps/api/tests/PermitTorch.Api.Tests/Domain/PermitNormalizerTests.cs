@@ -132,7 +132,12 @@ public class PermitNormalizerTests
     [InlineData("Closed", PermitStatusKind.Closed)]
     [InlineData("Finaled", PermitStatusKind.Closed)]
     [InlineData("Completed", PermitStatusKind.Closed)]
-    [InlineData("Pending Review", PermitStatusKind.New)] // explicit "pending" -> New rule
+    [InlineData("Pending Review", PermitStatusKind.New)]
+    [InlineData("Issued - Pending Inspection", PermitStatusKind.Active)] // pending is weaker than issued
+    [InlineData("Pending Final", PermitStatusKind.Closed)]               // pending is weaker than final
+    [InlineData("Pending Inspection", PermitStatusKind.Inspection)]
+    [InlineData("Reactivated", PermitStatusKind.Active)]
+    [InlineData("Activated", PermitStatusKind.Active)] // explicit "pending" -> New rule
     [InlineData("Inactive", PermitStatusKind.Closed)]            // not Active despite containing "active"
     [InlineData("Renewal", PermitStatusKind.New)]                // not matched via the "new" substring
     [InlineData("Application Incomplete", PermitStatusKind.New)] // not Closed via "complete"

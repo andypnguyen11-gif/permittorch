@@ -75,22 +75,26 @@ public sealed class RescoringJob : BackgroundService
 
         var windowStart = nowUtc.AddDays(-RescoreWindowDays);
         var changed = 0;
-        var offset = 0;
+        Guid? lastId = null;
 
         while (true)
         {
             ct.ThrowIfCancellationRequested();
-            // Rescoring never changes FiledDate, so offset paging over a stable order is safe.
-            var batch = await db.Set<FireOpportunity>()
+            // Keyset paging by id: stable even if rows are inserted or deleted mid-pass.
+            var query = db.Set<FireOpportunity>()
                 .Include(o => o.Permit)
                 .Include(o => o.Signals)
-                .Where(o => o.Permit.FiledDate == null || o.Permit.FiledDate >= windowStart)
+                .Where(o => o.Permit.FiledDate == null || o.Permit.FiledDate >= windowStart);
+            if (lastId is { } after)
+                query = query.Where(o => o.Id.CompareTo(after) > 0);
+            var batch = await query
                 .OrderBy(o => o.Id)
-                .Skip(offset)
                 .Take(BatchSize)
                 .AsSplitQuery()
                 .ToListAsync(ct);
             if (batch.Count == 0) break;
+            lastId = batch[^1].Id;
+            var batchChanged = 0;
 
             foreach (var opportunity in batch)
             {
@@ -118,11 +122,22 @@ public sealed class RescoringJob : BackgroundService
                 opportunity.Reason = result.Reason;
                 // LastUpdatedAt is deliberately untouched: a time-based rescore is not new permit
                 // activity and must not make a lead look fresher than its data.
-                changed++;
+                batchChanged++;
             }
 
-            await db.SaveChangesAsync(ct);
-            offset += batch.Count;
+            try
+            {
+                await db.SaveChangesAsync(ct);
+                changed += batchChanged;
+            }
+            catch (DbUpdateConcurrencyException ex)
+            {
+                // Ingestion rewrote some of these opportunities' signals mid-pass. Its fresh score
+                // is authoritative; skip this batch and keep going rather than abandon the pass.
+                _logger.LogWarning(ex,
+                    "Rescoring batch ending at opportunity {LastId} hit a concurrent update; skipped, will be rescored next pass",
+                    lastId);
+            }
             db.ChangeTracker.Clear();
         }
 

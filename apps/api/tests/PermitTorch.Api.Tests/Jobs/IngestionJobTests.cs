@@ -537,7 +537,7 @@ public class IngestionJobTests
     // fails (HTTP 500) for its first `failuresBeforeSuccess` calls (int.MaxValue = always).
     private (IngestionJob Job, ServiceProvider Services) BuildApifyJob(string failing, string next,
         int failuresBeforeSuccess, string? sourceIdForRecord = null,
-        Dictionary<string, string?>? jobConfig = null)
+        Dictionary<string, string?>? jobConfig = null, string? brokenRunCoverageBody = null)
     {
         var brokenCalls = 0;
         var brokenDataset = sourceIdForRecord is null
@@ -556,6 +556,8 @@ public class IngestionJobTests
                     ? new HttpResponseMessage(HttpStatusCode.InternalServerError)
                     : JsonResponse(brokenDataset);
             if (path == "/v2/datasets/ds-ok/items") return JsonResponse("[]");
+            if (path == "/v2/key-value-stores/kv-ds-broken/records/COVERAGE_REPORT" && brokenRunCoverageBody is not null)
+                return JsonResponse(brokenRunCoverageBody);
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
         var apifyConfig = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
@@ -643,6 +645,71 @@ public class IngestionJobTests
         await using var db = _fixture.CreateContext();
         var rows = await db.Set<ScraperRun>().Where(r => r.ApifyRunId == failing).ToListAsync();
         Assert.Equal("SUCCEEDED", Assert.Single(rows).Status);
+    }
+
+    [Fact]
+    public async Task RunOnce_UnparseableCoverageReport_StillIngestsDownloadedRecords()
+    {
+        var sourceId = $"src-{Guid.NewGuid():N}";
+        await SeedSourceAsync(sourceId);
+        var runId = $"run-{Guid.NewGuid():N}";
+        var (job, sp) = BuildApifyJob(runId, $"run-{Guid.NewGuid():N}", failuresBeforeSuccess: 0,
+            sourceIdForRecord: sourceId, brokenRunCoverageBody: "{ this is not json");
+        await using var _ = sp;
+
+        var scraperRun = await job.RunOnceAsync(CancellationToken.None);
+
+        Assert.NotNull(scraperRun);
+        Assert.Equal(runId, scraperRun!.ApifyRunId);
+        Assert.Equal("SUCCEEDED", scraperRun.Status);
+        Assert.Equal(1, scraperRun.RecordsImported);
+        Assert.Equal(0, scraperRun.Failures);
+        await using var db = _fixture.CreateContext();
+        var stored = await db.Set<ScraperRun>().SingleAsync(r => r.ApifyRunId == runId);
+        Assert.Null(stored.CoverageReportJson);
+    }
+
+    [Fact]
+    public async Task RunOnce_CoverageStatSourceId_MatchesSourceCaseInsensitively()
+    {
+        var sourceId = $"src-{Guid.NewGuid():N}";
+        var source = await SeedSourceAsync(sourceId, HealthStatus.Stale);
+        var (job, sp) = BuildJob(new FakePermitSourceProvider(
+            Run($"run-{Guid.NewGuid():N}", Array.Empty<RawPermitRecord>(),
+                Stat(sourceId.ToUpperInvariant(), emitted: 7))));
+        await using var _ = sp;
+
+        await job.RunOnceAsync(CancellationToken.None);
+
+        await using var db = _fixture.CreateContext();
+        var updated = await db.Set<Source>().SingleAsync(s => s.Id == source.Id);
+        Assert.Equal(HealthStatus.Healthy, updated.HealthStatus);
+        Assert.Equal(7, updated.RecordsLastRun);
+    }
+
+    [Fact]
+    public async Task RunOnce_SameExternalIdTwiceInOneRun_UpdatesSingleRow()
+    {
+        var sourceId = $"src-{Guid.NewGuid():N}";
+        var source = await SeedSourceAsync(sourceId);
+        var externalId = $"ext-{Guid.NewGuid():N}";
+        var first = Record(externalId, sourceId, description: "Fire alarm install", street: "700 Dup St",
+            permitStatus: "Applied");
+        var second = Record(externalId, sourceId, description: "Fire alarm install", street: "700 Dup St",
+            permitStatus: "Issued");
+        var (job, sp) = BuildJob(new FakePermitSourceProvider(
+            Run($"run-{Guid.NewGuid():N}", new[] { first, second }, Stat(sourceId))));
+        await using var _ = sp;
+
+        var scraperRun = await job.RunOnceAsync(CancellationToken.None);
+
+        Assert.Equal(1, scraperRun!.RecordsImported);
+        Assert.Equal(1, scraperRun.DuplicatesSkipped);
+        Assert.Equal(0, scraperRun.Failures);
+        await using var db = _fixture.CreateContext();
+        var permit = await db.Set<Permit>().SingleAsync(p => p.SourceId == source.Id);
+        Assert.Equal(PermitStatusKind.Active, permit.Status); // second occurrence updated the row
+        Assert.Equal(1, await db.Set<FireOpportunity>().CountAsync(o => o.PermitId == permit.Id));
     }
 
     [Fact]

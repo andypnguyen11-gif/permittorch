@@ -57,12 +57,15 @@ public static class PermitNormalizer
     [
         (new Regex(@"\bvoid|\bnot\s+issued\b|\bwithdrawn\b|\bexpired\b|\bcancel", StatusOpts), PermitStatusKind.Closed),
         (new Regex(@"\binactive\b", StatusOpts), PermitStatusKind.Closed),
-        (new Regex(@"\bincomplete\b|\bpending\b|\brenewal\b|\bapplied\b|\bsubmitted\b", StatusOpts), PermitStatusKind.New),
-        (new Regex(@"\bissued\b|\bactive\b", StatusOpts), PermitStatusKind.Active),
+        (new Regex(@"\bincomplete\b|\brenewal\b|\bapplied\b|\bsubmitted\b", StatusOpts), PermitStatusKind.New),
+        (new Regex(@"\bissued\b|\b(re)?activ(e|ated)\b", StatusOpts), PermitStatusKind.Active),
         (new Regex(@"\bnew\b", StatusOpts), PermitStatusKind.New),
         (new Regex(@"\binspection\b", StatusOpts), PermitStatusKind.Inspection),
         (new Regex(@"\bfailed\b|\bviolation", StatusOpts), PermitStatusKind.Failed),
         (new Regex(@"\bclosed\b|\bfinal|\bcomplete", StatusOpts), PermitStatusKind.Closed),
+        // "pending" is a weak qualifier ("Issued - Pending Inspection", "Pending Final"), so it
+        // only decides the status when nothing more specific matched.
+        (new Regex(@"\bpending\b", StatusOpts), PermitStatusKind.New),
     ];
 
     private static PermitStatusKind MapStatus(string? rawStatus)

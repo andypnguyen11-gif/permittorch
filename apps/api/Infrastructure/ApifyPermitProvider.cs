@@ -24,6 +24,23 @@ public sealed class ApifyPermitProvider : IPermitSourceProvider
 
     public const string FetchFailedStatus = "FAILED";
 
+    // A bad or unreachable COVERAGE_REPORT must never discard records already downloaded:
+    // ingestion proceeds without coverage (source health is simply not updated this run).
+    private async Task<CoverageReport?> TryGetCoverageAsync(ApifyRun run, CancellationToken ct)
+    {
+        try
+        {
+            return await _client.GetCoverageReportAsync(run.DefaultKeyValueStoreId, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex,
+                "Could not fetch or parse COVERAGE_REPORT for Apify run {RunId} (store {StoreId}); ingesting its records without coverage",
+                run.Id, run.DefaultKeyValueStoreId);
+            return null;
+        }
+    }
+
     public async Task<ProviderRunResult?> FetchNextRunAsync(CancellationToken ct)
     {
         var runs = await _client.GetTaskRunsAsync(ct);
@@ -56,7 +73,7 @@ public sealed class ApifyPermitProvider : IPermitSourceProvider
         try
         {
             var records = await _client.GetDatasetItemsAsync(run.DefaultDatasetId, ct);
-            var coverage = await _client.GetCoverageReportAsync(run.DefaultKeyValueStoreId, ct);
+            var coverage = await TryGetCoverageAsync(run, ct);
             return new ProviderRunResult(run.Id, run.Status, run.StartedAt, run.FinishedAt, records, coverage);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

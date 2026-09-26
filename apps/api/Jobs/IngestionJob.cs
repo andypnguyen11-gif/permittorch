@@ -377,16 +377,20 @@ public sealed class IngestionJob : BackgroundService
     private async Task ApplySourceUpdatesAsync(AppDbContext db, CoverageReport? coverage,
         HashSet<Guid> recordSourceIdSet, DateTime runTime, CancellationToken ct)
     {
+        // Lowercased on both sides so stat sourceIds resolve case-insensitively, exactly like
+        // record resolution (the OrdinalIgnoreCase dictionary) does.
         var statSourceIds = (coverage?.SourceStats ?? [])
-            .Select(s => s.SourceId)
+            .Select(s => s?.SourceId)
             .Where(id => !string.IsNullOrEmpty(id))
+            .Select(id => id!.ToLowerInvariant())
+            .Distinct()
             .ToList();
         var recordSourceIds = recordSourceIdSet.ToList();
         if (statSourceIds.Count == 0 && recordSourceIds.Count == 0) return;
 
         var tracked = await db.Set<Source>()
             .Where(s => s.Active
-                && (recordSourceIds.Contains(s.Id) || statSourceIds.Contains(s.Jurisdiction)))
+                && (recordSourceIds.Contains(s.Id) || statSourceIds.Contains(s.Jurisdiction.ToLower())))
             .ToListAsync(ct);
 
         foreach (var source in tracked)

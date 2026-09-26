@@ -129,6 +129,26 @@ public class RescoringJobTests
     }
 
     [Fact]
+    public async Task RescoreOnce_RescoresEveryRow_AcrossIdPagedBatches()
+    {
+        var now = DateTime.UtcNow;
+        var ids = new Guid[250]; // more than one 200-row batch
+        for (var i = 0; i < ids.Length; i++)
+            ids[i] = await SeedScoredOpportunityAsync(now.AddDays(-5), scoredAt: now.AddDays(-4));
+        var (job, sp) = BuildJob();
+        await using var _ = sp;
+
+        var changed = await job.RescoreOnceAsync(now, CancellationToken.None);
+
+        Assert.True(changed >= ids.Length);
+        await using var db = _fixture.CreateContext();
+        Assert.False(await db.Set<LeadSignal>()
+            .AnyAsync(s => ids.Contains(s.FireOpportunityId) && s.SignalType == "PERMIT_RECENT"));
+        Assert.Equal(ids.Length, await db.Set<LeadSignal>()
+            .CountAsync(s => ids.Contains(s.FireOpportunityId) && s.SignalType == "BASE_SCORE"));
+    }
+
+    [Fact]
     public async Task RescoreOnce_LeavesOpportunitiesOutsideWindowUntouched()
     {
         var now = DateTime.UtcNow;
