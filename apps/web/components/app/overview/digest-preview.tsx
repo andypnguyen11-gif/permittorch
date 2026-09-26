@@ -3,6 +3,7 @@ import { Clock, Mail } from "lucide-react";
 import type { AccountMe } from "@permittorch/types";
 import { SectionCard } from "@/components/app/section-card";
 import { formatValueShort } from "@/components/app/format";
+import { RECENT_DAYS, sampleScope, type OverviewStats } from "@/components/app/overview/stat-cards";
 
 export function digestScheduleLabel(frequency: AccountMe["digestFrequency"]): string {
   if (frequency === "DAILY") return "Next digest tomorrow at 6:00 AM";
@@ -12,7 +13,7 @@ export function digestScheduleLabel(frequency: AccountMe["digestFrequency"]): st
 
 export function DigestPreview({ me, stats }: {
   me: AccountMe;
-  stats: { newOpportunities: number; hotLeads: number; totalValue: number };
+  stats: OverviewStats;
 }) {
   const label = me.digestFrequency === "DAILY" ? "daily digest" : me.digestFrequency === "WEEKLY" ? "weekly digest" : "digest preview";
   return (
@@ -22,9 +23,9 @@ export function DigestPreview({ me, stats }: {
       <div className="space-y-3 text-sm">
         <p className="text-stone-600">Here’s what your {label} would include right now.</p>
         <dl className="space-y-1.5">
-          <div className="flex justify-between"><dt className="text-stone-500">New opportunities</dt><dd className="font-semibold tabular-nums">{stats.newOpportunities}</dd></div>
+          <div className="flex justify-between"><dt className="text-stone-500">Filed in the last {RECENT_DAYS} days</dt><dd className="font-semibold tabular-nums">{stats.filedRecently}</dd></div>
           <div className="flex justify-between"><dt className="text-stone-500">Hot leads</dt><dd className="font-semibold tabular-nums">{stats.hotLeads}</dd></div>
-          <div className="flex justify-between"><dt className="text-stone-500">Total project value</dt><dd className="font-semibold tabular-nums">{formatValueShort(stats.totalValue)}</dd></div>
+          <div className="flex justify-between"><dt className="text-stone-500">Project value <span className="text-xs text-stone-400">({sampleScope(stats)})</span></dt><dd className="font-semibold tabular-nums">{formatValueShort(stats.totalValue)}</dd></div>
         </dl>
         <p className="flex items-center gap-1.5 border-t border-border pt-3 text-xs text-stone-400">
           <Clock className="size-3" aria-hidden />

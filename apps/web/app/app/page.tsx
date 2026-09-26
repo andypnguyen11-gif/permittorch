@@ -5,7 +5,10 @@ import { getAccountMe, getAdminSources, getLeads } from "@/lib/api";
 import { getApiToken } from "@/components/app/get-token";
 import { handleApiError } from "@/components/app/api-errors";
 import { isUnauthorized } from "@/components/app/session-digest";
-import { StatCards, computeOverviewStats } from "@/components/app/overview/stat-cards";
+import {
+  HOT_SCORE, RECENT_DAYS, StatCards, computeOverviewStats,
+} from "@/components/app/overview/stat-cards";
+import { parseLeadsSearchParams } from "@/components/app/leads/query";
 import { SourceHealthPanel } from "@/components/app/overview/source-health-panel";
 import { DigestPreview } from "@/components/app/overview/digest-preview";
 import { ActivitySparkline } from "@/components/app/overview/activity-sparkline";
@@ -14,11 +17,21 @@ import { FreshnessLine } from "@/components/app/leads/freshness-line";
 
 export const metadata: Metadata = { title: "Overview" };
 
-export default async function OverviewPage() {
+// Leads the overview samples for the top-leads table, avg score, value and sparkline.
+const SAMPLE_SIZE = 100;
+
+export default async function OverviewPage({ searchParams }: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+} = {}) {
+  const { market } = parseLeadsSearchParams((await searchParams) ?? {});
   const token = await getApiToken();
-  const [me, leadsRes] = await Promise.all([
+  // Counts come from API totals (exact for the whole market); only the sample
+  // page is used for page-derived numbers, which are labeled as such.
+  const [me, leadsRes, hotRes, recentRes] = await Promise.all([
     getAccountMe(token),
-    getLeads({ pageSize: 100 }, token),
+    getLeads({ market, pageSize: SAMPLE_SIZE }, token),
+    getLeads({ market, minScore: HOT_SCORE, pageSize: 1 }, token),
+    getLeads({ market, maxAgeDays: RECENT_DAYS, pageSize: 1 }, token),
   ]).catch((err) => handleApiError(err));
   const isSuperAdmin = me.role === "SUPER_ADMIN";
   // A source-health failure must not take down the overview, but it must not
@@ -26,8 +39,14 @@ export default async function OverviewPage() {
   const sources = isSuperAdmin
     ? await getAdminSources(token).catch((err) => (isUnauthorized(err) ? handleApiError(err) : null))
     : null;
-  const stats = computeOverviewStats(leadsRes.items);
-  const topLeads = [...leadsRes.items].sort((a, b) => b.score - a.score).slice(0, 5);
+  const stats = computeOverviewStats({
+    leads: leadsRes.items,
+    total: leadsRes.total,
+    hotTotal: hotRes.total,
+    recentTotal: recentRes.total,
+  });
+  // The API already orders by score desc, then most recently detected.
+  const topLeads = leadsRes.items.slice(0, 5);
 
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
@@ -41,7 +60,7 @@ export default async function OverviewPage() {
           </p>
           <FreshnessLine freshness={leadsRes.freshness} />
         </div>
-        <StatCards leads={leadsRes.items} />
+        <StatCards stats={stats} />
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold">Top leads</h2>
@@ -57,7 +76,7 @@ export default async function OverviewPage() {
       <div className="space-y-6">
         {isSuperAdmin && <SourceHealthPanel sources={sources} />}
         <DigestPreview me={me} stats={stats} />
-        <ActivitySparkline leads={leadsRes.items} />
+        <ActivitySparkline leads={leadsRes.items} total={leadsRes.total} />
       </div>
     </div>
   );
