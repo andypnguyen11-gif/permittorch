@@ -1025,7 +1025,7 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
       await expect(page.getByText(/why this/i).first()).toBeVisible();
       await expect(page.getByText("+25").first()).toBeVisible(); // NEW_COMMERCIAL_BUILD signal weight
       await expect(page.getByText(/new commercial construction/i).first()).toBeVisible();
-      await expect(page.getByText(/austin permitting center/i)).toBeVisible(); // source block
+      await expect(page.getByText(/austin issued construction permits/i)).toBeVisible(); // source block
     });
   });
   ```
@@ -1129,7 +1129,7 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
     test("SuperAdmin sees source health", async ({ page }) => {
       await signIn(page, USERS.superadmin);
       await page.goto("/app/admin/sources");
-      await expect(page.getByText(/austin permitting center/i)).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText(/austin issued construction permits/i)).toBeVisible({ timeout: 15_000 });
       await expect(page.getByText(/healthy/i).first()).toBeVisible();
       await expect(page.getByText(/san antonio permits issued/i)).toBeVisible();
     });
@@ -1138,7 +1138,7 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
       await signIn(page, USERS.entitled); // Role: Member
       await page.goto("/app/admin/sources");
       await expect(page).not.toHaveURL(/\/app\/admin/, { timeout: 15_000 });
-      await expect(page.getByText(/austin permitting center/i)).toHaveCount(0);
+      await expect(page.getByText(/austin issued construction permits/i)).toHaveCount(0);
     });
   });
   ```
