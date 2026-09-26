@@ -132,7 +132,17 @@ public class PermitNormalizerTests
     [InlineData("Closed", PermitStatusKind.Closed)]
     [InlineData("Finaled", PermitStatusKind.Closed)]
     [InlineData("Completed", PermitStatusKind.Closed)]
-    [InlineData("Pending Review", PermitStatusKind.Unknown)]
+    [InlineData("Pending Review", PermitStatusKind.New)] // explicit "pending" -> New rule
+    [InlineData("Inactive", PermitStatusKind.Closed)]            // not Active despite containing "active"
+    [InlineData("Renewal", PermitStatusKind.New)]                // not matched via the "new" substring
+    [InlineData("Application Incomplete", PermitStatusKind.New)] // not Closed via "complete"
+    [InlineData("Void - Not Issued", PermitStatusKind.Closed)]   // not Active via "issued"
+    [InlineData("Not Issued", PermitStatusKind.Closed)]
+    [InlineData("Withdrawn", PermitStatusKind.Closed)]
+    [InlineData("Expired", PermitStatusKind.Closed)]
+    [InlineData("Cancelled", PermitStatusKind.Closed)]
+    [InlineData("Under Review", PermitStatusKind.Unknown)]
+    [InlineData("Newton Holdings", PermitStatusKind.Unknown)]    // whole-word "new" only
     [InlineData("", PermitStatusKind.Unknown)]
     [InlineData(null, PermitStatusKind.Unknown)]
     public void Normalize_MapsPermitStatusToStatusKind(string? permitStatus, PermitStatusKind expected)

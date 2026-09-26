@@ -47,16 +47,31 @@ public static class PermitNormalizer
             Fingerprint: ComputeFingerprint(street, raw.FireSystemType, filedDate, raw.Description));
     }
 
+    private const RegexOptions StatusOpts = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant;
+
+    // First match wins. Explicit negatives run first so words like "Not Issued", "Inactive" or
+    // "Application Incomplete" are never read as their positive counterparts; the positive rules
+    // are anchored to word starts so substrings (e.g. "new" in "renewal") cannot match.
+    // Real Tulsa data emits "Issued" -> Active.
+    private static readonly (Regex Pattern, PermitStatusKind Kind)[] StatusRules =
+    [
+        (new Regex(@"\bvoid|\bnot\s+issued\b|\bwithdrawn\b|\bexpired\b|\bcancel", StatusOpts), PermitStatusKind.Closed),
+        (new Regex(@"\binactive\b", StatusOpts), PermitStatusKind.Closed),
+        (new Regex(@"\bincomplete\b|\bpending\b|\brenewal\b|\bapplied\b|\bsubmitted\b", StatusOpts), PermitStatusKind.New),
+        (new Regex(@"\bissued\b|\bactive\b", StatusOpts), PermitStatusKind.Active),
+        (new Regex(@"\bnew\b", StatusOpts), PermitStatusKind.New),
+        (new Regex(@"\binspection\b", StatusOpts), PermitStatusKind.Inspection),
+        (new Regex(@"\bfailed\b|\bviolation", StatusOpts), PermitStatusKind.Failed),
+        (new Regex(@"\bclosed\b|\bfinal|\bcomplete", StatusOpts), PermitStatusKind.Closed),
+    ];
+
     private static PermitStatusKind MapStatus(string? rawStatus)
     {
         if (string.IsNullOrWhiteSpace(rawStatus)) return PermitStatusKind.Unknown;
-        var s = rawStatus.ToLowerInvariant();
-        // First match wins, in contract order. Real Tulsa data emits "Issued" -> Active.
-        if (s.Contains("issued") || s.Contains("active")) return PermitStatusKind.Active;
-        if (s.Contains("applied") || s.Contains("submitted") || s.Contains("new")) return PermitStatusKind.New;
-        if (s.Contains("inspection")) return PermitStatusKind.Inspection;
-        if (s.Contains("failed") || s.Contains("violation")) return PermitStatusKind.Failed;
-        if (s.Contains("closed") || s.Contains("final") || s.Contains("complete")) return PermitStatusKind.Closed;
+        foreach (var (pattern, kind) in StatusRules)
+        {
+            if (pattern.IsMatch(rawStatus)) return kind;
+        }
         return PermitStatusKind.Unknown;
     }
 

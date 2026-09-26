@@ -19,7 +19,6 @@ public class FireClassifierTests
     [InlineData("Fire Alarm | Fire Alarm", "fire_alarm", FireCategory.FireAlarm)]
     [InlineData("Sprinkler retrofit", "FIRE_SPRINKLER", FireCategory.FireSprinkler)] // case-insensitive
     [InlineData("Hood system", "kitchen_hood", FireCategory.KitchenSuppression)]
-    [InlineData("Fire Suppression | Fire Suppression", "other_fire_protection", FireCategory.GeneralFireProtection)]
     public void Classify_UsesFireSystemTypeHint_BeforeRegexRules(string? description, string hint,
         FireCategory expectedCategory)
     {
@@ -62,7 +61,7 @@ public class FireClassifierTests
     [InlineData("Correct fire code violation - obstructed egress and expired extinguishers", null, FireCategory.ViolationCorrection, "0.85")]
     // GeneralFireProtection — life safety / bare fire mention (PRD §46 example)
     [InlineData("INT ALT / RECONFIG LIFE SAFETY SYSTEM", null, FireCategory.GeneralFireProtection, "0.5")]
-    [InlineData("Restripe fire lane and replace signage", null, FireCategory.GeneralFireProtection, "0.5")]
+    [InlineData("Replace fire rated door hardware and fire alarm pull station", null, FireCategory.FireAlarm, "0.95")] // stronger rule beats noise
     public void Classify_MapsFireRelatedText(string? description, string? permitType,
         FireCategory expectedCategory, string expectedConfidence)
     {
@@ -79,6 +78,13 @@ public class FireClassifierTests
     [InlineData("Electrical panel upgrade to 200A service", null)]
     [InlineData("Building code violation - fence height exceeds limit", null)] // violation without fire
     [InlineData("Re-roof single family residence", "Roofing")]
+    // Noise exclusions: "fire" used in a non-fire-protection sense
+    [InlineData("Restripe fire lane and replace signage", null)]
+    [InlineData("Backyard fire pit and patio", null)]
+    [InlineData("Install gas fireplace insert", null)]
+    [InlineData("Temporary fireworks stand", null)]
+    [InlineData("Replace fire rated door at stair 2", null)]
+    [InlineData("Replace fire-rated doors in corridor", null)]
     public void Classify_ReturnsNull_ForNonFireText(string? description, string? permitType)
     {
         var result = FireClassifier.Classify(Permit(description, permitType));
@@ -112,5 +118,32 @@ public class FireClassifierTests
 
         Assert.NotNull(result);
         Assert.Equal("violation+fire", result!.MatchedRule);
+    }
+
+    [Theory]
+    // other_fire_protection is the scraper's catch-all: specific rules decide first.
+    [InlineData("Fire Suppression | Fire Suppression", FireCategory.FireSuppression, "0.9")] // real Tulsa sample
+    [InlineData("Fire Sprinkler | Fire Sprinkler", FireCategory.FireSprinkler, "0.95")]
+    [InlineData("Fire Alarm | Fire Alarm", FireCategory.FireAlarm, "0.95")]
+    [InlineData("Hood | Hood", FireCategory.GeneralFireProtection, "0.6")]
+    [InlineData(null, FireCategory.GeneralFireProtection, "0.6")]
+    public void Classify_TreatsOtherFireProtectionHintAsWeak(string? description,
+        FireCategory expectedCategory, string expectedConfidence)
+    {
+        var result = FireClassifier.Classify(Permit(description, "other_fire_protection"));
+
+        Assert.NotNull(result);
+        Assert.Equal(expectedCategory, result!.Category);
+        Assert.Equal(decimal.Parse(expectedConfidence, System.Globalization.CultureInfo.InvariantCulture),
+            result.Confidence);
+    }
+
+    [Fact]
+    public void Classify_WeakHintFallback_ReportsHintRule()
+    {
+        var result = FireClassifier.Classify(Permit("Misc work", "other_fire_protection"));
+
+        Assert.NotNull(result);
+        Assert.Equal("other_fire_protection_hint", result!.MatchedRule);
     }
 }
