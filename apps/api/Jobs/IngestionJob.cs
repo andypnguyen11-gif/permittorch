@@ -132,7 +132,7 @@ public sealed class IngestionJob : BackgroundService
             counts.Failures++;
         }
 
-        var lastRecordSeen = new Dictionary<Guid, DateTime>();
+        var recordSourceIds = new HashSet<Guid>();
         var processed = 0;
 
         foreach (var raw in run.Records)
@@ -156,7 +156,7 @@ public sealed class IngestionJob : BackgroundService
                 // Counted only after the save succeeds so a failed record is never also "imported".
                 if (isNew) counts.Imported++; else counts.Duplicates++;
                 if (isClassified) counts.Classified++;
-                lastRecordSeen[source.Id] = now;
+                recordSourceIds.Add(source.Id);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -172,7 +172,11 @@ public sealed class IngestionJob : BackgroundService
         }
 
         db.ChangeTracker.Clear();
-        await ApplySourceUpdatesAsync(db, run.Coverage, lastRecordSeen, ct);
+        // Freshness is reported from when the scraper actually ran, never from ingest time, so a
+        // late-ingested backfill run cannot make a source look fresher than its data (PRD §37).
+        var runTime = run.FinishedAt ?? run.StartedAt;
+        LogChargeLimit(run.RunId, run.Coverage);
+        await ApplySourceUpdatesAsync(db, run.Coverage, recordSourceIds, runTime, ct);
 
         var scraperRun = BuildScraperRun(run, run.Status, ingestStart, counts,
             run.Coverage is null ? null : JsonSerializer.Serialize(run.Coverage));
@@ -302,15 +306,15 @@ public sealed class IngestionJob : BackgroundService
     }
 
     // Loads the affected sources fresh (the loop clears the change tracker) and applies
-    // LastRecordSeenAt plus coverage-driven health in one save alongside nothing else.
+    // LastRecordSeenAt plus coverage-driven health in a single save.
     private async Task ApplySourceUpdatesAsync(AppDbContext db, CoverageReport? coverage,
-        Dictionary<Guid, DateTime> lastRecordSeen, CancellationToken ct)
+        HashSet<Guid> recordSourceIdSet, DateTime runTime, CancellationToken ct)
     {
         var statSourceIds = (coverage?.SourceStats ?? [])
             .Select(s => s.SourceId)
             .Where(id => !string.IsNullOrEmpty(id))
             .ToList();
-        var recordSourceIds = lastRecordSeen.Keys.ToList();
+        var recordSourceIds = recordSourceIdSet.ToList();
         if (statSourceIds.Count == 0 && recordSourceIds.Count == 0) return;
 
         var tracked = await db.Set<Source>()
@@ -320,8 +324,8 @@ public sealed class IngestionJob : BackgroundService
 
         foreach (var source in tracked)
         {
-            if (lastRecordSeen.TryGetValue(source.Id, out var seenAt))
-                source.LastRecordSeenAt = seenAt;
+            if (recordSourceIdSet.Contains(source.Id))
+                source.LastRecordSeenAt = Latest(source.LastRecordSeenAt, runTime);
         }
 
         var bySourceId = new Dictionary<string, Source>(StringComparer.OrdinalIgnoreCase);
@@ -330,7 +334,7 @@ public sealed class IngestionJob : BackgroundService
             if (!string.IsNullOrEmpty(source.Jurisdiction))
                 bySourceId[source.Jurisdiction] = source;
         }
-        ApplySourceHealth(coverage, bySourceId);
+        ApplySourceHealth(coverage, bySourceId, runTime);
 
         await db.SaveChangesAsync(ct);
     }
@@ -360,16 +364,19 @@ public sealed class IngestionJob : BackgroundService
 
     // Architecture §6.1/§7: health is driven by per-source COVERAGE_REPORT stats
     // (ok / coverage.outcome / coverage.truncatedBy), never by run status alone.
-    private void ApplySourceHealth(CoverageReport? coverage, Dictionary<string, Source> bySourceId)
+    private void ApplySourceHealth(CoverageReport? coverage, Dictionary<string, Source> bySourceId,
+        DateTime runTime)
     {
         if (coverage is null) return;
-        var now = DateTime.UtcNow;
+        var skipped = SkippedSourceIds(coverage);
 
         foreach (var stat in coverage.SourceStats ?? [])
         {
             if (stat is null || string.IsNullOrEmpty(stat.SourceId)) continue;
             if (!bySourceId.TryGetValue(stat.SourceId, out var source)) continue;
             if (source.HealthStatus == HealthStatus.Disabled) continue;
+            // Sources the scraper deliberately did not run this pass carry no health evidence.
+            if (skipped.Contains(stat.SourceId)) continue;
 
             if (!stat.Ok)
             {
@@ -380,7 +387,7 @@ public sealed class IngestionJob : BackgroundService
             else if (IsTruncated(stat.Coverage))
             {
                 source.HealthStatus = HealthStatus.Warning;
-                source.LastSuccessfulRunAt = now;
+                source.LastSuccessfulRunAt = Latest(source.LastSuccessfulRunAt, runTime);
                 source.RecordsLastRun = stat.EmittedCount;
                 _logger.LogWarning(
                     "Source {Name} ({SourceId}) truncated at {Count} records (outcome {Outcome})",
@@ -389,7 +396,7 @@ public sealed class IngestionJob : BackgroundService
             else
             {
                 source.HealthStatus = HealthStatus.Healthy;
-                source.LastSuccessfulRunAt = now;
+                source.LastSuccessfulRunAt = Latest(source.LastSuccessfulRunAt, runTime);
                 source.RecordsLastRun = stat.EmittedCount;
             }
         }
@@ -400,4 +407,35 @@ public sealed class IngestionJob : BackgroundService
     private static bool IsTruncated(SourceCoverage? coverage)
         => coverage is not null
            && ((coverage.TruncatedBy ?? []).Length > 0 || coverage.Outcome == "max-records");
+
+    private static DateTime Latest(DateTime? existing, DateTime candidate)
+        => existing.HasValue && existing.Value > candidate ? existing.Value : candidate;
+
+    // coverage.skippedSources: [{ sourceId, jurisdictionKey, reason }] (master §4).
+    private static HashSet<string> SkippedSourceIds(CoverageReport coverage)
+    {
+        var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var element in coverage.SkippedSources ?? [])
+        {
+            if (element.ValueKind == JsonValueKind.Object
+                && element.TryGetProperty("sourceId", out var id)
+                && id.ValueKind == JsonValueKind.String
+                && !string.IsNullOrEmpty(id.GetString()))
+                ids.Add(id.GetString()!);
+        }
+        return ids;
+    }
+
+    // coverage.chargeLimit: { leadsWithinLimit, reached } — when reached, the run stopped early
+    // and delivered fewer leads than exist, so operators must know.
+    private void LogChargeLimit(string runId, CoverageReport? coverage)
+    {
+        if (coverage?.ChargeLimit is not { ValueKind: JsonValueKind.Object } limit) return;
+        if (!limit.TryGetProperty("reached", out var reached) || reached.ValueKind != JsonValueKind.True)
+            return;
+        var within = limit.TryGetProperty("leadsWithinLimit", out var w) ? w.ToString() : "unknown";
+        _logger.LogWarning(
+            "Apify run {RunId} hit its charge limit ({LeadsWithinLimit} leads within limit); output may be incomplete",
+            runId, within);
+    }
 }

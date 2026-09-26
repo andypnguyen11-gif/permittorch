@@ -530,6 +530,109 @@ public class IngestionJobTests
         Assert.Equal(230, updated.RecordsLastRun);
     }
 
+    // ---- Honest freshness ----
+
+    [Fact]
+    public async Task RunOnce_ReportsFreshnessFromRunTime_NotIngestTime()
+    {
+        var sourceId = $"src-{Guid.NewGuid():N}";
+        var source = await SeedSourceAsync(sourceId, HealthStatus.Stale);
+        var finishedAt = DateTime.UtcNow.AddDays(-3);
+        var record = Record($"ext-{Guid.NewGuid():N}", sourceId, description: "Fire alarm upgrade");
+        var (job, sp) = BuildJob(new FakePermitSourceProvider(new ProviderRunResult(
+            $"run-{Guid.NewGuid():N}", "SUCCEEDED", finishedAt.AddMinutes(-5), finishedAt,
+            new[] { record }, Run("unused", Array.Empty<RawPermitRecord>(), Stat(sourceId)).Coverage)));
+        await using var _ = sp;
+
+        await job.RunOnceAsync(CancellationToken.None);
+
+        await using var db = _fixture.CreateContext();
+        var updated = await db.Set<Source>().SingleAsync(s => s.Id == source.Id);
+        Assert.NotNull(updated.LastSuccessfulRunAt);
+        Assert.True(Math.Abs((updated.LastSuccessfulRunAt!.Value - finishedAt).TotalSeconds) < 1);
+        Assert.True(Math.Abs((updated.LastRecordSeenAt!.Value - finishedAt).TotalSeconds) < 1);
+    }
+
+    [Fact]
+    public async Task RunOnce_OlderRun_NeverMovesFreshnessBackwards()
+    {
+        var sourceId = $"src-{Guid.NewGuid():N}";
+        var source = await SeedSourceAsync(sourceId);
+        var recent = DateTime.UtcNow.AddHours(-1);
+        await using (var seed = _fixture.CreateContext())
+        {
+            var s = await seed.Set<Source>().SingleAsync(x => x.Id == source.Id);
+            s.LastSuccessfulRunAt = recent;
+            s.LastRecordSeenAt = recent;
+            await seed.SaveChangesAsync();
+        }
+        var oldFinish = DateTime.UtcNow.AddDays(-5);
+        var record = Record($"ext-{Guid.NewGuid():N}", sourceId, description: "Fire alarm upgrade");
+        var (job, sp) = BuildJob(new FakePermitSourceProvider(new ProviderRunResult(
+            $"run-{Guid.NewGuid():N}", "SUCCEEDED", oldFinish.AddMinutes(-5), oldFinish,
+            new[] { record }, Run("unused", Array.Empty<RawPermitRecord>(), Stat(sourceId)).Coverage)));
+        await using var _ = sp;
+
+        await job.RunOnceAsync(CancellationToken.None);
+
+        await using var db = _fixture.CreateContext();
+        var updated = await db.Set<Source>().SingleAsync(s => s.Id == source.Id);
+        Assert.True(Math.Abs((updated.LastSuccessfulRunAt!.Value - recent).TotalSeconds) < 1);
+        Assert.True(Math.Abs((updated.LastRecordSeenAt!.Value - recent).TotalSeconds) < 1);
+    }
+
+    [Fact]
+    public async Task RunOnce_LeavesSkippedSourcesUntouched_EvenWhenStatSaysNotOk()
+    {
+        var sourceId = $"src-{Guid.NewGuid():N}";
+        var source = await SeedSourceAsync(sourceId, HealthStatus.Healthy);
+        var coverage = Run("unused", Array.Empty<RawPermitRecord>(),
+            Stat(sourceId, ok: false, emitted: 0, error: "not run")).Coverage! with
+        {
+            SkippedSources = new[]
+            {
+                JsonSerializer.SerializeToElement(new { sourceId, jurisdictionKey = "ok/tulsa", reason = "rotation" }),
+            },
+        };
+        var (job, sp) = BuildJob(new FakePermitSourceProvider(new ProviderRunResult(
+            $"run-{Guid.NewGuid():N}", "SUCCEEDED", DateTime.UtcNow.AddMinutes(-10),
+            DateTime.UtcNow.AddMinutes(-5), Array.Empty<RawPermitRecord>(), coverage)));
+        await using var _ = sp;
+
+        await job.RunOnceAsync(CancellationToken.None);
+
+        await using var db = _fixture.CreateContext();
+        var updated = await db.Set<Source>().SingleAsync(s => s.Id == source.Id);
+        Assert.Equal(HealthStatus.Healthy, updated.HealthStatus);
+        Assert.Null(updated.LastSuccessfulRunAt);
+    }
+
+    [Fact]
+    public async Task RunOnce_ChargeLimitReached_StillIngestsRun()
+    {
+        var sourceId = $"src-{Guid.NewGuid():N}";
+        await SeedSourceAsync(sourceId);
+        var coverage = Run("unused", Array.Empty<RawPermitRecord>(), Stat(sourceId)).Coverage! with
+        {
+            ChargeLimit = JsonSerializer.SerializeToElement(new { leadsWithinLimit = 50, reached = true }),
+        };
+        var logger = new ListLogger<IngestionJob>();
+        var services = new ServiceCollection();
+        services.AddDbContext<AppDbContext>(o => o.UseNpgsql(_fixture.ConnectionString));
+        services.AddScoped<IPermitSourceProvider>(_ => new FakePermitSourceProvider(new ProviderRunResult(
+            $"run-{Guid.NewGuid():N}", "SUCCEEDED", DateTime.UtcNow.AddMinutes(-10),
+            DateTime.UtcNow.AddMinutes(-5), Array.Empty<RawPermitRecord>(), coverage)));
+        await using var sp = services.BuildServiceProvider();
+        var job = new IngestionJob(sp.GetRequiredService<IServiceScopeFactory>(),
+            new ScoringEngine(new ScoringOptions()), new ConfigurationBuilder().Build(), logger);
+
+        var scraperRun = await job.RunOnceAsync(CancellationToken.None);
+
+        Assert.NotNull(scraperRun);
+        Assert.Contains(logger.Entries, e => e.Level == Microsoft.Extensions.Logging.LogLevel.Warning
+            && e.Message.Contains("charge limit"));
+    }
+
     private static HttpResponseMessage JsonResponse(string body) => new(HttpStatusCode.OK)
     {
         Content = new StringContent(body, Encoding.UTF8, "application/json")

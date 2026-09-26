@@ -101,11 +101,12 @@ public class SourceHealthMonitorTests
     }
 
     [Fact]
-    public async Task CheckOnce_OnlyTransitionsHealthySources()
+    public async Task CheckOnce_NeverTransitionsFailedOrDisabledSources()
     {
         var now = DateTime.UtcNow;
         var failed = await SeedSourceAsync(HealthStatus.Failed, now.AddHours(-48));
         var disabled = await SeedSourceAsync(HealthStatus.Disabled, now.AddHours(-48));
+        var disabledNeverRan = await SeedSourceAsync(HealthStatus.Disabled, lastSuccessfulRunAt: null);
         var (monitor, sp) = BuildMonitor();
         await using var _ = sp;
 
@@ -113,6 +114,33 @@ public class SourceHealthMonitorTests
 
         Assert.Equal(HealthStatus.Failed, await GetHealthAsync(_fixture, failed.Id));
         Assert.Equal(HealthStatus.Disabled, await GetHealthAsync(_fixture, disabled.Id));
+        Assert.Equal(HealthStatus.Disabled, await GetHealthAsync(_fixture, disabledNeverRan.Id));
+    }
+
+    [Fact]
+    public async Task CheckOnce_MarksWarningSourceStale_WhenLastRunOlderThanThreshold()
+    {
+        var now = DateTime.UtcNow;
+        var source = await SeedSourceAsync(HealthStatus.Warning, now.AddHours(-48));
+        var (monitor, sp) = BuildMonitor();
+        await using var _ = sp;
+
+        await monitor.CheckOnceAsync(now, CancellationToken.None);
+
+        Assert.Equal(HealthStatus.Stale, await GetHealthAsync(_fixture, source.Id));
+    }
+
+    [Fact]
+    public async Task CheckOnce_LeavesWarningSourceAlone_WhenLastRunRecent()
+    {
+        var now = DateTime.UtcNow;
+        var source = await SeedSourceAsync(HealthStatus.Warning, now.AddHours(-1));
+        var (monitor, sp) = BuildMonitor();
+        await using var _ = sp;
+
+        await monitor.CheckOnceAsync(now, CancellationToken.None);
+
+        Assert.Equal(HealthStatus.Warning, await GetHealthAsync(_fixture, source.Id));
     }
 
     [Fact]
@@ -120,24 +148,27 @@ public class SourceHealthMonitorTests
     {
         var now = DateTime.UtcNow;
         var inactive = await SeedSourceAsync(HealthStatus.Healthy, now.AddHours(-48), active: false);
+        var inactiveNeverRan = await SeedSourceAsync(HealthStatus.Healthy, lastSuccessfulRunAt: null, active: false);
         var (monitor, sp) = BuildMonitor();
         await using var _ = sp;
 
         await monitor.CheckOnceAsync(now, CancellationToken.None);
 
         Assert.Equal(HealthStatus.Healthy, await GetHealthAsync(_fixture, inactive.Id));
+        Assert.Equal(HealthStatus.Healthy, await GetHealthAsync(_fixture, inactiveNeverRan.Id));
     }
 
     [Fact]
-    public async Task CheckOnce_IgnoresHealthySourceWithNoRunYet()
+    public async Task CheckOnce_MarksActiveNeverRunSourceWarning()
     {
         var now = DateTime.UtcNow;
         var neverRan = await SeedSourceAsync(HealthStatus.Healthy, lastSuccessfulRunAt: null);
         var (monitor, sp) = BuildMonitor();
         await using var _ = sp;
 
-        await monitor.CheckOnceAsync(now, CancellationToken.None);
+        var transitioned = await monitor.CheckOnceAsync(now, CancellationToken.None);
 
-        Assert.Equal(HealthStatus.Healthy, await GetHealthAsync(_fixture, neverRan.Id));
+        Assert.True(transitioned >= 1);
+        Assert.Equal(HealthStatus.Warning, await GetHealthAsync(_fixture, neverRan.Id));
     }
 }

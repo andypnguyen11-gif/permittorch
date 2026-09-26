@@ -61,15 +61,17 @@ public sealed class SourceHealthMonitor : BackgroundService
         }
     }
 
+    // Returns the number of sources transitioned. Disabled and inactive sources are never touched.
     public async Task<int> CheckOnceAsync(DateTime nowUtc, CancellationToken ct)
     {
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
         var cutoff = nowUtc - _staleThreshold;
+        // Healthy and Warning (e.g. truncated) sources both go Stale once their data ages out.
         var staleSources = await db.Set<Source>()
             .Where(s => s.Active
-                && s.HealthStatus == HealthStatus.Healthy
+                && (s.HealthStatus == HealthStatus.Healthy || s.HealthStatus == HealthStatus.Warning)
                 && s.LastSuccessfulRunAt != null
                 && s.LastSuccessfulRunAt < cutoff)
             .ToListAsync(ct);
@@ -82,7 +84,23 @@ public sealed class SourceHealthMonitor : BackgroundService
                 source.Name, source.Jurisdiction, source.LastSuccessfulRunAt, _staleThreshold);
         }
 
+        // An active source that has never produced a successful run must not look Healthy.
+        // Source has no creation timestamp, so it is flagged Warning (not Stale) for an operator.
+        var neverRunSources = await db.Set<Source>()
+            .Where(s => s.Active
+                && s.LastSuccessfulRunAt == null
+                && s.HealthStatus == HealthStatus.Healthy)
+            .ToListAsync(ct);
+
+        foreach (var source in neverRunSources)
+        {
+            source.HealthStatus = HealthStatus.Warning;
+            _logger.LogWarning(
+                "Source {Name} ({Jurisdiction}) is active but has never had a successful run",
+                source.Name, source.Jurisdiction);
+        }
+
         await db.SaveChangesAsync(ct);
-        return staleSources.Count;
+        return staleSources.Count + neverRunSources.Count;
     }
 }
