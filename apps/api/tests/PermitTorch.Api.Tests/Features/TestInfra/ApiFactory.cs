@@ -55,6 +55,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("STRIPE_PRICE_TERRITORY", "price_territory_test");
         builder.UseSetting("RESEND_API_KEY", "re_test_unused");
         builder.UseSetting("EMAIL_FROM", "digest@test.permittorch.local");
+        builder.UseSetting("EMAIL_UNSUBSCRIBE_SECRET", "test-secret");
+        builder.UseSetting("API_PUBLIC_URL", "https://api.test.permittorch.local");
+        builder.UseSetting("Digests:Enabled", "false");   // tests drive DigestService directly
         builder.UseSetting("RateLimiting:GlobalPermitLimit", "100000");
         foreach (var (key, value) in Settings)
             builder.UseSetting(key, value);

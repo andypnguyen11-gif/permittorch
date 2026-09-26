@@ -24,6 +24,8 @@ public static class FeaturesSetup
         "STRIPE_PRICE_STARTER",
         "STRIPE_PRICE_PRO",
         "STRIPE_PRICE_TERRITORY",
+        "EMAIL_UNSUBSCRIBE_SECRET",
+        "API_PUBLIC_URL",
     ];
 
     /// <summary>Environments where missing secrets are tolerated: "Testing" (the integration
@@ -96,6 +98,14 @@ public static class FeaturesSetup
                     Window = TimeSpan.FromMinutes(1),
                     QueueLimit = 0,
                 }));
+            // Public unsubscribe links: tokens are unguessable, but cap probing per client IP.
+            o.AddPolicy(UnsubscribeEndpoints.RateLimitPolicy, context =>
+                RateLimitPartition.GetFixedWindowLimiter("ip:" + ClientIp(context), _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 20,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                }));
         });
 
         services.Configure<BillingOptions>(o =>
@@ -115,7 +125,10 @@ public static class FeaturesSetup
             o.ApiKey = configuration["RESEND_API_KEY"] ?? "";
             o.From = configuration["EMAIL_FROM"] ?? "";
             o.WebOrigin = configuration["WEB_ORIGIN"] ?? "http://localhost:3000";
+            o.ApiPublicUrl = configuration["API_PUBLIC_URL"] ?? "http://localhost:5000";
+            o.UnsubscribeSecret = configuration["EMAIL_UNSUBSCRIBE_SECRET"] ?? "";
         });
+        services.AddSingleton<UnsubscribeTokens>();
         services.AddHttpClient<ResendEmailClient>(client =>
         {
             client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(

@@ -1,5 +1,6 @@
 using System.Net;
 using Microsoft.EntityFrameworkCore;
+using PermitTorch.Api.Data;
 using PermitTorch.Api.Tests.Features.TestInfra;
 
 namespace PermitTorch.Api.Tests.Features.SampleLeads;
@@ -8,7 +9,19 @@ public sealed class SampleLeadsEndpointTests : IAsyncLifetime
 {
     private readonly ApiFactory _factory = new();
 
-    public Task InitializeAsync() => _factory.InitializeAsync();
+    public async Task InitializeAsync()
+    {
+        await _factory.InitializeAsync();
+        await _factory.SeedAsync(db =>
+        {
+            foreach (var slug in new[] { "houston-tx", "dallas-tx" })
+                if (!db.Markets.Any(m => m.Slug == slug))
+                    db.Markets.Add(new Market
+                    {
+                        Id = Guid.NewGuid(), Name = slug, City = slug, State = "TX", Slug = slug, Active = true,
+                    });
+        });
+    }
     public async Task DisposeAsync() => await ((IAsyncLifetime)_factory).DisposeAsync();
 
     private static StringContent Body(string name, string email, string company, string marketSlug) =>
@@ -37,6 +50,7 @@ public sealed class SampleLeadsEndpointTests : IAsyncLifetime
     [InlineData("Pat", "not-an-email", "Acme", "houston-tx")]
     [InlineData("Pat", "a@b.com", "", "houston-tx")]        // blank company
     [InlineData("Pat", "a@b.com", "Acme", "Houston TX!")]   // invalid slug characters
+    [InlineData("Pat", "a@b.com", "Acme", "atlantis-zz")]   // well-formed but not an existing market
     public async Task Invalid_input_returns_400(string name, string email, string company, string slug)
     {
         var response = await _factory.CreateClient()

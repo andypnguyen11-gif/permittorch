@@ -33,6 +33,8 @@ public static partial class SampleLeadsEndpoints
         if (company.Length is 0 or > 200) return ApiErrors.BadRequest("company is required (max 200 characters)");
         if (email.Length > 320 || !EmailPattern().IsMatch(email)) return ApiErrors.BadRequest("a valid email is required");
         if (!SlugPattern().IsMatch(marketSlug)) return ApiErrors.BadRequest("a valid marketSlug is required");
+        if (!await db.Markets.AnyAsync(m => m.Slug == marketSlug && m.Active, ct))
+            return ApiErrors.BadRequest("Unknown market");
 
         var exists = await db.SampleLeadRequests
             .AnyAsync(r => r.Email == email && r.MarketSlug == marketSlug, ct);

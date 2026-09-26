@@ -20,15 +20,17 @@ public static class DigestEmailBuilder
     public static string SampleSubject(int count, string marketName) =>
         $"Your {count} Free {marketName} Fire Opportunities";
 
-    public static string BuildHtml(IReadOnlyList<DigestLead> leads, string webOrigin) =>
+    public static string BuildHtml(IReadOnlyList<DigestLead> leads, string webOrigin, string? unsubscribeUrl = null) =>
         Build($"{leads.Count} New Fire Opportunities", leads,
-            $"{webOrigin.TrimEnd('/')}/app/leads", "View All Opportunities");
+            $"{webOrigin.TrimEnd('/')}/app/leads", "View All Opportunities", unsubscribeUrl);
 
-    public static string BuildSampleHtml(string marketName, IReadOnlyList<DigestLead> leads, string webOrigin) =>
+    public static string BuildSampleHtml(string marketName, IReadOnlyList<DigestLead> leads, string webOrigin,
+        string? unsubscribeUrl = null) =>
         Build($"Your Free {WebUtility.HtmlEncode(marketName)} Fire Opportunity Sample", leads,
-            $"{webOrigin.TrimEnd('/')}/pricing", "Get Full Access");
+            $"{webOrigin.TrimEnd('/')}/pricing", "Get Full Access", unsubscribeUrl);
 
-    private static string Build(string heading, IReadOnlyList<DigestLead> leads, string ctaUrl, string ctaLabel)
+    private static string Build(string heading, IReadOnlyList<DigestLead> leads, string ctaUrl, string ctaLabel,
+        string? unsubscribeUrl)
     {
         var html = new StringBuilder();
         html.Append("<h1>").Append(heading).Append("</h1>");
@@ -50,6 +52,9 @@ public static class DigestEmailBuilder
         }
         html.Append("<p><a href=\"").Append(ctaUrl).Append("\"><strong>")
             .Append(ctaLabel).Append("</strong></a></p>");
+        if (unsubscribeUrl is not null)
+            html.Append("<p style=\"font-size:12px;color:#666\">Don't want these emails? <a href=\"")
+                .Append(WebUtility.HtmlEncode(unsubscribeUrl)).Append("\">Unsubscribe</a></p>");
         return html.ToString();
     }
 }
