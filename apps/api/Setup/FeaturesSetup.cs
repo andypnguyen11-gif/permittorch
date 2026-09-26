@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using PermitTorch.Api.Features;
 using PermitTorch.Api.Features.Auth;
 using PermitTorch.Api.Features.Billing;
+using PermitTorch.Api.Features.EmailDigests;
 using PermitTorch.Api.Features.Shared;
 
 namespace PermitTorch.Api.Setup;
@@ -67,6 +68,20 @@ public static class FeaturesSetup
         });
         services.AddSingleton<StripeGateway>();
         services.AddScoped<StripeWebhookProcessor>();
+
+        services.Configure<EmailOptions>(o =>
+        {
+            o.ApiKey = configuration["RESEND_API_KEY"] ?? "";
+            o.From = configuration["EMAIL_FROM"] ?? "";
+            o.WebOrigin = configuration["WEB_ORIGIN"] ?? "http://localhost:3000";
+        });
+        services.AddHttpClient<ResendEmailClient>(client =>
+        {
+            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
+                "Bearer", configuration["RESEND_API_KEY"] ?? "");
+        });
+        services.AddScoped<DigestService>();
+        services.AddHostedService<DigestBackgroundService>();
 
         return services;
     }
