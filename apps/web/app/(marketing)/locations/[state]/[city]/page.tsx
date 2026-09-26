@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getMarkets, getMarketStats } from "@/lib/api";
+import { getMarketsWithData } from "@/lib/marketing/markets-with-data";
 import { buildMetadata, jsonLd, SITE_URL } from "@/lib/seo";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -14,26 +14,37 @@ import {
   Accordion, AccordionContent, AccordionItem, AccordionTrigger,
 } from "@/components/ui/accordion";
 
-// PRD §24: pages exist ONLY for markets returned by getMarkets(). No fabricated params.
-export const dynamicParams = false;
+// PRD §24 + CLAUDE.md: pages exist ONLY for markets with real data (see
+// getMarketsWithData). Params are prebuilt for those markets; any other param —
+// unknown city, or a known market with no data — renders notFound(). Dynamic
+// params stay enabled so a market whose data comes online after deploy gets its
+// page on the next hourly revalidation, matching the (also revalidated) sitemap.
+export const dynamicParams = true;
+export const revalidate = 3600;
 
 interface Props { params: Promise<{ state: string; city: string }> }
 
 export async function generateStaticParams() {
-  const markets = await getMarkets();
-  return markets.map((m) => marketToLocationParams(m));
+  return (await getMarketsWithData()).map((e) => marketToLocationParams(e.market));
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { state, city } = await params;
-  const market = findMarketByLocationParams(await getMarkets(), state, city);
-  if (!market) return {};
+  const entry = await findMarketWithData(state, city);
+  if (!entry) return {};
+  const { market } = entry;
   const stateName = stateDisplayName(market.state);
   return buildMetadata({
     title: `Fire Protection Leads in ${market.city}, ${stateName} — PermitTorch`,
     description: `Live fire protection lead data for ${market.city}, ${stateName}: sprinkler, alarm, and suppression opportunities from public permit records, updated daily.`,
     path: marketLocationPath(market),
   });
+}
+
+async function findMarketWithData(state: string, city: string) {
+  const entries = await getMarketsWithData();
+  const market = findMarketByLocationParams(entries.map((e) => e.market), state, city);
+  return market ? entries.find((e) => e.market.slug === market.slug) : undefined;
 }
 
 // Static, anonymized illustrations — clearly labeled on the page. Not live records.
@@ -45,10 +56,9 @@ const EXAMPLE_LEADS = [
 
 export default async function MarketPage({ params }: Props) {
   const { state, city } = await params;
-  const market = findMarketByLocationParams(await getMarkets(), state, city);
-  if (!market) notFound();
-
-  const stats = await getMarketStats(market.slug);
+  const entry = await findMarketWithData(state, city);
+  if (!entry) notFound();
+  const { market, stats } = entry;
   const stateName = stateDisplayName(market.state);
   const categories = (Object.entries(stats.byCategory) as [keyof typeof CATEGORY_LABELS, number][])
     .filter(([, n]) => n > 0)

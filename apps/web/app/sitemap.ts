@@ -1,8 +1,11 @@
 import type { MetadataRoute } from "next";
-import { getMarkets } from "@/lib/api";
+import { getMarketsWithData } from "@/lib/marketing/markets-with-data";
 import { SITE_URL } from "@/lib/seo";
 import { marketLocationPath } from "@/components/marketing/market-slug";
 import { blogPosts } from "@/components/marketing/blog-posts";
+
+// Hourly, so market pages appear/disappear with their data (no thin pages listed).
+export const revalidate = 3600;
 
 const STATIC_ROUTES: { path: string; priority: number }[] = [
   { path: "/", priority: 1.0 },
@@ -18,7 +21,7 @@ const STATIC_ROUTES: { path: string; priority: number }[] = [
 ];
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const markets = await getMarkets();
+  const markets = (await getMarketsWithData()).map((e) => e.market);
   const url = (path: string) => new URL(path, SITE_URL).toString();
   return [
     ...STATIC_ROUTES.map((r) => ({

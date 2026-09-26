@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { getMarkets } from "@/lib/api";
+import { getMarketsWithData } from "@/lib/marketing/markets-with-data";
 import { buildMetadata } from "@/lib/seo";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -13,6 +13,9 @@ export const metadata: Metadata = buildMetadata({
     "PermitTorch monitors public permit and inspection records and identifies fire-protection opportunities before they disappear into another spreadsheet.",
   path: "/",
 });
+
+// Freshness guardrail: re-render hourly so market lists never go stale.
+export const revalidate = 3600;
 
 const VALUE_BULLETS = [
   {
@@ -34,7 +37,7 @@ const VALUE_BULLETS = [
 ];
 
 export default async function HomePage() {
-  const markets = await getMarkets();
+  const markets = (await getMarketsWithData()).map((e) => e.market);
   return (
     <>
       {/* Hero */}

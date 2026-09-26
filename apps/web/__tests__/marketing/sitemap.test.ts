@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { mockMarkets } from "@/lib/fixtures/markets";
+import { mockMarkets, mockMarketStats } from "@/lib/fixtures/markets";
 
-vi.mock("@/lib/api", () => ({ getMarkets: vi.fn().mockResolvedValue(mockMarkets) }));
+vi.mock("@/lib/api", () => ({
+  getMarkets: vi.fn().mockResolvedValue(mockMarkets),
+  getMarketStats: vi.fn(async (slug: string) => mockMarketStats[slug]),
+}));
 
 import sitemap from "@/app/sitemap";
 import robots from "@/app/robots";
