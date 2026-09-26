@@ -34,15 +34,18 @@ export async function saveLead(fireOpportunityId: string): Promise<SavedLeadItem
   savedState.unshift(item);
   return item;
 }
+// Unknown ids mirror the API: 404 (PATCH/DELETE /api/saved-leads/{id}).
 export async function updateSavedLead(id: string, status: SavedLeadStatus): Promise<void> {
   const idx = savedState.findIndex((s) => s.id === id);
-  if (idx >= 0) savedState[idx] = { ...savedState[idx], status };
+  if (idx < 0) throw new ApiError("Saved lead not found", 404);
+  savedState[idx] = { ...savedState[idx], status };
 }
 export async function unsaveLead(id: string): Promise<void> {
   const idx = savedState.findIndex((s) => s.id === id);
-  if (idx >= 0) savedState.splice(idx, 1);
+  if (idx < 0) throw new ApiError("Saved lead not found", 404);
+  savedState.splice(idx, 1);
 }
-export async function getAccountMarkets(): Promise<Market[]> { return mockAccountMarkets; }
+export async function getAccountMarkets(): Promise<Market[]> { return [...mockAccountMarkets]; }
 export async function getAccountMe(): Promise<AccountMe> { return mockAccountForRole(); }
 export async function updateEmailPreferences(_frequency: DigestFrequency): Promise<void> { /* mock no-op */ }
 // Mock mode accepts the sample-lead form as a no-op success.

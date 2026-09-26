@@ -268,9 +268,22 @@ describe("fixtures index (lib/api.ts mock contract)", () => {
     await expect(fixtures.saveLead("lead-nope")).rejects.toMatchObject({ name: "ApiError", status: 404 });
   });
 
+  it("updateSavedLead / unsaveLead reject an unknown saved-lead id with an ApiError 404", async () => {
+    const before = await fixtures.getSavedLeads();
+    await expect(fixtures.updateSavedLead("saved-nope", "CONTACTED")).rejects.toBeInstanceOf(ApiError);
+    await expect(fixtures.updateSavedLead("saved-nope", "CONTACTED")).rejects.toMatchObject({ status: 404 });
+    await expect(fixtures.unsaveLead("saved-nope")).rejects.toMatchObject({ name: "ApiError", status: 404 });
+    expect(await fixtures.getSavedLeads()).toEqual(before);
+  });
+
   it("getAccountMarkets returns the entitled fixture markets matching lead cities", async () => {
     const markets = await fixtures.getAccountMarkets();
     expect(markets.map((m) => m.slug)).toEqual(["houston-tx", "dallas-tx"]);
+  });
+
+  it("getAccountMarkets derives from the single market fixture (no duplicate market data)", async () => {
+    const markets = await fixtures.getAccountMarkets();
+    for (const m of markets) expect(fixtures.mockMarkets).toContainEqual(m);
   });
 
   it("getAccountMe follows NEXT_PUBLIC_MOCK_ROLE, defaulting to SUPER_ADMIN", async () => {

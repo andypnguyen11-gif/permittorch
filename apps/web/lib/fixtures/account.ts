@@ -1,4 +1,5 @@
 import type { AccountMe, Market } from "@permittorch/types";
+import { mockMarkets } from "./markets";
 
 type Role = AccountMe["role"];
 const ROLES: Role[] = ["MEMBER", "ADMIN", "SUPER_ADMIN"];
@@ -26,11 +27,14 @@ export const mockAccountMe: AccountMe = {
   digestFrequency: "DAILY",
 };
 
-// Markets this mock organization is entitled to. Kept here (not derived from
-// WS3's ./markets) because entitlements come from the subscription, not the
-// public market list — and so the dashboard has data before WS3's fixtures land.
-// Slugs match the cities in ./leads so market filtering stays consistent.
-export const mockAccountMarkets: Market[] = [
-  { id: "mkt-001", name: "Houston, TX", city: "Houston", state: "TX", slug: "houston-tx" },
-  { id: "mkt-002", name: "Dallas, TX", city: "Dallas", state: "TX", slug: "dallas-tx" },
-];
+// Markets this mock organization is entitled to: a subset of the single market
+// fixture (./markets, WS3) — entitlements come from the subscription, so the
+// org holds only some of the public markets. Slugs match the cities in ./leads
+// so market filtering stays consistent.
+export const MOCK_ENTITLED_SLUGS = ["houston-tx", "dallas-tx"] as const;
+
+export const mockAccountMarkets: Market[] = MOCK_ENTITLED_SLUGS.map((slug) => {
+  const market = mockMarkets.find((m) => m.slug === slug);
+  if (!market) throw new Error(`Entitled mock market missing from ./markets: ${slug}`);
+  return market;
+});

@@ -49,8 +49,8 @@ describe("/app/account", () => {
     render(<TooltipProvider>{await AccountPage()}</TooltipProvider>);
     expect(screen.getByText("Davis Fire Protection")).toBeInTheDocument();
     expect(screen.getByText("Pro plan")).toBeInTheDocument();
-    expect(screen.getByText("Houston, TX")).toBeInTheDocument();
-    expect(screen.getByText("Dallas, TX")).toBeInTheDocument();
+    expect(screen.getByText("Houston")).toBeInTheDocument();
+    expect(screen.getByText("Dallas")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Upgrade to Territory" })).toBeDisabled();
   });
 });
@@ -66,18 +66,18 @@ describe("/app/markets", () => {
 
   it("shows lead counts for entitled markets and an upgrade path for locked ones", async () => {
     const spy = vi.spyOn(api, "getMarkets").mockResolvedValue([
-      market("houston-tx", "Houston, TX", "Houston"),
-      market("dallas-tx", "Dallas, TX", "Dallas"),
-      market("austin-tx", "Austin, TX", "Austin"),
+      market("houston-tx", "Houston", "Houston"),
+      market("dallas-tx", "Dallas", "Dallas"),
+      market("austin-tx", "Austin", "Austin"),
     ]);
     render(await MarketsPage());
-    const houston = screen.getByRole("heading", { name: "Houston, TX" }).closest("li")!;
+    const houston = screen.getByRole("heading", { name: "Houston" }).closest("li")!;
     expect(houston).toHaveTextContent("17Leads");
     expect(houston).not.toHaveTextContent(/open leads/i); // counts include closed permits
-    expect(screen.getByRole("heading", { name: "Dallas, TX" }).closest("li")).toHaveTextContent("8Leads");
+    expect(screen.getByRole("heading", { name: "Dallas" }).closest("li")).toHaveTextContent("8Leads");
     expect(screen.getAllByRole("link", { name: /View leads/ })[0])
       .toHaveAttribute("href", "/app/leads?market=houston-tx");
-    const austin = screen.getByRole("heading", { name: "Austin, TX" }).closest("li")!;
+    const austin = screen.getByRole("heading", { name: "Austin" }).closest("li")!;
     expect(austin).toHaveTextContent("Locked");
     expect(screen.getByRole("link", { name: "Upgrade to unlock" })).toHaveAttribute("href", "/app/account");
     spy.mockRestore();
