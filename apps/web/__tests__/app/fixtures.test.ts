@@ -144,3 +144,71 @@ describe("mockLeadDetail", () => {
     expect(() => mockLeadDetail("nope")).toThrowError(/No fixture lead/);
   });
 });
+
+import { mockSavedLeads } from "@/lib/fixtures/saved";
+import { mockAccountMe } from "@/lib/fixtures/account";
+import { mockAdminSources, mockAdminRuns } from "@/lib/fixtures/admin";
+
+describe("saved/account/admin fixtures", () => {
+  it("saved leads reference real fixture leads", () => {
+    expect(mockSavedLeads).toHaveLength(3);
+    for (const s of mockSavedLeads) {
+      expect(mockLeads.some((l) => l.id === s.lead.id)).toBe(true);
+    }
+    expect(new Set(mockSavedLeads.map((s) => s.status))).toEqual(new Set(["SAVED", "CONTACTED"]));
+  });
+
+  it("account fixture is a Pro-plan super admin", () => {
+    expect(mockAccountMe.plan).toBe("PRO");
+    expect(mockAccountMe.role).toBe("SUPER_ADMIN");
+    expect(mockAccountMe.email).toContain("@");
+  });
+
+  it("admin sources cover all five health statuses", () => {
+    expect(mockAdminSources).toHaveLength(5);
+    expect(new Set(mockAdminSources.map((s) => s.healthStatus))).toEqual(
+      new Set(["HEALTHY", "WARNING", "STALE", "FAILED", "DISABLED"]),
+    );
+  });
+
+  it("mockAdminRuns paginates and filters by sourceId", () => {
+    const all = mockAdminRuns();
+    expect(all.items).toHaveLength(10);
+    expect(all.total).toBe(10);
+    const filtered = mockAdminRuns({ sourceId: "src-001" });
+    expect(filtered.items.length).toBeGreaterThan(0);
+    expect(filtered.items.length).toBeLessThan(10);
+  });
+});
+
+import * as fixtures from "@/lib/fixtures";
+
+describe("fixtures index (lib/api.ts mock contract)", () => {
+  it("getLeads and getLead adapt the lead fixtures", async () => {
+    const res = await fixtures.getLeads({ category: "FIRE_ALARM" });
+    expect(res.items.every((l) => l.category === "FIRE_ALARM")).toBe(true);
+    await expect(fixtures.getLead("lead-001")).resolves.toMatchObject({ id: "lead-001", score: 94 });
+  });
+
+  it("saveLead / updateSavedLead / unsaveLead mutate in-memory saved state", async () => {
+    const before = (await fixtures.getSavedLeads()).length;
+    const item = await fixtures.saveLead("lead-002");
+    expect(item.status).toBe("SAVED");
+    expect(item.lead.id).toBe("lead-002");
+    expect(await fixtures.getSavedLeads()).toHaveLength(before + 1);
+    await fixtures.updateSavedLead(item.id, "CONTACTED");
+    expect((await fixtures.getSavedLeads()).find((s) => s.id === item.id)?.status).toBe("CONTACTED");
+    await fixtures.unsaveLead(item.id);
+    expect(await fixtures.getSavedLeads()).toHaveLength(before);
+  });
+
+  it("getAccountMarkets returns the entitled fixture markets matching lead cities", async () => {
+    const markets = await fixtures.getAccountMarkets();
+    expect(markets.map((m) => m.slug)).toEqual(["houston-tx", "dallas-tx"]);
+  });
+
+  it("billing fixtures resolve to a non-navigable placeholder url", async () => {
+    await expect(fixtures.createCheckout("PRO")).resolves.toEqual({ url: "#" });
+    await expect(fixtures.createBillingPortal()).resolves.toEqual({ url: "#" });
+  });
+});

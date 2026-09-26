@@ -1,41 +1,64 @@
-// FIXTURE CONTRACT (WS0 stub). WS4 owns this directory and replaces each
-// body with realistic fixture data matching @permittorch/types exactly.
+// FIXTURE CONTRACT: lib/api.ts (frozen) calls these by name in mock mode.
 // Signatures mirror lib/api.ts with token parameters dropped. Do NOT add,
-// remove, or rename exports — lib/api.ts (frozen) calls them by name.
-import type {
-  AccountMe,
-  AdminSource,
-  DigestFrequency,
-  LeadDetail,
-  LeadsResponse,
-  Market,
-  Paged,
-  PlanTier,
-  SavedLeadItem,
-  SavedLeadStatus,
-  ScraperRunSummary,
-} from "@permittorch/types";
-import type { LeadsQuery } from "@/lib/api";
-
-function notImplemented(name: string): never {
-  throw new Error(`Fixture "${name}" is not implemented yet (WS4 owns apps/web/lib/fixtures/)`);
-}
-
+// remove, or rename these functions. Bodies are thin adapters over the
+// mock* fixture internals below.
 // NOTE: getMarkets/getMarketStats are intentionally ABSENT — lib/api.ts's
 // mock branch imports mockMarkets/mockMarketStats from ./markets (WS3-owned).
-export async function getLeads(_params: LeadsQuery): Promise<LeadsResponse> { notImplemented("getLeads"); }
-export async function getLead(_id: string): Promise<LeadDetail> { notImplemented("getLead"); }
-export async function getSavedLeads(): Promise<SavedLeadItem[]> { notImplemented("getSavedLeads"); }
-export async function saveLead(_fireOpportunityId: string): Promise<SavedLeadItem> { notImplemented("saveLead"); }
-export async function updateSavedLead(_id: string, _status: SavedLeadStatus): Promise<void> { notImplemented("updateSavedLead"); }
-export async function unsaveLead(_id: string): Promise<void> { notImplemented("unsaveLead"); }
-export async function getAccountMarkets(): Promise<Market[]> { notImplemented("getAccountMarkets"); }
-export async function getAccountMe(): Promise<AccountMe> { notImplemented("getAccountMe"); }
-export async function updateEmailPreferences(_frequency: DigestFrequency): Promise<void> { notImplemented("updateEmailPreferences"); }
+import type {
+  AccountMe, AdminSource, DigestFrequency, LeadDetail, LeadsResponse,
+  Market, Paged, PlanTier, SavedLeadItem, SavedLeadStatus, ScraperRunSummary,
+} from "@permittorch/types";
+import type { LeadsQuery } from "@/lib/api";
+import { mockLeads, mockLeadsResponse, mockLeadDetail } from "./leads";
+import { mockSavedLeads } from "./saved";
+import { mockAccountMarkets, mockAccountMe } from "./account";
+import { mockAdminSources, mockAdminRuns } from "./admin";
+
+// In-memory saved-leads state so optimistic UI flows work in mock dev.
+const savedState: SavedLeadItem[] = [...mockSavedLeads];
+
+export async function getLeads(params: LeadsQuery): Promise<LeadsResponse> { return mockLeadsResponse(params); }
+export async function getLead(id: string): Promise<LeadDetail> { return mockLeadDetail(id); }
+export async function getSavedLeads(): Promise<SavedLeadItem[]> { return [...savedState]; }
+export async function saveLead(fireOpportunityId: string): Promise<SavedLeadItem> {
+  const lead = mockLeads.find((l) => l.id === fireOpportunityId);
+  if (!lead) throw new Error(`No fixture lead with id ${fireOpportunityId}`);
+  const existing = savedState.find((s) => s.lead.id === fireOpportunityId);
+  if (existing) return existing;
+  const item: SavedLeadItem = {
+    id: `saved-${fireOpportunityId}`,
+    status: "SAVED",
+    createdAt: new Date().toISOString(),
+    lead,
+  };
+  savedState.unshift(item);
+  return item;
+}
+export async function updateSavedLead(id: string, status: SavedLeadStatus): Promise<void> {
+  const idx = savedState.findIndex((s) => s.id === id);
+  if (idx >= 0) savedState[idx] = { ...savedState[idx], status };
+}
+export async function unsaveLead(id: string): Promise<void> {
+  const idx = savedState.findIndex((s) => s.id === id);
+  if (idx >= 0) savedState.splice(idx, 1);
+}
+export async function getAccountMarkets(): Promise<Market[]> { return mockAccountMarkets; }
+export async function getAccountMe(): Promise<AccountMe> { return mockAccountMe; }
+export async function updateEmailPreferences(_frequency: DigestFrequency): Promise<void> { /* mock no-op */ }
 // Mock mode accepts the sample-lead form as a no-op success.
 export async function submitSampleLeadRequest(_input: { name: string; email: string; company: string; marketSlug: string }): Promise<void> {}
-export async function createCheckout(_plan: PlanTier): Promise<{ url: string }> { notImplemented("createCheckout"); }
-export async function createBillingPortal(): Promise<{ url: string }> { notImplemented("createBillingPortal"); }
-export async function getAdminSources(): Promise<AdminSource[]> { notImplemented("getAdminSources"); }
-export async function getAdminRuns(_params: { sourceId?: string; page?: number }): Promise<Paged<ScraperRunSummary>> { notImplemented("getAdminRuns"); }
-export async function setSourceActive(_id: string, _active: boolean): Promise<void> { notImplemented("setSourceActive"); }
+export async function createCheckout(_plan: PlanTier): Promise<{ url: string }> { return { url: "#" }; }
+export async function createBillingPortal(): Promise<{ url: string }> { return { url: "#" }; }
+export async function getAdminSources(): Promise<AdminSource[]> { return mockAdminSources; }
+export async function getAdminRuns(params: { sourceId?: string; page?: number }): Promise<Paged<ScraperRunSummary>> { return mockAdminRuns(params); }
+export async function setSourceActive(id: string, active: boolean): Promise<void> {
+  const src = mockAdminSources.find((s) => s.id === id);
+  if (src) src.active = active;
+}
+
+// Internal fixture exports for app tests.
+export { mockLeads, mockLeadDetails, mockLeadsResponse, mockLeadDetail } from "./leads";
+export { mockSavedLeads } from "./saved";
+export { mockAccountMe, mockAccountMarkets } from "./account";
+export { mockAdminSources, mockAdminRuns } from "./admin";
+export { mockMarkets, mockMarketStats } from "./markets";
