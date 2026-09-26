@@ -15,6 +15,8 @@ vi.mock("sonner", () => ({ toast: Object.assign(vi.fn(), { success: vi.fn(), err
 
 import SavedPage from "@/app/app/saved/page";
 import AlertsPage from "@/app/app/alerts/page";
+import AccountPage from "@/app/app/account/page";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 beforeAll(() => vi.stubEnv("NEXT_PUBLIC_API_MOCK", "1"));
 
@@ -36,5 +38,16 @@ describe("/app/alerts", () => {
     expect(screen.getByRole("heading", { name: "Alerts" })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /Daily/ })).toBeChecked();
     expect(screen.getByText("john@davisfireprotection.com")).toBeInTheDocument();
+  });
+});
+
+describe("/app/account", () => {
+  it("shows profile, plan, and entitled markets", async () => {
+    render(<TooltipProvider>{await AccountPage()}</TooltipProvider>);
+    expect(screen.getByText("Davis Fire Protection")).toBeInTheDocument();
+    expect(screen.getByText("Pro plan")).toBeInTheDocument();
+    expect(screen.getByText("Houston, TX")).toBeInTheDocument();
+    expect(screen.getByText("Dallas, TX")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Upgrade to Territory" })).toBeDisabled();
   });
 });
