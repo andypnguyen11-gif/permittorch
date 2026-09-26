@@ -1,0 +1,62 @@
+using System;
+using System.Text.Json;
+
+namespace PermitTorch.Api.Infrastructure.Apify;
+
+// LOCKED shape — master plan §4 (verified against real run output). Do not rename or reorder.
+public record RawPermitRecord(
+    string RecordId,                    // "{sourceId}:{permitNumber}", e.g. "tulsa-fire-permits:FIRE-255161-2026"
+    RawJurisdiction? Jurisdiction,
+    string? BusinessName, string? ProjectName,
+    RawAddress? Address,
+    string? RecordType,                 // "permit" observed; treat as open string
+    string? FireSystemType,             // scraper's own classification, e.g. "fire_alarm", "other_fire_protection"
+    string? WorkType,                   // "unknown" observed; treat as open string
+    string? PermitNumber, string? PermitStatus,
+    string? ApplicationDate, string? IssuedDate, string? ExpirationDate,
+    string? InspectionDate, string? InspectionStatus,
+    JsonElement[]? Violations,
+    string? Description,
+    decimal? ProjectValue,
+    string? PropertyType,
+    RawParty? Owner, RawContractor? Contractor,
+    int? LeadScore,                     // scraper's score — raw input at most, never surfaced
+    string[]? LeadSignals,              // scraper's signals, e.g. "RECENTLY_ISSUED" — raw input at most
+    RawSource? Source,
+    string? ScrapedAt);
+
+public record RawJurisdiction(string? City, string? County, string? State);
+public record RawAddress(string? Street, string? City, string? State, string? Zip,
+    double? Latitude, double? Longitude);
+public record RawParty(string? Name, string? Company);
+public record RawContractor(string? Name, string? Company, string? LicenseNumber);
+public record RawSource(string? SourceId, string? Jurisdiction, string? Provider, string? Url);
+
+// LOCKED shape — master plan §4.
+public record CoverageReport(
+    int RequestedJurisdictions, int SupportedJurisdictions, int SuccessfulJurisdictions,
+    int FailedJurisdictions, int UnsupportedJurisdictions, int SkippedJurisdictions,
+    int RecordsFound,
+    JsonElement[] UnsupportedDetails, JsonElement[] FailedDetails, JsonElement[] SkippedDetails,
+    SourceStat[] SourceStats,
+    JsonElement? ChargeLimit = null,        // { leadsWithinLimit, reached } — emitted since scraper 0.1.11
+    JsonElement[]? SkippedSources = null);  // [{ sourceId, jurisdictionKey, reason }] — sources not run this pass
+
+// LOCKED shape — master plan §4.
+public record SourceStat(
+    string SourceId, string JurisdictionKey,          // e.g. "tulsa-fire-permits", "ok/tulsa"
+    bool Ok, int RawCount, int EmittedCount, int RequestCount, long DurationMs,
+    string? Error, JsonElement? AddressShortfall, SourceCoverage? Coverage);
+
+// LOCKED shape — master plan §4.
+public record SourceCoverage(int Held, int HeldUnknownTypes, int Delivered,
+    string? Outcome,                    // e.g. "max-records" when the result cap truncated output
+    string[] TruncatedBy, int TypesSearched, int TypesTotal);
+
+// WS1 helper: subset of the Apify Run object (items of GET /v2/actor-tasks/{taskId}/runs).
+public record ApifyRun(string Id, string Status, DateTime StartedAt, DateTime? FinishedAt,
+    string DefaultDatasetId, string DefaultKeyValueStoreId);
+
+// WS1 helpers: the task-runs list endpoint wraps its page as { "data": { "items": [...] } }.
+public record ApifyRunList(ApifyRun[] Items);
+public record ApifyRunListEnvelope(ApifyRunList Data);
