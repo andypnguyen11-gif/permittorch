@@ -4,7 +4,17 @@ import { cn } from "@/lib/utils";
 
 const signed = (n: number) => (n >= 0 ? `+${n}` : `−${Math.abs(n)}`);
 
+// The canonical score comes from the API's scoring engine; this component only
+// explains it. The signal sum is used solely to say when the API clamped it.
+function clampNote(signals: LeadSignal[]): string | null {
+  const sum = signals.reduce((acc, s) => acc + s.weight, 0);
+  if (sum > 100) return "capped at 100";
+  if (sum < 0) return "floored at 0";
+  return null;
+}
+
 export function SignalList({ score, signals }: { score: number; signals: LeadSignal[] }) {
+  const note = clampNote(signals);
   const maxAbs = Math.max(1, ...signals.map((s) => Math.abs(s.weight)));
   return (
     <SectionCard title={`Why this is a ${score}`}>
@@ -14,7 +24,11 @@ export function SignalList({ score, signals }: { score: number; signals: LeadSig
         <>
           <ul className="space-y-2.5">
             {signals.map((signal) => (
-              <li key={signal.signalType + signal.description} className="space-y-1">
+              <li
+                key={signal.signalType + signal.description}
+                data-signal-type={signal.signalType}
+                className="space-y-1"
+              >
                 <div className="flex items-center justify-between gap-4 text-sm">
                   <span className="text-stone-700">{signal.description}</span>
                   <span
@@ -38,8 +52,15 @@ export function SignalList({ score, signals }: { score: number; signals: LeadSig
           </ul>
           <div className="mt-4 flex items-center justify-between border-t border-border pt-3 text-sm">
             <span className="font-medium text-stone-900">Lead score</span>
-            <span data-testid="signal-total" className="font-bold tabular-nums text-stone-900">
-              {signals.reduce((sum, s) => sum + s.weight, 0)}
+            <span className="flex items-baseline gap-2">
+              {note && (
+                <span data-testid="signal-clamp-note" className="text-xs font-normal text-stone-500">
+                  {note}
+                </span>
+              )}
+              <span data-testid="signal-total" className="font-bold tabular-nums text-stone-900">
+                {score}
+              </span>
             </span>
           </div>
         </>

@@ -30,7 +30,7 @@ const lead = (o: Partial<LeadSummary>): LeadSummary => ({
 describe("computeOverviewStats", () => {
   it("summarises the fixture leads", () => {
     expect(computeOverviewStats(mockLeads)).toEqual({
-      newOpportunities: 9, hotLeads: 3, avgScore: 73, totalValue: 18_635_000,
+      newOpportunities: 9, hotLeads: 6, avgScore: 64, totalValue: 18_635_000,
     });
   });
   it("handles no leads without dividing by zero", () => {
@@ -67,7 +67,7 @@ describe("/app overview page", () => {
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Find the permits worth chasing.");
     expect(screen.getAllByText("$18.64M")).toHaveLength(2); // stat card + digest preview
     const rows = screen.getAllByTestId("score-badge").map((b) => b.textContent);
-    expect(rows).toEqual(["94", "92", "91", "89", "87"]);
+    expect(rows).toEqual(["100", "100", "100", "95", "90"]);
     expect(screen.getByRole("region", { name: "Source health" })).toBeInTheDocument();
     expect(screen.getByText("Next digest tomorrow at 6:00 AM")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: /permit filings per day/ })).toBeInTheDocument();

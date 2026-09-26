@@ -32,8 +32,8 @@ describe("/app/leads page (mock API)", () => {
     await renderPage({ minScore: "90", category: "FIRE_SPRINKLER" });
     const links = within(screen.getByRole("table")).getAllByRole("link");
     expect(links.map((l) => l.textContent)).toEqual([
-      "Warehouse Fire Sprinkler System",
       "Distribution Center — New Construction",
+      "Warehouse Fire Sprinkler System",
       "Logistics Hub Fire Sprinkler Package",
     ]);
   });

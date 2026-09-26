@@ -8,12 +8,19 @@ import {
 
 const HOURS = 3_600_000;
 
+const LOCKED_WEIGHTS: Record<string, number> = {
+  NEW_COMMERCIAL_BUILD: 25, FIRE_SPRINKLER_SCOPE: 25, FIRE_ALARM_SCOPE: 20,
+  FAILED_INSPECTION: 20, PERMIT_RECENT: 15, HIGH_PROJECT_VALUE: 10,
+  LARGE_SQUARE_FOOTAGE: 10, NO_CONTRACTOR_LISTED: 10, OLD_PERMIT: -20, CLOSED_PERMIT: -30,
+};
+const clamp = (n: number) => Math.min(100, Math.max(0, n));
+
 describe("fixture integrity", () => {
-  it("has 25 leads with scores spread 41–94", () => {
+  it("has 25 leads with scores spanning the full 0–100 range", () => {
     expect(mockLeads).toHaveLength(25);
     const scores = mockLeads.map((l) => l.score);
-    expect(Math.max(...scores)).toBe(94);
-    expect(Math.min(...scores)).toBe(41);
+    expect(Math.max(...scores)).toBe(100);
+    expect(Math.min(...scores)).toBe(0);
   });
 
   it("covers every FireCategory and every PermitStatus", () => {
@@ -30,21 +37,66 @@ describe("fixture integrity", () => {
     );
   });
 
-  it("marks isNew consistently with filedDate < 72h", () => {
-    for (const l of mockLeads) {
-      if (l.isNew) {
-        expect(l.filedDate).not.toBeNull();
-        expect(Date.now() - Date.parse(l.filedDate!)).toBeLessThan(72 * HOURS);
-      }
+  it("has a detail for every lead, and isNew means first detected < 72h ago", () => {
+    expect(mockLeadDetails.map((d) => d.id)).toEqual(mockLeads.map((l) => l.id));
+    for (const d of mockLeadDetails) {
+      const age = Date.now() - Date.parse(d.firstDetectedAt);
+      expect(d.isNew, d.id).toBe(age < 72 * HOURS);
+    }
+  });
+});
+
+describe("fixture scoring invariant (API scoring contract)", () => {
+  it("every detail starts with the BASE_SCORE row", () => {
+    for (const d of mockLeadDetails) {
+      expect(d.signals[0], d.id).toEqual({
+        signalType: "BASE_SCORE",
+        description: "Baseline for a classified fire-protection permit",
+        weight: 30,
+      });
     }
   });
 
-  it("curated detail signals sum exactly to the score (explainability)", () => {
-    expect(mockLeadDetails).toHaveLength(5);
+  it("every detail uses only locked signal types at their default weights, once each", () => {
     for (const d of mockLeadDetails) {
-      const sum = d.signals.reduce((acc, s) => acc + s.weight, 0);
-      expect(sum).toBe(d.score);
+      const rest = d.signals.slice(1);
+      for (const s of rest) {
+        expect(LOCKED_WEIGHTS, `${d.id} ${s.signalType}`).toHaveProperty(s.signalType);
+        expect(s.weight, `${d.id} ${s.signalType}`).toBe(LOCKED_WEIGHTS[s.signalType]);
+      }
+      expect(new Set(rest.map((s) => s.signalType)).size, d.id).toBe(rest.length);
     }
+  });
+
+  it("every detail has score === clamp(Σ weights, 0, 100), and the summary agrees", () => {
+    for (const d of mockLeadDetails) {
+      expect(d.score, d.id).toBe(clamp(d.signals.reduce((a, s) => a + s.weight, 0)));
+      expect(mockLeads.find((l) => l.id === d.id)!.score, d.id).toBe(d.score);
+    }
+  });
+
+  it("every detail fires signals consistently with its permit data (WS1 rules)", () => {
+    for (const d of mockLeadDetails) {
+      const types = new Set(d.signals.map((s) => s.signalType));
+      const filedAge = d.filedDate ? Date.now() - Date.parse(d.filedDate) : null;
+      const check = (type: string, expected: boolean) =>
+        expect(types.has(type), `${d.id} ${type}`).toBe(expected);
+      check("FIRE_SPRINKLER_SCOPE", d.category === "FIRE_SPRINKLER");
+      check("FIRE_ALARM_SCOPE", d.category === "FIRE_ALARM");
+      check("FAILED_INSPECTION", d.status === "FAILED");
+      check("CLOSED_PERMIT", d.status === "CLOSED");
+      check("PERMIT_RECENT", filedAge != null && filedAge < 72 * HOURS);
+      check("OLD_PERMIT", filedAge != null && filedAge > 90 * 24 * HOURS);
+      check("HIGH_PROJECT_VALUE", (d.estimatedValue ?? 0) > 500_000);
+      check("LARGE_SQUARE_FOOTAGE", (d.permit.squareFootage ?? 0) > 20_000);
+      check("NO_CONTRACTOR_LISTED", !d.permit.contractorName);
+    }
+  });
+
+  it("includes capped and floored examples", () => {
+    const sums = mockLeadDetails.map((d) => d.signals.reduce((a, s) => a + s.weight, 0));
+    expect(sums.some((n) => n > 100)).toBe(true);
+    expect(sums.some((n) => n < 0)).toBe(true);
   });
 });
 
@@ -108,6 +160,20 @@ describe("mockLeadsResponse filtering", () => {
     expect(res.items.every((l) => l.category === "FIRE_SPRINKLER" && l.score >= 90)).toBe(true);
   });
 
+  it("sorts by score desc, then most recently first-detected, before paginating", () => {
+    const items = mockLeadsResponse({ pageSize: 100 }).items;
+    const detected = new Map(mockLeadDetails.map((d) => [d.id, Date.parse(d.firstDetectedAt)]));
+    for (let i = 1; i < items.length; i++) {
+      const [a, b] = [items[i - 1], items[i]];
+      expect(a.score).toBeGreaterThanOrEqual(b.score);
+      if (a.score === b.score) expect(detected.get(a.id)!).toBeGreaterThanOrEqual(detected.get(b.id)!);
+    }
+    // lead-002 (100, detected 18h ago) outranks lead-001 (100, detected 38h ago).
+    expect(items.slice(0, 3).map((l) => l.id)).toEqual(["lead-002", "lead-020", "lead-001"]);
+    const firstPage = mockLeadsResponse({ pageSize: 3 }).items.map((l) => l.id);
+    expect(firstPage).toEqual(["lead-002", "lead-020", "lead-001"]);
+  });
+
   it("paginates: page 2 of pageSize 10 returns items 11–20 of the filtered set", () => {
     const all = mockLeadsResponse({ pageSize: 100 }).items;
     const page2 = mockLeadsResponse({ page: 2, pageSize: 10 });
@@ -126,18 +192,11 @@ describe("mockLeadsResponse filtering", () => {
 });
 
 describe("mockLeadDetail", () => {
-  it("returns the curated detail for lead-001", () => {
+  it("returns the detail for lead-001", () => {
     const d = mockLeadDetail("lead-001");
-    expect(d.score).toBe(94);
+    expect(d.score).toBe(100);
     expect(d.signals.length).toBeGreaterThanOrEqual(5);
     expect(d.permit.permitNumber).not.toBeNull();
-  });
-
-  it("synthesizes a fallback detail whose signals sum to the score", () => {
-    const d = mockLeadDetail("lead-002"); // not curated
-    expect(d.id).toBe("lead-002");
-    expect(d.signals.reduce((a, s) => a + s.weight, 0)).toBe(d.score);
-    expect(d.source.name.length).toBeGreaterThan(0);
   });
 
   it("throws for an unknown id", () => {
@@ -188,7 +247,7 @@ describe("fixtures index (lib/api.ts mock contract)", () => {
   it("getLeads and getLead adapt the lead fixtures", async () => {
     const res = await fixtures.getLeads({ category: "FIRE_ALARM" });
     expect(res.items.every((l) => l.category === "FIRE_ALARM")).toBe(true);
-    await expect(fixtures.getLead("lead-001")).resolves.toMatchObject({ id: "lead-001", score: 94 });
+    await expect(fixtures.getLead("lead-001")).resolves.toMatchObject({ id: "lead-001", score: 100 });
   });
 
   it("saveLead / updateSavedLead / unsaveLead mutate in-memory saved state", async () => {

@@ -23,8 +23,11 @@ describe("/app/leads/[id] page (mock API)", () => {
   it("renders the curated lead with its full score explanation and source link", async () => {
     await renderPage("lead-001");
     expect(screen.getByRole("heading", { level: 1, name: "Warehouse Fire Sprinkler System" })).toBeInTheDocument();
-    expect(screen.getByText("Why this is a 94")).toBeInTheDocument();
-    expect(screen.getAllByTestId("signal-weight")).toHaveLength(6);
+    expect(screen.getByText("Why this is a 100")).toBeInTheDocument();
+    // BASE_SCORE + six rule signals; the sum (125) is shown as capped.
+    expect(screen.getAllByTestId("signal-weight")).toHaveLength(7);
+    expect(screen.getByTestId("signal-total")).toHaveTextContent("100");
+    expect(screen.getByTestId("signal-clamp-note")).toHaveTextContent("capped at 100");
     expect(screen.getByText("25-176389")).toBeInTheDocument();
     const source = screen.getByRole("link", { name: /View original record/ });
     expect(source).toHaveAttribute("target", "_blank");
