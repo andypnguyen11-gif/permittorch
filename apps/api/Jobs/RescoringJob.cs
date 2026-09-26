@@ -1,0 +1,165 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using PermitTorch.Api.Data;
+using PermitTorch.Api.Domain.Classification;
+using PermitTorch.Api.Domain.Normalization;
+using PermitTorch.Api.Domain.Scoring;
+
+namespace PermitTorch.Api.Jobs;
+
+// Scores are persisted, but PERMIT_RECENT and OLD_PERMIT depend on the current time. This pass
+// recomputes recent opportunities with the same ScoringEngine so time-based signals never go
+// stale (a lead must not keep "Filed within the last 72 hours" a week later).
+public sealed class RescoringJob : BackgroundService
+{
+    // OLD_PERMIT applies past 90 days; one extra day guarantees a daily pass sees the crossing.
+    public const int RescoreWindowDays = 91;
+    private const int BatchSize = 200;
+
+    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly ScoringEngine _scoringEngine;
+    private readonly ILogger<RescoringJob> _logger;
+    private readonly TimeSpan _interval;
+
+    public RescoringJob(IServiceScopeFactory scopeFactory, ScoringEngine scoringEngine,
+        IConfiguration configuration, ILogger<RescoringJob> logger)
+    {
+        _scopeFactory = scopeFactory;
+        _scoringEngine = scoringEngine;
+        _logger = logger;
+        _interval = TimeSpan.FromHours(configuration.GetValue<int?>("Rescoring:IntervalHours") ?? 24);
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        _logger.LogInformation("Rescoring job started; rescoring every {Interval}", _interval);
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                await RescoreOnceAsync(DateTime.UtcNow, stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Rescoring pass failed");
+            }
+
+            try
+            {
+                await Task.Delay(_interval, stoppingToken);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+        }
+    }
+
+    // Returns the number of opportunities whose score or signals changed.
+    public async Task<int> RescoreOnceAsync(DateTime nowUtc, CancellationToken ct)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var windowStart = nowUtc.AddDays(-RescoreWindowDays);
+        var changed = 0;
+        Guid? lastId = null;
+
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+            // Keyset paging by id: stable even if rows are inserted or deleted mid-pass.
+            var query = db.Set<FireOpportunity>()
+                .Include(o => o.Permit)
+                .Include(o => o.Signals)
+                .Where(o => o.Permit.FiledDate == null || o.Permit.FiledDate >= windowStart);
+            if (lastId is { } after)
+                query = query.Where(o => o.Id.CompareTo(after) > 0);
+            var batch = await query
+                .OrderBy(o => o.Id)
+                .Take(BatchSize)
+                .AsSplitQuery()
+                .ToListAsync(ct);
+            if (batch.Count == 0) break;
+            lastId = batch[^1].Id;
+            var batchChanged = 0;
+
+            foreach (var opportunity in batch)
+            {
+                var result = _scoringEngine.Score(ToNormalized(opportunity.Permit),
+                    new ClassificationResult(opportunity.Category, opportunity.Confidence, "rescore"),
+                    nowUtc);
+                if (SameSignals(opportunity.Signals, result.Signals)
+                    && opportunity.LeadScore == result.Score
+                    && opportunity.Reason == result.Reason)
+                    continue;
+
+                db.RemoveRange(opportunity.Signals);
+                foreach (var signal in result.Signals)
+                {
+                    db.Add(new LeadSignal
+                    {
+                        Id = Guid.NewGuid(),
+                        FireOpportunityId = opportunity.Id,
+                        SignalType = signal.SignalType,
+                        Description = signal.Description,
+                        Weight = signal.Weight,
+                    });
+                }
+                opportunity.LeadScore = result.Score;
+                opportunity.Reason = result.Reason;
+                // LastUpdatedAt is deliberately untouched: a time-based rescore is not new permit
+                // activity and must not make a lead look fresher than its data.
+                batchChanged++;
+            }
+
+            try
+            {
+                await db.SaveChangesAsync(ct);
+                changed += batchChanged;
+            }
+            catch (DbUpdateConcurrencyException ex)
+            {
+                // Ingestion rewrote some of these opportunities' signals mid-pass. Its fresh score
+                // is authoritative; skip this batch and keep going rather than abandon the pass.
+                _logger.LogWarning(ex,
+                    "Rescoring batch ending at opportunity {LastId} hit a concurrent update; skipped, will be rescored next pass",
+                    lastId);
+            }
+            db.ChangeTracker.Clear();
+        }
+
+        _logger.LogInformation("Rescored {Changed} fire opportunities filed within {Days} days",
+            changed, RescoreWindowDays);
+        return changed;
+    }
+
+    private static bool SameSignals(IReadOnlyCollection<LeadSignal> existing, IReadOnlyList<ScoredSignal> next)
+    {
+        if (existing.Count != next.Count) return false;
+        var a = existing.Select(s => (s.SignalType, s.Description, s.Weight)).OrderBy(x => x.SignalType, StringComparer.Ordinal);
+        var b = next.Select(s => (s.SignalType, s.Description, s.Weight)).OrderBy(x => x.SignalType, StringComparer.Ordinal);
+        return a.SequenceEqual(b);
+    }
+
+    // Rebuilds the scoring input from the persisted permit (the engine only reads these fields).
+    private static NormalizedPermit ToNormalized(Permit p) => new(
+        ExternalId: p.ExternalId, Jurisdiction: string.Empty, PermitNumber: p.PermitNumber,
+        PermitType: p.PermitType, Description: p.Description, Status: p.Status, RawStatus: p.RawStatus,
+        Address: p.Address, City: p.City, State: p.State, Zip: p.Zip,
+        Latitude: p.Latitude, Longitude: p.Longitude, FiledDate: p.FiledDate, IssuedDate: p.IssuedDate,
+        EstimatedValue: p.EstimatedValue, SquareFootage: p.SquareFootage, OwnerName: p.OwnerName,
+        ContractorName: p.ContractorName, SourceUrl: p.SourceUrl, Fingerprint: p.Fingerprint);
+}
