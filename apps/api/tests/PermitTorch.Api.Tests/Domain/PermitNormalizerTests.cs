@@ -228,4 +228,19 @@ public class PermitNormalizerTests
 
         Assert.Equal(a.Fingerprint, b.Fingerprint);
     }
+
+    [Fact]
+    public void Fingerprint_IgnoresLeadingTrailingAndRepeatedWhitespace()
+    {
+        var a = PermitNormalizer.Normalize(Raw(
+            address: new RawAddress("4239 S 74TH AVE E", "Tulsa", "OK", "74145", null, null),
+            fireSystemType: "fire_alarm",
+            description: "Fire Alarm | Fire Alarm"));
+        var b = PermitNormalizer.Normalize(Raw(
+            address: new RawAddress("  4239  S 74TH   AVE E ", "Tulsa", "OK", "74145", null, null),
+            fireSystemType: " fire_alarm ",
+            description: "Fire  Alarm |\tFire Alarm  "));
+
+        Assert.Equal(a.Fingerprint, b.Fingerprint);
+    }
 }

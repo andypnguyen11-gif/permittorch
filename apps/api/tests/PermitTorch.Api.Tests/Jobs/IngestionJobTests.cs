@@ -94,7 +94,8 @@ public class IngestionJobTests
         string? street = "4239 S 74TH AVE E",
         string? applicationDate = null,
         string? contractorName = "Reliable Fire Co",
-        decimal? projectValue = null)
+        decimal? projectValue = null,
+        string? permitNumber = null)
         => new(
             RecordId: recordId,
             Jurisdiction: new RawJurisdiction("Tulsa", "Tulsa", "OK"),
@@ -104,7 +105,7 @@ public class IngestionJobTests
             RecordType: "permit",
             FireSystemType: fireSystemType,
             WorkType: "unknown",
-            PermitNumber: null,
+            PermitNumber: permitNumber,
             PermitStatus: permitStatus,
             ApplicationDate: applicationDate,
             IssuedDate: null,
@@ -631,6 +632,69 @@ public class IngestionJobTests
         Assert.NotNull(scraperRun);
         Assert.Contains(logger.Entries, e => e.Level == Microsoft.Extensions.Logging.LogLevel.Warning
             && e.Message.Contains("charge limit"));
+    }
+
+    // ---- Fingerprint fallback guards ----
+
+    private async Task<ScraperRun?> IngestAsync(string sourceId, params RawPermitRecord[] records)
+    {
+        var (job, sp) = BuildJob(new FakePermitSourceProvider(
+            Run($"run-{Guid.NewGuid():N}", records, Stat(sourceId))));
+        await using (sp) { return await job.RunOnceAsync(CancellationToken.None); }
+    }
+
+    [Fact]
+    public async Task RunOnce_FingerprintFallback_NeverMergesDifferentPermitNumbers()
+    {
+        var sourceId = $"src-{Guid.NewGuid():N}";
+        var source = await SeedSourceAsync(sourceId);
+        RawPermitRecord Twin(string permitNumber) => Record($"ext-{Guid.NewGuid():N}", sourceId,
+            description: "Fire Alarm | Fire Alarm", fireSystemType: "fire_alarm",
+            street: "500 Twin Towers Dr", applicationDate: "2026-08-15", permitNumber: permitNumber);
+
+        await IngestAsync(sourceId, Twin("FIRE-1001-2026"));
+        var second = await IngestAsync(sourceId, Twin("FIRE-1002-2026"));
+
+        Assert.Equal(1, second!.RecordsImported);
+        Assert.Equal(0, second.DuplicatesSkipped);
+        await using var db = _fixture.CreateContext();
+        var numbers = await db.Set<Permit>().Where(p => p.SourceId == source.Id)
+            .Select(p => p.PermitNumber).OrderBy(n => n).ToListAsync();
+        Assert.Equal(new[] { "FIRE-1001-2026", "FIRE-1002-2026" }, numbers);
+    }
+
+    [Fact]
+    public async Task RunOnce_FingerprintFallback_KeepsExistingPermitNumber_WhenIncomingIsNull()
+    {
+        var sourceId = $"src-{Guid.NewGuid():N}";
+        var source = await SeedSourceAsync(sourceId);
+        RawPermitRecord Twin(string? permitNumber) => Record($"ext-{Guid.NewGuid():N}", sourceId,
+            description: "Fire Alarm | Fire Alarm", fireSystemType: "fire_alarm",
+            street: "600 Same St", applicationDate: "2026-08-15", permitNumber: permitNumber);
+
+        await IngestAsync(sourceId, Twin("FIRE-2001-2026"));
+        var second = await IngestAsync(sourceId, Twin(null));
+
+        Assert.Equal(1, second!.DuplicatesSkipped);
+        await using var db = _fixture.CreateContext();
+        var permit = await db.Set<Permit>().SingleAsync(p => p.SourceId == source.Id);
+        Assert.Equal("FIRE-2001-2026", permit.PermitNumber);
+    }
+
+    [Fact]
+    public async Task RunOnce_FingerprintFallback_IsSkipped_WhenAddressIsEmpty()
+    {
+        var sourceId = $"src-{Guid.NewGuid():N}";
+        var source = await SeedSourceAsync(sourceId);
+        RawPermitRecord NoAddress() => Record($"ext-{Guid.NewGuid():N}", sourceId,
+            description: "Fire Alarm | Fire Alarm", fireSystemType: "fire_alarm",
+            street: null, applicationDate: "2026-08-15");
+
+        await IngestAsync(sourceId, NoAddress());
+        await IngestAsync(sourceId, NoAddress());
+
+        await using var db = _fixture.CreateContext();
+        Assert.Equal(2, await db.Set<Permit>().CountAsync(p => p.SourceId == source.Id));
     }
 
     private static HttpResponseMessage JsonResponse(string body) => new(HttpStatusCode.OK)

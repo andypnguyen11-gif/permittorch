@@ -213,11 +213,26 @@ public sealed class IngestionJob : BackgroundService
         NormalizedPermit normalized, DateTime now, CancellationToken ct)
     {
         var permit = await db.Set<Permit>().Include(p => p.Opportunity)
-                .FirstOrDefaultAsync(p => p.SourceId == source.Id
-                    && p.ExternalId == normalized.ExternalId, ct)
-            ?? await db.Set<Permit>().Include(p => p.Opportunity)
-                .FirstOrDefaultAsync(p => p.SourceId == source.Id
-                    && p.Fingerprint == normalized.Fingerprint, ct);
+            .FirstOrDefaultAsync(p => p.SourceId == source.Id
+                && p.ExternalId == normalized.ExternalId, ct);
+
+        // Fingerprint fallback (CLAUDE.md dedupe rule) catches the same permit re-emitted under a
+        // new record id. It must never merge two distinct permits: it is skipped when there is no
+        // address to anchor the fingerprint, and it only matches when the permit numbers cannot
+        // disagree (either side null, or equal).
+        var matchedByFingerprint = false;
+        if (permit is null && !string.IsNullOrWhiteSpace(normalized.Address))
+        {
+            var permitNumber = normalized.PermitNumber;
+            permit = await db.Set<Permit>().Include(p => p.Opportunity)
+                .Where(p => p.SourceId == source.Id
+                    && p.Fingerprint == normalized.Fingerprint
+                    && (permitNumber == null || p.PermitNumber == null || p.PermitNumber == permitNumber))
+                .OrderBy(p => p.CreatedAt)
+                .ThenBy(p => p.Id)
+                .FirstOrDefaultAsync(ct);
+            matchedByFingerprint = permit is not null;
+        }
 
         var isNew = permit is null;
         if (permit is null)
@@ -255,7 +270,7 @@ public sealed class IngestionJob : BackgroundService
         }
         else
         {
-            MergeNonNullFields(permit, normalized);
+            MergeNonNullFields(permit, normalized, keepExistingPermitNumber: matchedByFingerprint);
             permit.LastSeenAt = now;
             permit.UpdatedAt = now;
         }
@@ -340,9 +355,11 @@ public sealed class IngestionJob : BackgroundService
     }
 
     // PRD §62: preserve source records historically — never blindly overwrite non-null with null.
-    private static void MergeNonNullFields(Permit permit, NormalizedPermit n)
+    // A fingerprint match never replaces an existing permit number (it can only fill a null one).
+    private static void MergeNonNullFields(Permit permit, NormalizedPermit n, bool keepExistingPermitNumber)
     {
-        if (n.PermitNumber is not null) permit.PermitNumber = n.PermitNumber;
+        if (n.PermitNumber is not null && !(keepExistingPermitNumber && permit.PermitNumber is not null))
+            permit.PermitNumber = n.PermitNumber;
         if (n.PermitType is not null) permit.PermitType = n.PermitType;
         if (n.Description is not null) permit.Description = n.Description;
         if (n.Status != PermitStatusKind.Unknown) permit.Status = n.Status;

@@ -2,6 +2,7 @@ using System;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using PermitTorch.Api.Data;
 using PermitTorch.Api.Infrastructure.Apify;
 
@@ -65,14 +66,21 @@ public static class PermitNormalizer
             ? parsed
             : null;
 
+    private static readonly Regex Whitespace = new(@"\s+", RegexOptions.CultureInvariant);
+
     private static string ComputeFingerprint(string? address, string? permitType, DateTime? filedDate, string? description)
     {
+        // Each component is canonicalized (trimmed, internal whitespace collapsed, lowercased) so
+        // cosmetic spacing differences between scrapes cannot defeat the fingerprint fallback.
         var canonical = string.Join("|",
-            address ?? string.Empty,
-            permitType ?? string.Empty,
+            Canonical(address),
+            Canonical(permitType),
             filedDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? string.Empty,
-            description ?? string.Empty).ToLowerInvariant();
+            Canonical(description));
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(canonical));
         return Convert.ToHexStringLower(hash);
     }
+
+    private static string Canonical(string? value)
+        => value is null ? string.Empty : Whitespace.Replace(value.Trim(), " ").ToLowerInvariant();
 }
