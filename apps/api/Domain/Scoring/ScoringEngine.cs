@@ -34,7 +34,11 @@ public record ScoredSignal(string SignalType, string Description, int Weight);
 // LOCKED entry point — master plan §5. Deterministic; no LLM in the scoring path.
 public class ScoringEngine
 {
-    private const int BaseScore = 30;
+    // Every classified fire-protection permit starts from this baseline. It is emitted as the
+    // first signal so each point of the score traces to a persisted LeadSignal (CLAUDE.md).
+    public const int BaseScore = 30;
+    public const string BaseScoreSignalType = "BASE_SCORE";
+    public const string BaseScoreDescription = "Baseline for a classified fire-protection permit";
 
     private static readonly Regex NewPattern =
         new(@"\bnew\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
@@ -47,7 +51,10 @@ public class ScoringEngine
 
     public ScoreResult Score(NormalizedPermit permit, ClassificationResult classification, DateTime nowUtc)
     {
-        var signals = new List<ScoredSignal>();
+        var signals = new List<ScoredSignal>
+        {
+            new(BaseScoreSignalType, BaseScoreDescription, BaseScore),
+        };
         var text = $"{permit.Description} {permit.PermitType}";
 
         if (NewPattern.IsMatch(text) && CommercialPattern.IsMatch(text))
@@ -82,7 +89,7 @@ public class ScoringEngine
         if (permit.Status == PermitStatusKind.Closed)
             AddSignal(signals, "CLOSED_PERMIT", "Permit is closed");
 
-        var score = Math.Clamp(BaseScore + signals.Sum(s => s.Weight), 0, 100);
+        var score = Math.Clamp(signals.Sum(s => s.Weight), 0, 100);
         return new ScoreResult(score, signals, BuildReason(signals));
     }
 
@@ -96,7 +103,7 @@ public class ScoringEngine
     private static string BuildReason(IReadOnlyList<ScoredSignal> signals)
     {
         var top = signals
-            .Where(s => s.Weight > 0)
+            .Where(s => s.Weight > 0 && s.SignalType != BaseScoreSignalType)
             .OrderByDescending(s => s.Weight)
             .ThenBy(s => s.SignalType, StringComparer.Ordinal)
             .Take(3)

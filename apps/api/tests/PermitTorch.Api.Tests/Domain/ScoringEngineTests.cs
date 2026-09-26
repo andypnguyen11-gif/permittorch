@@ -40,7 +40,10 @@ public class ScoringEngineTests
         var result = DefaultEngine().Score(permit, General(), Now);
 
         Assert.Equal(30, result.Score);
-        Assert.Empty(result.Signals);
+        var baseSignal = Assert.Single(result.Signals);
+        Assert.Equal("BASE_SCORE", baseSignal.SignalType);
+        Assert.Equal("Baseline for a classified fire-protection permit", baseSignal.Description);
+        Assert.Equal(30, baseSignal.Weight);
         Assert.Equal("Fire-protection related permit activity.", result.Reason);
     }
 
@@ -66,7 +69,8 @@ public class ScoringEngineTests
         Assert.Contains("HIGH_PROJECT_VALUE", types);
         Assert.Contains("LARGE_SQUARE_FOOTAGE", types);
         Assert.Contains("NO_CONTRACTOR_LISTED", types);
-        Assert.Equal(6, result.Signals.Count);
+        Assert.Equal(7, result.Signals.Count); // six rule signals plus BASE_SCORE
+        Assert.Equal("BASE_SCORE", result.Signals[0].SignalType);
     }
 
     [Fact]
@@ -99,7 +103,8 @@ public class ScoringEngineTests
 
         // 30 + 20 (alarm) + 20 (failed) = 70; within 0..100 so exact traceability holds
         Assert.Equal(70, result.Score);
-        Assert.Equal(result.Score - 30, result.Signals.Sum(s => s.Weight));
+        Assert.Equal(result.Score, result.Signals.Sum(s => s.Weight));
+        Assert.Equal("BASE_SCORE", result.Signals[0].SignalType);
     }
 
     [Fact]

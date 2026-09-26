@@ -32,6 +32,7 @@ public static class PipelineSetup
 
         services.AddHostedService<IngestionJob>();
         services.AddHostedService<SourceHealthMonitor>();
+        services.AddHostedService<RescoringJob>();
 
         return services;
     }

@@ -82,7 +82,7 @@ public class PipelineSetupTests
     }
 
     [Fact]
-    public void AddPipelineServices_RegistersBothHostedServices()
+    public void AddPipelineServices_RegistersAllPipelineHostedServices()
     {
         using var sp = Build();
 
@@ -90,6 +90,7 @@ public class PipelineSetupTests
 
         Assert.Contains(hostedServices, s => s is IngestionJob);
         Assert.Contains(hostedServices, s => s is SourceHealthMonitor);
+        Assert.Contains(hostedServices, s => s is RescoringJob);
     }
 
     [Fact]

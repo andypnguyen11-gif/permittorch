@@ -192,6 +192,7 @@ public class IngestionJobTests
             .Where(s => s.FireOpportunityId == opportunity.Id).ToListAsync();
         Assert.Contains(signals, s => s.SignalType == "FIRE_SPRINKLER_SCOPE" && s.Weight == 25);
         Assert.Contains(signals, s => s.SignalType == "NO_CONTRACTOR_LISTED" && s.Weight == 10);
+        Assert.Contains(signals, s => s.SignalType == "BASE_SCORE" && s.Weight == 30);
     }
 
     [Fact]
