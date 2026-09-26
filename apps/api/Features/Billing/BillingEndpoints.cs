@@ -108,6 +108,14 @@ public static class BillingEndpoints
         HttpRequest request, StripeWebhookProcessor processor,
         IOptions<BillingOptions> options, ILoggerFactory loggerFactory, CancellationToken ct)
     {
+        // A missing header reaches Stripe.EventUtility.ConstructEvent as a null string,
+        // which throws NullReferenceException deep inside the SDK instead of the
+        // StripeException below — guard it here so a malformed/absent header is a
+        // clean 400, never an unhandled 500 (PRD §58: verify before processing).
+        var signatureHeader = request.Headers["Stripe-Signature"].ToString();
+        if (string.IsNullOrEmpty(signatureHeader))
+            return ApiErrors.BadRequest("Missing Stripe-Signature header");
+
         using var reader = new StreamReader(request.Body);
         var payload = await reader.ReadToEndAsync(ct);
 
@@ -117,7 +125,7 @@ public static class BillingEndpoints
             // SIGNATURE VERIFICATION FIRST — nothing is processed on failure (PRD §58)
             stripeEvent = Stripe.EventUtility.ConstructEvent(
                 payload,
-                request.Headers["Stripe-Signature"],
+                signatureHeader,
                 options.Value.WebhookSecret,
                 throwOnApiVersionMismatch: false);
         }

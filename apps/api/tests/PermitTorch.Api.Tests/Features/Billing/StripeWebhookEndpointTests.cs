@@ -68,4 +68,20 @@ public class StripeWebhookEndpointTests(ApiFactory factory)
         var response = await factory.CreateClient().SendAsync(Request(payload, TestStripe.Sign(payload)));
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
+
+    [Fact]
+    public async Task Missing_signature_header_returns_400_not_500()
+    {
+        // Regression test: a request with no Stripe-Signature header at all (not merely an
+        // invalid one) previously reached Stripe.EventUtility.ConstructEvent with a null
+        // header string, which throws NullReferenceException deep inside the Stripe SDK
+        // instead of the StripeException the handler catches — surfacing as an unhandled 500.
+        var payload = SubscriptionUpdatedPayload("sub_x", "cus_x", "nowhere-zz");
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/webhooks/stripe")
+        {
+            Content = new StringContent(payload, System.Text.Encoding.UTF8, "application/json"),
+        };
+        var response = await factory.CreateClient().SendAsync(request);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
 }
