@@ -48,6 +48,7 @@ describe("illustrative score example", () => {
     expect(SCORE_WEIGHTS).toEqual({
       BASE_SCORE: 30, NEW_COMMERCIAL_BUILD: 25, FIRE_SPRINKLER_SCOPE: 25,
       PERMIT_RECENT: 15, HIGH_PROJECT_VALUE: 10, NO_CONTRACTOR_LISTED: 10,
+      FIRE_ALARM_SCOPE: 20, FAILED_INSPECTION: 20, LARGE_SQUARE_FOOTAGE: 10,
     });
     for (const s of SCORE_EXAMPLE.signals) expect(s.points).toBe(SCORE_WEIGHTS[s.type]);
   });

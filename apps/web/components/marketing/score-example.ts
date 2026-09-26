@@ -10,7 +10,16 @@ export const SCORE_WEIGHTS = {
   PERMIT_RECENT: 15,
   HIGH_PROJECT_VALUE: 10,
   NO_CONTRACTOR_LISTED: 10,
+  FIRE_ALARM_SCOPE: 20,
+  FAILED_INSPECTION: 20,
+  LARGE_SQUARE_FOOTAGE: 10,
 } as const;
+
+/** BASE_SCORE plus the given signals' weights, clamped to 0–100 like the engine. */
+export function scoreFor(signals: Exclude<ExampleSignalType, "BASE_SCORE">[]): number {
+  const sum = signals.reduce<number>((acc, s) => acc + SCORE_WEIGHTS[s], SCORE_WEIGHTS.BASE_SCORE);
+  return Math.min(100, Math.max(0, sum));
+}
 
 export type ExampleSignalType = keyof typeof SCORE_WEIGHTS;
 

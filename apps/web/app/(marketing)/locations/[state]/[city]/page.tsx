@@ -11,6 +11,10 @@ import {
   findMarketByLocationParams, marketLocationPath, marketToLocationParams, stateDisplayName,
 } from "@/components/marketing/market-slug";
 import { FaqAccordion, faqPageJsonLd } from "@/components/marketing/faq-accordion";
+import { EXAMPLE_LEADS } from "@/components/marketing/market-example-leads";
+import { MarketSources } from "@/components/marketing/market-sources";
+import { marketNarrative } from "@/lib/marketing/market-narrative";
+import { getMarketSources } from "@/lib/marketing/source-registry";
 
 // PRD §24 + CLAUDE.md: pages exist ONLY for markets with real data (see
 // getMarketsWithData). Params are prebuilt for those markets; any other param —
@@ -45,13 +49,6 @@ async function findMarketWithData(state: string, city: string) {
   return market ? entries.find((e) => e.market.slug === market.slug) : undefined;
 }
 
-// Static, anonymized illustrations — clearly labeled on the page. Not live records.
-const EXAMPLE_LEADS = [
-  { score: 92, title: "Fire sprinkler system — new commercial build", detail: "New multi-story commercial construction, seven-figure valuation, no fire contractor listed on the permit.", meta: "Filed this week · Address available to subscribers" },
-  { score: 86, title: "Fire alarm system — healthcare tenant upfit", detail: "Multi-floor tenant improvement with alarm scope in the permit description.", meta: "Filed this week · Address available to subscribers" },
-  { score: 78, title: "Kitchen suppression — new restaurant", detail: "Restaurant build-out in a high-traffic retail corridor; hood system required.", meta: "Filed this month · Address available to subscribers" },
-];
-
 export default async function MarketPage({ params }: Props) {
   const { state, city } = await params;
   const entry = await findMarketWithData(state, city);
@@ -62,6 +59,10 @@ export default async function MarketPage({ params }: Props) {
     .filter(([, n]) => n > 0)
     .sort(([, a], [, b]) => b - a);
 
+  const narrative = marketNarrative(market.city, stats);
+  const registry = getMarketSources(market.slug);
+  const sourceNames = registry?.sources.map((s) => s.name) ?? [];
+
   const crumbs = [
     { name: "Home", path: "/" },
     { name: "Markets", path: "/locations" },
@@ -69,9 +70,11 @@ export default async function MarketPage({ params }: Props) {
   ];
 
   const faq = [
-    { q: `Where does the ${market.city} data come from?`, a: `From publicly available permit and inspection records published by government jurisdictions in the ${market.city} area. Every lead links to the official source record.` },
+    { q: `Where does the ${market.city} data come from?`, a: sourceNames.length > 0
+      ? `From public government records for ${market.city}, ${stateName}: ${sourceNames.join("; ")}. Every lead links to the official source record.`
+      : `From publicly available permit and inspection records published by government jurisdictions in the ${market.city} area. Every lead links to the official source record.` },
     { q: "How fresh is the data?", a: "Sources are checked on a daily cycle and this page shows exactly when data was last updated. We never present stale data as current — if a source falls behind, we say so." },
-    { q: "Are the example leads real?", a: "The examples above are illustrative and anonymized. Subscribers see full records: address, permit number, filing date, estimated value, score breakdown, and the official source link." },
+    { q: "Are the example leads real?", a: "The examples above are illustrative — they are not records from this market. Subscribers see full records: address, permit number, filing date, estimated value, score breakdown, and the official source link." },
     { q: `What does PermitTorch cost in ${market.city}?`, a: "Plans start at $49/month for one market. Every paid plan starts with a 7-day free trial when you subscribe at checkout (card required; cancel anytime before it ends). See the pricing page for details." },
   ];
 
@@ -92,6 +95,7 @@ export default async function MarketPage({ params }: Props) {
           </strong>{" "}
           in {market.city} during the last 30 days:
         </p>
+        {narrative && <p className="mt-3 text-neutral-700">{narrative}</p>}
         <dl className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
           {categories.map(([cat, count]) => (
             <div key={cat} className="rounded-xl bg-white p-4 shadow-sm">
@@ -102,11 +106,13 @@ export default async function MarketPage({ params }: Props) {
         </dl>
       </section>
 
+      <MarketSources slug={market.slug} />
+
       <section className="mt-16">
-        <div className="flex items-baseline justify-between">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-2xl font-bold tracking-tight">What leads look like</h2>
           <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-            Illustrative examples — anonymized
+            Illustrative examples — not records from {market.city}
           </span>
         </div>
         <div className="mt-6 grid gap-6 md:grid-cols-3">
