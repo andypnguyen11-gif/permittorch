@@ -8,6 +8,7 @@ import { submitSampleLeadRequest } from "@/lib/api";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { SAMPLE_LEADS_PROMISE } from "@/components/marketing/sample-leads-copy";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -51,10 +52,9 @@ export function SampleLeadsForm({ markets }: { markets: Market[] }) {
   if (status === "success") {
     return (
       <div className="rounded-xl border border-orange-200 bg-white p-8 text-center shadow-sm">
-        <p className="text-lg font-semibold">
-          Check your inbox — your sample leads are on the way.
-        </p>
-        <p className="mt-2 text-neutral-600">Want new opportunities every morning?</p>
+        <p className="text-lg font-semibold">Request received — check your inbox.</p>
+        <p className="mt-2 text-neutral-600">We&apos;ll email you {SAMPLE_LEADS_PROMISE}.</p>
+        <p className="mt-4 text-neutral-600">Want new opportunities every morning?</p>
         <Link href="/signup" className={cn(buttonVariants(), "mt-4 bg-orange-500 text-white hover:bg-orange-600")}>
           Start Free
         </Link>
@@ -106,7 +106,7 @@ export function SampleLeadsForm({ markets }: { markets: Market[] }) {
           </p>
         )}
         <p className="mt-2 text-center text-xs text-neutral-400">
-          5–10 real opportunities from your market. No spam, no obligation.
+          We&apos;ll email you {SAMPLE_LEADS_PROMISE}. No spam, no obligation.
         </p>
       </div>
     </form>

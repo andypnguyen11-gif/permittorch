@@ -31,6 +31,13 @@ describe("SampleLeadsForm", () => {
     fireEvent.change(screen.getByLabelText(/market/i), { target: { value: "houston-tx" } });
   }
 
+  it("states exactly what a sample request delivers, with the opt-out", () => {
+    render(<SampleLeadsForm markets={mockMarkets} />);
+    const promise = screen.getByText(/up to 5 of the highest-scoring opportunities/);
+    expect(promise.textContent).toContain("usually within the hour, then a weekly update — you can opt out from any email");
+    expect(screen.queryByText(/5–10/)).toBeNull();
+  });
+
   it("lists every market as an option", () => {
     render(<SampleLeadsForm markets={mockMarkets} />);
     for (const m of mockMarkets) {
@@ -70,7 +77,9 @@ describe("SampleLeadsForm", () => {
         marketSlug: "houston-tx",
       }),
     );
-    expect(await screen.findByText(/check your inbox — your sample leads are on the way/i)).toBeDefined();
+    expect(await screen.findByText(/request received — check your inbox/i)).toBeDefined();
+    expect(screen.getByText(/up to 5 of the highest-scoring opportunities \(score 70\+\)/)).toBeDefined();
+    expect(screen.queryByText(/on the way/i)).toBeNull();
   });
 
   it("shows an error message when the request fails", async () => {

@@ -8,7 +8,7 @@ import { FreshnessLine } from "@/components/marketing/freshness-line";
 export const revalidate = 3600;
 
 export const metadata: Metadata = buildMetadata({
-  title: "Markets We Cover — PermitTorch",
+  title: "Fire Protection Lead Markets We Cover",
   description:
     "Cities where PermitTorch actively monitors permit and inspection records for fire protection leads. We only list markets with live data coverage.",
   path: "/locations",

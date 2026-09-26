@@ -4,27 +4,14 @@ import { buildMetadata } from "@/lib/seo";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { HOW_IT_WORKS_STEPS } from "@/components/marketing/how-it-works-steps";
+import { SCORE_EXAMPLE } from "@/components/marketing/score-example";
 
 export const metadata: Metadata = buildMetadata({
-  title: "How PermitTorch Works — From Public Records to Scored Fire Leads",
+  title: "How It Works — From Public Records to Scored Fire Leads",
   description:
     "How PermitTorch turns public permit and inspection records into scored, explainable fire-protection leads: monitor, classify, score, deliver.",
   path: "/how-it-works",
 });
-
-// Static illustrative example per PRD §16 — clearly labeled, not live data.
-const SCORE_EXAMPLE = {
-  total: 91,
-  headline: "New commercial build — sprinkler scope, no fire contractor listed",
-  signals: [
-    { label: "New commercial project", points: 25 },
-    { label: "Sprinkler scope detected", points: 20 },
-    { label: "Filed within 48 hours", points: 15 },
-    { label: "Project value over $1M", points: 15 },
-    { label: "No fire contractor listed", points: 10 },
-    { label: "Large commercial property", points: 6 },
-  ],
-};
 
 export default function HowItWorksPage() {
   return (
@@ -70,7 +57,7 @@ export default function HowItWorksPage() {
           </div>
           <ul className="mt-6 divide-y divide-neutral-100">
             {SCORE_EXAMPLE.signals.map((s) => (
-              <li key={s.label} className="flex items-center justify-between py-2.5 text-sm">
+              <li key={s.type} className="flex items-center justify-between py-2.5 text-sm">
                 <span className="text-neutral-700">{s.label}</span>
                 <span className="font-semibold text-orange-600">+{s.points}</span>
               </li>
@@ -78,9 +65,10 @@ export default function HowItWorksPage() {
           </ul>
         </div>
         <p className="mt-4 text-sm text-neutral-500">
-          Scores run 0–100 and are computed by fixed, configurable rules — the same permit
-          always scores the same way. Negative signals (old permits, closed permits) subtract
-          points just as visibly.
+          Every classified fire-protection permit starts from a 30-point baseline; signals add
+          or subtract from there and the total is capped to 0–100. The rules are fixed and
+          configurable — the same permit always scores the same way. Negative signals (old
+          permits, closed permits) subtract points just as visibly.
         </p>
       </section>
 

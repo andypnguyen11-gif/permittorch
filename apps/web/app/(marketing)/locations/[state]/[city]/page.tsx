@@ -10,9 +10,7 @@ import { FreshnessLine } from "@/components/marketing/freshness-line";
 import {
   findMarketByLocationParams, marketLocationPath, marketToLocationParams, stateDisplayName,
 } from "@/components/marketing/market-slug";
-import {
-  Accordion, AccordionContent, AccordionItem, AccordionTrigger,
-} from "@/components/ui/accordion";
+import { FaqAccordion, faqPageJsonLd } from "@/components/marketing/faq-accordion";
 
 // PRD §24 + CLAUDE.md: pages exist ONLY for markets with real data (see
 // getMarketsWithData). Params are prebuilt for those markets; any other param —
@@ -35,7 +33,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { market } = entry;
   const stateName = stateDisplayName(market.state);
   return buildMetadata({
-    title: `Fire Protection Leads in ${market.city}, ${stateName} — PermitTorch`,
+    title: `Fire Protection Leads in ${market.city}, ${stateName}`,
     description: `Live fire protection lead data for ${market.city}, ${stateName}: sprinkler, alarm, and suppression opportunities from public permit records, updated daily.`,
     path: marketLocationPath(market),
   });
@@ -68,7 +66,7 @@ export default async function MarketPage({ params }: Props) {
     { q: `Where does the ${market.city} data come from?`, a: `From publicly available permit and inspection records published by government jurisdictions in the ${market.city} area. Every lead links to the official source record.` },
     { q: "How fresh is the data?", a: "Sources are checked on a daily cycle and this page shows exactly when data was last updated. We never present stale data as current — if a source falls behind, we say so." },
     { q: "Are the example leads real?", a: "The examples above are illustrative and anonymized. Subscribers see full records: address, permit number, filing date, estimated value, score breakdown, and the official source link." },
-    { q: `What does PermitTorch cost in ${market.city}?`, a: "Plans start at $49/month for one market, and every account starts with a 7-day Pro trial. See the pricing page for details." },
+    { q: `What does PermitTorch cost in ${market.city}?`, a: "Plans start at $49/month for one market. Every paid plan starts with a 7-day free trial when you subscribe at checkout (card required; cancel anytime before it ends). See the pricing page for details." },
   ];
 
   return (
@@ -138,24 +136,10 @@ export default async function MarketPage({ params }: Props) {
 
       <section className="mx-auto mt-16 max-w-2xl">
         <h2 className="text-2xl font-bold tracking-tight">Questions about {market.city} coverage</h2>
-        <Accordion className="mt-6">
-          {faq.map((f, i) => (
-            <AccordionItem key={f.q} value={`faq-${i}`}>
-              <AccordionTrigger className="text-left">{f.q}</AccordionTrigger>
-              <AccordionContent className="text-neutral-600">{f.a}</AccordionContent>
-            </AccordionItem>
-          ))}
-        </Accordion>
+        <FaqAccordion items={faq} className="mt-6" />
       </section>
 
-      <script type="application/ld+json" dangerouslySetInnerHTML={jsonLd({
-        "@context": "https://schema.org",
-        "@type": "FAQPage",
-        mainEntity: faq.map((f) => ({
-          "@type": "Question", name: f.q,
-          acceptedAnswer: { "@type": "Answer", text: f.a },
-        })),
-      })} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={jsonLd(faqPageJsonLd(faq))} />
       <script type="application/ld+json" dangerouslySetInnerHTML={jsonLd({
         "@context": "https://schema.org",
         "@type": "BreadcrumbList",

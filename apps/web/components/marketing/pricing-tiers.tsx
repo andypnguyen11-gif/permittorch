@@ -1,11 +1,16 @@
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
+import type { PlanTier } from "@permittorch/types";
 import { cn } from "@/lib/utils";
+import { SITE_NAME, SITE_URL } from "@/lib/seo";
 
 export interface PricingTier {
+  plan: PlanTier;
   name: string;
   price: number;          // USD per month
   blurb: string;
+  /** Optional lead-in shown above the feature list, e.g. "Everything in Pro, plus:". */
+  featuresIntro?: string;
   features: string[];
   highlighted: boolean;
   cta: string;
@@ -13,6 +18,7 @@ export interface PricingTier {
 
 export const PRICING_TIERS: PricingTier[] = [
   {
+    plan: "STARTER",
     name: "Starter",
     price: 49,
     blurb: "For a solo owner keeping an eye on one market.",
@@ -21,6 +27,7 @@ export const PRICING_TIERS: PricingTier[] = [
     cta: "Choose Starter",
   },
   {
+    plan: "PRO",
     name: "Pro",
     price: 129,
     blurb: "For contractors actively chasing new work every week.",
@@ -32,17 +39,51 @@ export const PRICING_TIERS: PricingTier[] = [
     cta: "Start Free with Pro",
   },
   {
+    plan: "TERRITORY",
     name: "Territory",
     price: 249,
     blurb: "For teams covering multiple metros.",
+    featuresIntro: "Everything in Pro, plus:",
     features: [
       "Up to 5 markets", "Multiple users", "Advanced filters", "Daily alerts",
-      "Full historical records", "Priority support",
+      "CSV export across all your markets", "Full historical records", "Priority support",
     ],
     highlighted: false,
     cta: "Choose Territory",
   },
 ];
+
+export function signupHrefForPlan(plan: PlanTier): string {
+  return `/signup?plan=${plan}`;
+}
+
+/** schema.org Product with one monthly USD Offer per tier (rendered on /pricing). */
+export function pricingProductJsonLd() {
+  return {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: `${SITE_NAME} subscription`,
+    description: "Scored, explainable fire protection leads from public permit and inspection records.",
+    brand: { "@type": "Brand", name: SITE_NAME },
+    url: `${SITE_URL}/pricing`,
+    offers: PRICING_TIERS.map((t) => ({
+      "@type": "Offer",
+      name: t.name,
+      description: t.blurb,
+      price: t.price.toFixed(2),
+      priceCurrency: "USD",
+      availability: "https://schema.org/InStock",
+      url: `${SITE_URL}${signupHrefForPlan(t.plan)}`,
+      priceSpecification: {
+        "@type": "UnitPriceSpecification",
+        price: t.price.toFixed(2),
+        priceCurrency: "USD",
+        unitCode: "MON",
+        referenceQuantity: { "@type": "QuantitativeValue", value: 1, unitCode: "MON" },
+      },
+    })),
+  };
+}
 
 function Check() {
   return (
@@ -75,12 +116,15 @@ export function PricingTiers() {
             <span className="text-4xl font-bold tracking-tight">${t.price}</span>
             <span className="text-neutral-500">/month</span>
           </p>
-          <ul className="mt-6 space-y-2.5">
+          {t.featuresIntro && (
+            <p className="mt-6 text-sm font-semibold text-neutral-900">{t.featuresIntro}</p>
+          )}
+          <ul className={t.featuresIntro ? "mt-3 space-y-2.5" : "mt-6 space-y-2.5"}>
             {t.features.map((f) => (
               <li key={f} className="flex gap-2 text-sm text-neutral-700"><Check />{f}</li>
             ))}
           </ul>
-          <Link href="/signup" className={cn(
+          <Link href={signupHrefForPlan(t.plan)} className={cn(
             buttonVariants({ variant: t.highlighted ? "default" : "outline" }),
             "mt-8 w-full",
             t.highlighted && "bg-orange-500 text-white hover:bg-orange-600",

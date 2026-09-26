@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildMetadata, jsonLd, SITE_URL } from "@/lib/seo";
+import { normalizeMetadataRoute } from "next/dist/lib/metadata/get-metadata-route";
+import { buildMetadata, DEFAULT_OG_IMAGE, DEFAULT_OG_IMAGE_PATH, jsonLd, SITE_URL } from "@/lib/seo";
 
 describe("buildMetadata", () => {
-  const base = { title: "Pricing — PermitTorch", description: "Plans for fire protection contractors.", path: "/pricing" };
+  const base = { title: "Pricing", description: "Plans for fire protection contractors.", path: "/pricing" };
 
   it("passes through title and description", () => {
     const md = buildMetadata(base);
@@ -30,12 +31,24 @@ describe("buildMetadata", () => {
     expect(tw.title).toBe(base.title);
   });
 
-  it("includes og/twitter images only when ogImage is provided", () => {
+  it("uses the provided ogImage, otherwise the default 1200x630 social card", () => {
     const withImg = buildMetadata({ ...base, ogImage: `${SITE_URL}/og/pricing.png` });
     expect((withImg.openGraph as { images?: unknown[] }).images).toEqual([{ url: `${SITE_URL}/og/pricing.png` }]);
     expect((withImg.twitter as { images?: string[] }).images).toEqual([`${SITE_URL}/og/pricing.png`]);
     const without = buildMetadata(base);
-    expect((without.openGraph as { images?: unknown }).images).toBeUndefined();
+    expect((without.openGraph as { images?: unknown }).images).toEqual([DEFAULT_OG_IMAGE]);
+    expect((without.twitter as { images?: string[] }).images).toEqual([`${SITE_URL}/opengraph-image-pwu6ef`]);
+    expect(DEFAULT_OG_IMAGE).toMatchObject({ width: 1200, height: 630 });
+  });
+
+  it("points at the route Next actually serves for app/(marketing)/opengraph-image.tsx", () => {
+    const route = normalizeMetadataRoute("/(marketing)/opengraph-image"); // "/(marketing)/opengraph-image-<hash>/route"
+    expect(route.replace("/(marketing)", "").replace(/\/route$/, "")).toBe(DEFAULT_OG_IMAGE_PATH);
+  });
+
+  it("uses an absolute title only when asked (bypasses the root template)", () => {
+    expect(buildMetadata({ ...base, absoluteTitle: true }).title).toEqual({ absolute: base.title });
+    expect(buildMetadata(base).title).toBe(base.title);
   });
 });
 

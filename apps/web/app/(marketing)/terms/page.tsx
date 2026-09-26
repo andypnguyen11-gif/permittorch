@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { buildMetadata } from "@/lib/seo";
 
 export const metadata: Metadata = buildMetadata({
-  title: "Terms of Service — PermitTorch",
+  title: "Terms of Service",
   description: "The terms that govern your use of PermitTorch, including how we source public permit data and what we do and do not guarantee.",
   path: "/terms",
 });

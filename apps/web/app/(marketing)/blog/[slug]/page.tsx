@@ -1,7 +1,8 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { buildMetadata, jsonLd, SITE_URL } from "@/lib/seo";
+import { buildMetadata, jsonLd } from "@/lib/seo";
+import { articleJsonLd } from "@/lib/marketing/structured-data";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { blogPosts, getBlogPost } from "@/components/marketing/blog-posts";
@@ -18,7 +19,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const post = getBlogPost((await params).slug);
   if (!post) return {};
   return buildMetadata({
-    title: `${post.title} — PermitTorch`,
+    title: post.title,
     description: post.description,
     path: `/blog/${post.slug}`,
   });
@@ -58,16 +59,7 @@ export default async function BlogPostPage({ params }: Props) {
         </Link>
       </aside>
 
-      <script type="application/ld+json" dangerouslySetInnerHTML={jsonLd({
-        "@context": "https://schema.org",
-        "@type": "Article",
-        headline: post.title,
-        description: post.description,
-        datePublished: post.publishedAt,
-        mainEntityOfPage: `${SITE_URL}/blog/${post.slug}`,
-        author: { "@type": "Organization", name: "PermitTorch", url: SITE_URL },
-        publisher: { "@type": "Organization", name: "PermitTorch", url: SITE_URL },
-      })} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={jsonLd(articleJsonLd(post))} />
     </article>
   );
 }

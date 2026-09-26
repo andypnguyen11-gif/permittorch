@@ -3,6 +3,7 @@ import type { Market } from "@permittorch/types";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { SampleLeadsForm } from "@/components/marketing/sample-leads-form";
+import { SAMPLE_LEADS_HEADING, SAMPLE_LEADS_SENTENCE } from "@/components/marketing/sample-leads-copy";
 
 export interface CategoryLanderContent {
   path: string;
@@ -21,7 +22,7 @@ export interface CategoryLanderContent {
 export const CATEGORY_LANDERS = {
   "fire-protection": {
     path: "/fire-protection-leads",
-    metaTitle: "Fire Protection Leads From Live Permit Data — PermitTorch",
+    metaTitle: "Fire Protection Leads From Live Permit Data",
     metaDescription:
       "Scored fire protection leads pulled daily from public permit and inspection records: sprinkler, alarm, suppression, kitchen systems, and failed inspections.",
     headline: "Fire protection leads from live permit data.",
@@ -53,7 +54,7 @@ export const CATEGORY_LANDERS = {
   },
   "fire-sprinkler": {
     path: "/fire-sprinkler-leads",
-    metaTitle: "Fire Sprinkler Leads Before the Bid Hits the Street — PermitTorch",
+    metaTitle: "Fire Sprinkler Leads Before the Bid Hits the Street",
     metaDescription:
       "Find fire sprinkler projects at the permit stage: new commercial builds, tenant improvements, and sprinkler-scope permits with no fire contractor listed yet.",
     headline: "Fire sprinkler leads before the bid hits the street.",
@@ -85,7 +86,7 @@ export const CATEGORY_LANDERS = {
   },
   "fire-alarm": {
     path: "/fire-alarm-leads",
-    metaTitle: "Fire Alarm Leads Straight From the Permit Record — PermitTorch",
+    metaTitle: "Fire Alarm Leads Straight From the Permit Record",
     metaDescription:
       "Find fire alarm projects early: alarm-scope permits, tenant upfits, occupancy changes, and failed inspections that need a fire alarm contractor.",
     headline: "Fire alarm leads straight from the permit record.",
@@ -157,9 +158,8 @@ export function CategoryLander({ content, markets }: { content: CategoryLanderCo
 
       <section id="sample-leads" className="scroll-mt-20 border-y border-orange-100 bg-orange-50">
         <div className="mx-auto max-w-3xl px-4 py-16 sm:px-6">
-          <h2 className="text-center text-2xl font-bold tracking-tight">
-            Get 5–10 sample leads from your market — free
-          </h2>
+          <h2 className="text-center text-2xl font-bold tracking-tight">{SAMPLE_LEADS_HEADING}</h2>
+          <p className="mx-auto mt-3 max-w-xl text-center text-neutral-600">{SAMPLE_LEADS_SENTENCE}</p>
           <div className="mt-8"><SampleLeadsForm markets={markets} /></div>
         </div>
       </section>

@@ -4,7 +4,7 @@ import { buildMetadata } from "@/lib/seo";
 import { blogPosts } from "@/components/marketing/blog-posts";
 
 export const metadata: Metadata = buildMetadata({
-  title: "Resources for Fire Protection Contractors — PermitTorch Blog",
+  title: "Resources for Fire Protection Contractors",
   description:
     "Practical guides on finding fire protection work through permit data: lead generation, prospecting, and reading public records like a salesperson.",
   path: "/blog",

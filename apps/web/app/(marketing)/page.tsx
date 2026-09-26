@@ -1,14 +1,17 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { getMarketsWithData } from "@/lib/marketing/markets-with-data";
-import { buildMetadata } from "@/lib/seo";
+import { buildMetadata, jsonLd } from "@/lib/seo";
+import { organizationJsonLd, websiteJsonLd } from "@/lib/marketing/structured-data";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { SampleLeadsForm } from "@/components/marketing/sample-leads-form";
 import { HOW_IT_WORKS_STEPS } from "@/components/marketing/how-it-works-steps";
+import { SAMPLE_LEADS_PROMISE } from "@/components/marketing/sample-leads-copy";
 
 export const metadata: Metadata = buildMetadata({
   title: "PermitTorch — Fire Protection Leads From Public Permit Data",
+  absoluteTitle: true,
   description:
     "PermitTorch monitors public permit and inspection records and identifies fire-protection opportunities before they disappear into another spreadsheet.",
   path: "/",
@@ -24,7 +27,7 @@ const VALUE_BULLETS = [
   },
   {
     title: "Every score is explained",
-    body: "A 91 is a 91 for reasons you can read: new commercial build, sprinkler scope detected, filed this week, no fire contractor listed.",
+    body: "A 95 is a 95 for reasons you can read: a classified fire-protection permit, new commercial build, sprinkler scope detected, filed this week.",
   },
   {
     title: "Freshness you can check",
@@ -102,8 +105,8 @@ export default async function HomePage() {
             See this week&apos;s hottest fire protection opportunities in your market
           </h2>
           <p className="mx-auto mt-4 max-w-xl text-center text-neutral-600">
-            Tell us where you work and we&apos;ll email you 5–10 real, scored opportunities
-            PermitTorch found there recently. Free — see the product before you sign up.
+            Tell us where you work and we&apos;ll email you {SAMPLE_LEADS_PROMISE}. Free — see
+            the product before you sign up.
           </p>
           <div className="mt-10">
             <SampleLeadsForm markets={markets} />
@@ -123,6 +126,9 @@ export default async function HomePage() {
           Start Free
         </Link>
       </section>
+
+      <script type="application/ld+json" dangerouslySetInnerHTML={jsonLd(organizationJsonLd())} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={jsonLd(websiteJsonLd())} />
     </>
   );
 }

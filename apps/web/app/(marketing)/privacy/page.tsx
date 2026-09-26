@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { buildMetadata } from "@/lib/seo";
 
 export const metadata: Metadata = buildMetadata({
-  title: "Privacy Policy — PermitTorch",
+  title: "Privacy Policy",
   description: "What PermitTorch collects, how we use it, and how public-record permit data fits in.",
   path: "/privacy",
 });
@@ -11,7 +11,7 @@ const SECTIONS: { heading: string; body: string[] }[] = [
   {
     heading: "1. What we collect",
     body: [
-      "Account details — name, email, and company — collected when you sign in through Firebase Authentication (Google).",
+      "Account details — name, email, and company — collected when you create an account. Accounts use Firebase Authentication with email/password or Google sign-in.",
       "Billing information, processed by Stripe. We never store your card number; Stripe handles payment details directly.",
       "Sample-lead requests — name, work email, company, and market — when you request free sample leads from our marketing pages.",
       "Product usage analytics, collected through PostHog, to understand how the product is used and to improve it.",
@@ -35,7 +35,7 @@ const SECTIONS: { heading: string; body: string[] }[] = [
   {
     heading: "4. Service providers",
     body: [
-      "We share information only with the service providers that help us run PermitTorch, and only what each one needs to do its job: Firebase Authentication (Google) for sign-in, Stripe for billing, Resend for transactional and digest email, PostHog for analytics, and our hosting providers.",
+      "We share information only with the service providers that help us run PermitTorch, and only what each one needs to do its job: Firebase Authentication for sign-in (email/password or Google), Stripe for billing, Resend for transactional and digest email, PostHog for analytics, and our hosting providers.",
     ],
   },
   {
