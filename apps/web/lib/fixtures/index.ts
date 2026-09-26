@@ -32,7 +32,8 @@ export async function unsaveLead(_id: string): Promise<void> { notImplemented("u
 export async function getAccountMarkets(): Promise<Market[]> { notImplemented("getAccountMarkets"); }
 export async function getAccountMe(): Promise<AccountMe> { notImplemented("getAccountMe"); }
 export async function updateEmailPreferences(_frequency: DigestFrequency): Promise<void> { notImplemented("updateEmailPreferences"); }
-export async function submitSampleLeadRequest(_input: { name: string; email: string; company: string; marketSlug: string }): Promise<void> { notImplemented("submitSampleLeadRequest"); }
+// Mock mode accepts the sample-lead form as a no-op success.
+export async function submitSampleLeadRequest(_input: { name: string; email: string; company: string; marketSlug: string }): Promise<void> {}
 export async function createCheckout(_plan: PlanTier): Promise<{ url: string }> { notImplemented("createCheckout"); }
 export async function createBillingPortal(): Promise<{ url: string }> { notImplemented("createBillingPortal"); }
 export async function getAdminSources(): Promise<AdminSource[]> { notImplemented("getAdminSources"); }

@@ -10,6 +10,7 @@ const fixtureMarkets = [
 
 vi.mock("@/lib/fixtures", () => ({
   getLeads: vi.fn(async () => fixtureLeads),
+  submitSampleLeadRequest: vi.fn(async () => undefined),
 }));
 
 vi.mock("@/lib/fixtures/markets", () => ({
@@ -42,6 +43,18 @@ describe("lib/api", () => {
 
     expect(markets).toEqual(fixtureMarkets);
     expect(leads).toEqual(fixtureLeads);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("resolves sample-lead requests in mock mode without calling fetch", async () => {
+    vi.stubEnv("NEXT_PUBLIC_API_MOCK", "1");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const api = await import("@/lib/api");
+
+    await expect(
+      api.submitSampleLeadRequest({ name: "Jo", email: "jo@example.com", company: "Jo Co", marketSlug: "houston-tx" }),
+    ).resolves.toBeUndefined();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
