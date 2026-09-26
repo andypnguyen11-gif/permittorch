@@ -64,14 +64,14 @@ export function LeadTable({ leads, className, emptyState }: {
         <TableBody>
           {leads.map((lead) => (
             <TableRow key={lead.id} className="group relative hover:bg-orange-50/40 [&>td]:px-4 [&>td]:py-3">
-              <TableCell className="max-w-80">
+              <TableCell className="min-w-72 max-w-96 whitespace-normal">
                 <div className="flex items-center gap-3">
                   <CategoryIcon category={lead.category} />
                   <div className="min-w-0">
                     {/* Stretched link makes the whole row clickable without nested anchors. */}
                     <Link
                       href={`/app/leads/${lead.id}`}
-                      className="block truncate font-medium text-stone-900 outline-none after:absolute after:inset-0 after:rounded-md group-hover:text-orange-600 focus-visible:after:ring-2 focus-visible:after:ring-ring/60 focus-visible:after:ring-inset"
+                      className="line-clamp-2 font-medium text-stone-900 outline-none after:absolute after:inset-0 after:rounded-md group-hover:text-orange-600 focus-visible:after:ring-2 focus-visible:after:ring-ring/60 focus-visible:after:ring-inset"
                     >
                       {lead.title}
                     </Link>
