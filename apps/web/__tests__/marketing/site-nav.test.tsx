@@ -1,7 +1,12 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
 import { SiteNav } from "@/components/marketing/site-nav";
+
+// vitest.config.mts does not set `test.globals: true`, so
+// @testing-library/react's afterEach-based auto-cleanup never registers.
+// Clean up explicitly so each render() starts from an empty DOM.
+afterEach(() => cleanup());
 
 describe("SiteNav", () => {
   it("renders the wordmark linking home", () => {

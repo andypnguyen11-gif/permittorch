@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 const NAV_LINKS = [
   { label: "Leads", href: "/fire-protection-leads" },
@@ -40,9 +41,10 @@ export function SiteNav() {
         </div>
 
         <div className="hidden items-center gap-2 md:flex">
-          <Button variant="ghost" render={<Link href="/login">Login</Link>} />
-          <Button className="bg-orange-500 text-white hover:bg-orange-600"
-            render={<Link href="/signup">Start Free</Link>} />
+          <Link href="/login" className={cn(buttonVariants({ variant: "ghost" }))}>Login</Link>
+          <Link href="/signup" className={cn(buttonVariants(), "bg-orange-500 text-white hover:bg-orange-600")}>
+            Start Free
+          </Link>
         </div>
 
         <button type="button" aria-label="Toggle menu" aria-expanded={open}
@@ -65,9 +67,11 @@ export function SiteNav() {
             </Link>
           ))}
           <div className="mt-3 flex gap-2">
-            <Button variant="outline" className="flex-1" render={<Link href="/login">Login</Link>} />
-            <Button className="flex-1 bg-orange-500 text-white hover:bg-orange-600"
-              render={<Link href="/signup">Start Free</Link>} />
+            <Link href="/login" className={cn(buttonVariants({ variant: "outline" }), "flex-1")}>Login</Link>
+            <Link href="/signup"
+              className={cn(buttonVariants(), "flex-1 bg-orange-500 text-white hover:bg-orange-600")}>
+              Start Free
+            </Link>
           </div>
         </div>
       )}
