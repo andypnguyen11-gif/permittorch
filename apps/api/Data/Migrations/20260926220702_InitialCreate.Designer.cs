@@ -12,7 +12,7 @@ using PermitTorch.Api.Data;
 namespace PermitTorch.Api.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260926214110_InitialCreate")]
+    [Migration("20260926220702_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -74,6 +74,10 @@ namespace PermitTorch.Api.Data.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("frequency");
 
+                    b.Property<DateTime?>("LastSentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_sent_at");
+
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid")
                         .HasColumnName("user_id");
@@ -82,6 +86,7 @@ namespace PermitTorch.Api.Data.Migrations
                         .HasName("pk_email_preferences");
 
                     b.HasIndex("UserId")
+                        .IsUnique()
                         .HasDatabaseName("ix_email_preferences_user_id");
 
                     b.ToTable("email_preferences", (string)null);
@@ -401,6 +406,10 @@ namespace PermitTorch.Api.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("email");
 
+                    b.Property<DateTime?>("LastSentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_sent_at");
+
                     b.Property<string>("MarketSlug")
                         .IsRequired()
                         .HasColumnType("text")
@@ -513,6 +522,10 @@ namespace PermitTorch.Api.Data.Migrations
                     b.HasKey("Id")
                         .HasName("pk_scraper_runs");
 
+                    b.HasIndex("ApifyRunId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_scraper_runs_apify_run_id");
+
                     b.HasIndex("SourceId")
                         .HasDatabaseName("ix_scraper_runs_source_id");
 
@@ -582,6 +595,10 @@ namespace PermitTorch.Api.Data.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_sources");
+
+                    b.HasIndex("Jurisdiction")
+                        .IsUnique()
+                        .HasDatabaseName("ix_sources_jurisdiction");
 
                     b.HasIndex("MarketId")
                         .HasDatabaseName("ix_sources_market_id");

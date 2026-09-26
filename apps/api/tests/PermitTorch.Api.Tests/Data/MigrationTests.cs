@@ -37,6 +37,9 @@ public class MigrationTests : IAsyncLifetime
         Assert.Contains(indexdefs, d => d.Contains("UNIQUE") && d.Contains("markets") && d.Contains("slug"));
         Assert.Contains(indexdefs, d => d.Contains("UNIQUE") && d.Contains("saved_leads") && d.Contains("user_id") && d.Contains("fire_opportunity_id"));
         Assert.Contains(indexdefs, d => d.Contains("UNIQUE") && d.Contains("sample_lead_requests") && d.Contains("email") && d.Contains("market_slug"));
+        Assert.Contains(indexdefs, d => d.Contains("UNIQUE") && d.Contains("sources") && d.Contains("jurisdiction"));
+        Assert.Contains(indexdefs, d => d.Contains("UNIQUE") && d.Contains("scraper_runs") && d.Contains("apify_run_id"));
+        Assert.Contains(indexdefs, d => d.Contains("UNIQUE") && d.Contains("email_preferences") && d.Contains("user_id"));
 
         // FTS GIN index on permits description + address.
         Assert.Contains(indexdefs, d => d.Contains("ix_permits_fts") && d.Contains("gin") && d.Contains("to_tsvector"));
@@ -55,5 +58,11 @@ public class MigrationTests : IAsyncLifetime
         Assert.Contains("filed_date:timestamp with time zone", columns);
         Assert.Contains("created_at:timestamp with time zone", columns);
         Assert.Contains("estimated_value:numeric", columns);
+
+        var emailPrefColumns = await db.Database
+            .SqlQuery<string>($"SELECT column_name || ':' || data_type AS \"Value\" FROM information_schema.columns WHERE table_name = 'email_preferences'")
+            .ToListAsync();
+
+        Assert.Contains("last_sent_at:timestamp with time zone", emailPrefColumns);
     }
 }

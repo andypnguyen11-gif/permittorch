@@ -36,6 +36,11 @@ public class AppDbContext : DbContext
             e.HasMany(m => m.Sources).WithOne(s => s.Market).HasForeignKey(s => s.MarketId);
         });
 
+        modelBuilder.Entity<Source>(e =>
+        {
+            e.HasIndex(s => s.Jurisdiction).IsUnique();
+        });
+
         modelBuilder.Entity<Permit>(e =>
         {
             e.HasIndex(p => new { p.SourceId, p.ExternalId }).IsUnique();
@@ -54,6 +59,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<ScraperRun>(e =>
         {
             e.HasOne<Source>().WithMany().HasForeignKey(r => r.SourceId);
+            e.HasIndex(r => r.ApifyRunId).IsUnique();
         });
 
         modelBuilder.Entity<Organization>(e =>
@@ -85,6 +91,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<EmailPreference>(e =>
         {
             e.HasOne<AppUser>().WithMany().HasForeignKey(p => p.UserId);
+            e.HasIndex(p => p.UserId).IsUnique();
         });
 
         modelBuilder.Entity<SampleLeadRequest>(e =>

@@ -48,7 +48,8 @@ namespace PermitTorch.Api.Data.Migrations
                     email = table.Column<string>(type: "text", nullable: false),
                     company = table.Column<string>(type: "text", nullable: false),
                     market_slug = table.Column<string>(type: "text", nullable: false),
-                    created_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                    created_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    last_sent_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -203,7 +204,8 @@ namespace PermitTorch.Api.Data.Migrations
                 {
                     id = table.Column<Guid>(type: "uuid", nullable: false),
                     user_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    frequency = table.Column<int>(type: "integer", nullable: false)
+                    frequency = table.Column<int>(type: "integer", nullable: false),
+                    last_sent_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -346,7 +348,8 @@ namespace PermitTorch.Api.Data.Migrations
             migrationBuilder.CreateIndex(
                 name: "ix_email_preferences_user_id",
                 table: "email_preferences",
-                column: "user_id");
+                column: "user_id",
+                unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "ix_fire_opportunities_permit_id",
@@ -399,9 +402,21 @@ namespace PermitTorch.Api.Data.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "ix_scraper_runs_apify_run_id",
+                table: "scraper_runs",
+                column: "apify_run_id",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
                 name: "ix_scraper_runs_source_id",
                 table: "scraper_runs",
                 column: "source_id");
+
+            migrationBuilder.CreateIndex(
+                name: "ix_sources_jurisdiction",
+                table: "sources",
+                column: "jurisdiction",
+                unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "ix_sources_market_id",
@@ -419,8 +434,7 @@ namespace PermitTorch.Api.Data.Migrations
                 column: "organization_id",
                 unique: true);
 
-            migrationBuilder.Sql(
-                "CREATE INDEX ix_permits_fts ON permits USING GIN (to_tsvector('english', coalesce(description,'') || ' ' || coalesce(address,'')));");
+            migrationBuilder.Sql("CREATE INDEX ix_permits_fts ON permits USING GIN (to_tsvector('english', coalesce(description,'') || ' ' || coalesce(address,'')));");
         }
 
         /// <inheritdoc />

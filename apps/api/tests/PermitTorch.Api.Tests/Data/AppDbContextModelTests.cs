@@ -103,6 +103,45 @@ public class AppDbContextModelTests
     }
 
     [Fact]
+    public void Source_has_unique_index_on_jurisdiction()
+    {
+        using var db = CreateContext();
+        var index = db.Model.FindEntityType(typeof(Source))!.GetIndexes().Single(i =>
+            i.Properties.Select(p => p.Name).SequenceEqual(new[] { "Jurisdiction" }));
+        Assert.True(index.IsUnique);
+    }
+
+    [Fact]
+    public void ScraperRun_has_unique_index_on_apify_run_id()
+    {
+        using var db = CreateContext();
+        var index = db.Model.FindEntityType(typeof(ScraperRun))!.GetIndexes().Single(i =>
+            i.Properties.Select(p => p.Name).SequenceEqual(new[] { "ApifyRunId" }));
+        Assert.True(index.IsUnique);
+    }
+
+    [Fact]
+    public void EmailPreference_has_unique_index_on_user_id()
+    {
+        using var db = CreateContext();
+        var index = db.Model.FindEntityType(typeof(EmailPreference))!.GetIndexes().Single(i =>
+            i.Properties.Select(p => p.Name).SequenceEqual(new[] { "UserId" }));
+        Assert.True(index.IsUnique);
+    }
+
+    [Fact]
+    public void EmailPreference_and_SampleLeadRequest_have_nullable_last_sent_at()
+    {
+        using var db = CreateContext();
+        var emailPrefProp = db.Model.FindEntityType(typeof(EmailPreference))!.FindProperty("LastSentAt");
+        var sampleLeadProp = db.Model.FindEntityType(typeof(SampleLeadRequest))!.FindProperty("LastSentAt");
+        Assert.NotNull(emailPrefProp);
+        Assert.True(emailPrefProp!.IsNullable);
+        Assert.NotNull(sampleLeadProp);
+        Assert.True(sampleLeadProp!.IsNullable);
+    }
+
+    [Fact]
     public void SubscriptionMarket_has_composite_primary_key()
     {
         using var db = CreateContext();

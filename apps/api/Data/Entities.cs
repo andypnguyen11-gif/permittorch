@@ -22,7 +22,7 @@ public class Source
     public string State { get; set; } = null!;
     public string PortalType { get; set; } = null!;        // e.g. "accela", "arcgis", "socrata"
     public string SourceUrl { get; set; } = null!;
-    public string Jurisdiction { get; set; } = null!;      // matches scraper COVERAGE_REPORT jurisdiction key
+    public string Jurisdiction { get; set; } = null!;      // scraper sourceId (records: source.sourceId; COVERAGE_REPORT: sourceStats[].sourceId), e.g. "tulsa-fire-permits"
     public bool Active { get; set; }
     public DateTime? LastSuccessfulRunAt { get; set; }
     public DateTime? LastRecordSeenAt { get; set; }
@@ -160,6 +160,7 @@ public class EmailPreference
     public Guid Id { get; set; }
     public Guid UserId { get; set; }
     public DigestFrequency Frequency { get; set; }
+    public DateTime? LastSentAt { get; set; }
 }
 
 public class SampleLeadRequest                             // marketing lead magnet capture
@@ -170,4 +171,5 @@ public class SampleLeadRequest                             // marketing lead mag
     public string Company { get; set; } = null!;
     public string MarketSlug { get; set; } = null!;
     public DateTime CreatedAt { get; set; }
+    public DateTime? LastSentAt { get; set; }
 }
