@@ -1,0 +1,69 @@
+import type { Metadata } from "next";
+
+export const SITE_URL = "https://permittorch.com";
+export const SITE_NAME = "PermitTorch";
+export const SITE_TAGLINE = "Fire protection leads from public permit data";
+
+/**
+ * Public URL of the default social card (app/(marketing)/og-image.png/route.ts,
+ * rendered by components/marketing/og-card.tsx). A dotted path bypasses the auth
+ * middleware matcher.
+ */
+export const DEFAULT_OG_IMAGE_PATH = "/og-image.png";
+
+/** Default social card for every marketing page. */
+export const DEFAULT_OG_IMAGE = {
+  url: `${SITE_URL}${DEFAULT_OG_IMAGE_PATH}`,
+  width: 1200,
+  height: 630,
+  alt: `${SITE_NAME} — ${SITE_TAGLINE}`,
+};
+
+export interface BuildMetadataInput {
+  /**
+   * Page title WITHOUT the brand — the root layout's template appends
+   * " | PermitTorch". Set `absoluteTitle` to bypass the template (homepage).
+   */
+  title: string;
+  description: string;
+  path: string;       // must start with "/"
+  ogImage?: string;   // absolute URL; defaults to DEFAULT_OG_IMAGE
+  absoluteTitle?: boolean;
+  /** OpenGraph object type; blog posts use "article" with their publish date. */
+  ogType?: "website" | "article";
+  publishedTime?: string;
+}
+
+export function buildMetadata({
+  title, description, path, ogImage, absoluteTitle, ogType = "website", publishedTime,
+}: BuildMetadataInput): Metadata {
+  const url = new URL(path, SITE_URL).toString();
+  const image = ogImage ? { url: ogImage } : DEFAULT_OG_IMAGE;
+  return {
+    title: absoluteTitle ? { absolute: title } : title,
+    description,
+    alternates: { canonical: url },
+    openGraph: {
+      title,
+      description,
+      url,
+      siteName: SITE_NAME,
+      ...(ogType === "article"
+        ? { type: "article" as const, ...(publishedTime ? { publishedTime } : {}) }
+        : { type: "website" as const }),
+      locale: "en_US",
+      images: [image],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: [image.url],
+    },
+  };
+}
+
+/** Safe payload for <script type="application/ld+json" dangerouslySetInnerHTML={jsonLd(obj)} /> */
+export function jsonLd(obj: object): { __html: string } {
+  return { __html: JSON.stringify(obj).replace(/</g, "\\u003c") };
+}
