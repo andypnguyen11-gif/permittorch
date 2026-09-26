@@ -26,7 +26,8 @@ public sealed class PostgresFixture : IAsyncLifetime
     {
         await _container.StartAsync();
         await using var db = CreateContext();
-        await db.Database.EnsureCreatedAsync();
+        // Migrate (not EnsureCreated) so migration-only objects such as the FTS GIN index exist.
+        await db.Database.MigrateAsync();
     }
 
     public async Task DisposeAsync()

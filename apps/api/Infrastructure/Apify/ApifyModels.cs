@@ -1,5 +1,6 @@
 using System;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace PermitTorch.Api.Infrastructure.Apify;
 
@@ -40,7 +41,13 @@ public record CoverageReport(
     JsonElement[] UnsupportedDetails, JsonElement[] FailedDetails, JsonElement[] SkippedDetails,
     SourceStat[] SourceStats,
     JsonElement? ChargeLimit = null,        // { leadsWithinLimit, reached } — emitted since scraper 0.1.11
-    JsonElement[]? SkippedSources = null);  // [{ sourceId, jurisdictionKey, reason }] — sources not run this pass
+    JsonElement[]? SkippedSources = null)   // [{ sourceId, jurisdictionKey, reason }] — sources not run this pass
+{
+    // WS1 addition (non-positional, so the locked positional shape is unchanged): the exact JSON
+    // text the report was parsed from, persisted verbatim as ScraperRun.CoverageReportJson.
+    [JsonIgnore]
+    public string? RawJson { get; init; }
+}
 
 // LOCKED shape — master plan §4.
 public record SourceStat(

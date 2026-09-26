@@ -104,4 +104,26 @@ public class PipelineSetupTests
 
         Assert.Equal(new Uri("https://api.apify.com"), client.BaseAddress);
     }
+
+    [Fact]
+    public void AddPipelineServices_SkipsHostedServices_WhenPipelineDisabled()
+    {
+        using var sp = Build(new Dictionary<string, string?> { ["Pipeline:Enabled"] = "false" });
+        using var scope = sp.CreateScope();
+
+        var hostedServices = sp.GetServices<IHostedService>().ToList();
+
+        Assert.DoesNotContain(hostedServices, s => s is IngestionJob or SourceHealthMonitor or RescoringJob);
+        // Provider, engine, and options stay registered.
+        Assert.IsType<ApifyPermitProvider>(scope.ServiceProvider.GetRequiredService<IPermitSourceProvider>());
+        Assert.NotNull(sp.GetRequiredService<ScoringEngine>());
+    }
+
+    [Fact]
+    public void AddPipelineServices_RegistersHostedServices_WhenPipelineExplicitlyEnabled()
+    {
+        using var sp = Build(new Dictionary<string, string?> { ["Pipeline:Enabled"] = "true" });
+
+        Assert.Contains(sp.GetServices<IHostedService>(), s => s is IngestionJob);
+    }
 }

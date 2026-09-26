@@ -97,7 +97,7 @@ public class ApifyPermitProviderTests
             ["APIFY_TOKEN"] = "test-token",
             ["APIFY_TASK_ID"] = "pt-task-1",
         }).Build();
-        return new ApifyClient(http, config);
+        return new ApifyClient(http, config, NullLogger<ApifyClient>.Instance);
     }
 
     [Fact]
@@ -237,7 +237,7 @@ public class ApifyPermitProviderTests
         }).Build();
         await using var db = _fixture.CreateContext();
         var provider = new ApifyPermitProvider(
-            new ApifyClient(http, config), db, NullLogger<ApifyPermitProvider>.Instance);
+            new ApifyClient(http, config, NullLogger<ApifyClient>.Instance), db, NullLogger<ApifyPermitProvider>.Instance);
 
         var result = await provider.FetchNextRunAsync(CancellationToken.None);
 

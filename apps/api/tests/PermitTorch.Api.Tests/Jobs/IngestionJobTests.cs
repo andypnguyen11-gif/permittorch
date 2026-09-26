@@ -257,23 +257,114 @@ public class IngestionJobTests
         Assert.Equal(1, count); // second record id never created a row
     }
 
+    private (IngestionJob Job, ServiceProvider Services) BuildJob(IPermitSourceProvider provider,
+        ListLogger<IngestionJob> logger)
+    {
+        var services = new ServiceCollection();
+        services.AddDbContext<AppDbContext>(o => o.UseNpgsql(_fixture.ConnectionString));
+        services.AddScoped<IPermitSourceProvider>(_ => provider);
+        var sp = services.BuildServiceProvider();
+        var job = new IngestionJob(sp.GetRequiredService<IServiceScopeFactory>(),
+            new ScoringEngine(new ScoringOptions()), new ConfigurationBuilder().Build(), logger);
+        return (job, sp);
+    }
+
     [Fact]
-    public async Task RunOnce_SkipsAndCountsUnknownSourceId()
+    public async Task RunOnce_UnknownSourceId_CountsFailures_WithOneAggregatedErrorPerSource()
     {
         var unknown = $"nowhere-{Guid.NewGuid():N}"; // no Source row has this scraper sourceId
-        var record = Record($"ext-{Guid.NewGuid():N}", unknown, description: "Fire sprinkler install");
+        var records = Enumerable.Range(0, 3)
+            .Select(i => Record($"ext-{Guid.NewGuid():N}", unknown, description: $"Fire sprinkler install {i}"))
+            .ToArray();
+        var logger = new ListLogger<IngestionJob>();
         var (job, sp) = BuildJob(new FakePermitSourceProvider(
-            Run($"run-{Guid.NewGuid():N}", new[] { record })));
+            Run($"run-{Guid.NewGuid():N}", records)), logger);
         await using var _ = sp;
 
         var scraperRun = await job.RunOnceAsync(CancellationToken.None);
 
         Assert.NotNull(scraperRun);
         Assert.Equal(0, scraperRun!.RecordsImported);
-        Assert.Equal(1, scraperRun.Failures);
+        Assert.Equal(3, scraperRun.Failures);
+        var entry = Assert.Single(logger.Entries, e => e.Message.Contains(unknown));
+        Assert.Equal(Microsoft.Extensions.Logging.LogLevel.Error, entry.Level);
+        Assert.Contains("3 records", entry.Message);
 
         await using var db = _fixture.CreateContext();
-        Assert.False(await db.Set<Permit>().AnyAsync(p => p.ExternalId == record.RecordId));
+        Assert.False(await db.Set<Permit>().AnyAsync(p => p.ExternalId == records[0].RecordId));
+    }
+
+    [Theory]
+    [InlineData(false, HealthStatus.Healthy)]  // inactive
+    [InlineData(true, HealthStatus.Disabled)]  // active flag set but health disabled
+    public async Task RunOnce_InactiveOrDisabledSource_SkipsRecords_WithoutCountingFailures(
+        bool active, HealthStatus health)
+    {
+        var sourceId = $"src-{Guid.NewGuid():N}";
+        var source = await SeedSourceAsync(sourceId, health);
+        await using (var seed = _fixture.CreateContext())
+        {
+            var s = await seed.Set<Source>().SingleAsync(x => x.Id == source.Id);
+            s.Active = active;
+            await seed.SaveChangesAsync();
+        }
+        var records = Enumerable.Range(0, 2)
+            .Select(i => Record($"ext-{Guid.NewGuid():N}", sourceId, description: $"Fire alarm job {i}"))
+            .ToArray();
+        var logger = new ListLogger<IngestionJob>();
+        var (job, sp) = BuildJob(new FakePermitSourceProvider(
+            Run($"run-{Guid.NewGuid():N}", records)), logger);
+        await using var _ = sp;
+
+        var scraperRun = await job.RunOnceAsync(CancellationToken.None);
+
+        Assert.NotNull(scraperRun);
+        Assert.Equal(0, scraperRun!.RecordsImported);
+        Assert.Equal(0, scraperRun.Failures);
+        var entry = Assert.Single(logger.Entries, e => e.Message.Contains($"'{sourceId}'"));
+        Assert.Equal(Microsoft.Extensions.Logging.LogLevel.Warning, entry.Level);
+        Assert.Contains("2 records", entry.Message);
+
+        await using var db = _fixture.CreateContext();
+        Assert.False(await db.Set<Permit>().AnyAsync(p => p.SourceId == source.Id));
+    }
+
+    [Fact]
+    public async Task RunOnce_StoresCoverageReportJsonVerbatim()
+    {
+        var sourceId = $"src-{Guid.NewGuid():N}";
+        await SeedSourceAsync(sourceId);
+        const string rawTemplate = "{\"recordsFound\":0,\"sourceStats\":[{\"sourceId\":\"SOURCE\",\"jurisdictionKey\":\"ok/tulsa\",\"ok\":true,\"rawCount\":0,\"emittedCount\":0,\"requestCount\":1,\"durationMs\":1,\"error\":null,\"addressShortfall\":null,\"coverage\":null}],\"scraperOnlyField\":{\"kept\":true}}";
+        var raw = rawTemplate.Replace("SOURCE", sourceId);
+        var coverage = JsonSerializer.Deserialize<CoverageReport>(raw,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web))! with { RawJson = raw };
+        var (job, sp) = BuildJob(new FakePermitSourceProvider(new ProviderRunResult(
+            $"run-{Guid.NewGuid():N}", "SUCCEEDED", DateTime.UtcNow.AddMinutes(-10),
+            DateTime.UtcNow.AddMinutes(-5), Array.Empty<RawPermitRecord>(), coverage)));
+        await using var _ = sp;
+
+        var scraperRun = await job.RunOnceAsync(CancellationToken.None);
+
+        await using var db = _fixture.CreateContext();
+        var stored = await db.Set<ScraperRun>().SingleAsync(r => r.Id == scraperRun!.Id);
+        using var storedDoc = JsonDocument.Parse(stored.CoverageReportJson!);
+        using var rawDoc = JsonDocument.Parse(raw);
+        Assert.True(JsonElement.DeepEquals(rawDoc.RootElement, storedDoc.RootElement));
+    }
+
+    [Fact]
+    public async Task RunOnce_CoverageWithoutRawJson_IsStoredAsCamelCaseJson()
+    {
+        var sourceId = $"src-{Guid.NewGuid():N}";
+        await SeedSourceAsync(sourceId);
+        var (job, sp) = BuildJob(new FakePermitSourceProvider(
+            Run($"run-{Guid.NewGuid():N}", Array.Empty<RawPermitRecord>(), Stat(sourceId))));
+        await using var _ = sp;
+
+        var scraperRun = await job.RunOnceAsync(CancellationToken.None);
+
+        Assert.Contains("\"sourceStats\"", scraperRun!.CoverageReportJson);
+        Assert.DoesNotContain("\"SourceStats\"", scraperRun.CoverageReportJson);
     }
 
     [Fact]
@@ -469,7 +560,8 @@ public class IngestionJobTests
         services.AddLogging();
         services.AddDbContext<AppDbContext>(o => o.UseNpgsql(_fixture.ConnectionString));
         services.AddScoped(_ => new ApifyClient(
-            new HttpClient(handler) { BaseAddress = new Uri("https://api.apify.com") }, config));
+            new HttpClient(handler) { BaseAddress = new Uri("https://api.apify.com") }, config,
+            NullLogger<ApifyClient>.Instance));
         services.AddScoped<IPermitSourceProvider, ApifyPermitProvider>();
         await using var sp = services.BuildServiceProvider();
         var job = new IngestionJob(sp.GetRequiredService<IServiceScopeFactory>(),

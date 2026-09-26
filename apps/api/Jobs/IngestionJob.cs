@@ -114,7 +114,9 @@ public sealed class IngestionJob : BackgroundService
         // source.sourceId (surfaced by the normalizer as NormalizedPermit.Jurisdiction) and
         // COVERAGE_REPORT as sourceStats[].sourceId. Loaded untracked: the change tracker is
         // cleared during the loop, so source updates are applied to a fresh load at the end.
-        var sources = await db.Set<Source>().AsNoTracking().Where(s => s.Active).ToListAsync(ct);
+        // All sources are loaded (not only active ones) so records for a deliberately inactive or
+        // disabled source are distinguishable from records for a sourceId nobody configured.
+        var sources = await db.Set<Source>().AsNoTracking().ToListAsync(ct);
         var bySourceId = new Dictionary<string, Source>(StringComparer.OrdinalIgnoreCase);
         foreach (var source in sources)
         {
@@ -133,6 +135,8 @@ public sealed class IngestionJob : BackgroundService
         }
 
         var recordSourceIds = new HashSet<Guid>();
+        var unknownSources = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var inactiveSources = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var processed = 0;
 
         foreach (var raw in run.Records)
@@ -143,10 +147,16 @@ public sealed class IngestionJob : BackgroundService
                 var normalized = PermitNormalizer.Normalize(raw);
                 if (!bySourceId.TryGetValue(normalized.Jurisdiction, out var source))
                 {
-                    _logger.LogWarning(
-                        "Skipping record {ExternalId}: unknown sourceId '{SourceId}'",
-                        normalized.ExternalId, normalized.Jurisdiction);
+                    // Aggregated into one error per sourceId after the loop; counted as a failure
+                    // because data is being dropped for a source nobody configured.
+                    Increment(unknownSources, normalized.Jurisdiction);
                     counts.Failures++;
+                    continue;
+                }
+                if (!source.Active || source.HealthStatus == HealthStatus.Disabled)
+                {
+                    // Deliberately switched off: expected, so skipped rather than failed.
+                    Increment(inactiveSources, normalized.Jurisdiction);
                     continue;
                 }
 
@@ -172,20 +182,34 @@ public sealed class IngestionJob : BackgroundService
         }
 
         db.ChangeTracker.Clear();
+
+        foreach (var (sourceId, count) in unknownSources)
+        {
+            _logger.LogError(
+                "Apify run {RunId}: skipped {Count} records for unknown sourceId '{SourceId}' (no Source row has this Jurisdiction)",
+                run.RunId, count, sourceId);
+        }
+        foreach (var (sourceId, count) in inactiveSources)
+        {
+            _logger.LogWarning(
+                "Apify run {RunId}: skipped {Count} records for inactive or disabled source '{SourceId}'",
+                run.RunId, count, sourceId);
+        }
+        var inactiveSkipped = inactiveSources.Values.Sum();
+
         // Freshness is reported from when the scraper actually ran, never from ingest time, so a
         // late-ingested backfill run cannot make a source look fresher than its data (PRD §37).
         var runTime = run.FinishedAt ?? run.StartedAt;
         LogChargeLimit(run.RunId, run.Coverage);
         await ApplySourceUpdatesAsync(db, run.Coverage, recordSourceIds, runTime, ct);
 
-        var scraperRun = BuildScraperRun(run, run.Status, ingestStart, counts,
-            run.Coverage is null ? null : JsonSerializer.Serialize(run.Coverage));
+        var scraperRun = BuildScraperRun(run, run.Status, ingestStart, counts, CoverageJson(run.Coverage));
         db.Add(scraperRun);
         await db.SaveChangesAsync(ct);
 
         _logger.LogInformation(
-            "Ingested Apify run {RunId}: {Imported} imported, {Duplicates} duplicates, {Classified} classified, {Failures} failures",
-            run.RunId, counts.Imported, counts.Duplicates, counts.Classified, counts.Failures);
+            "Ingested Apify run {RunId}: {Imported} imported, {Duplicates} duplicates, {Classified} classified, {Failures} failures, {InactiveSkipped} skipped for inactive sources",
+            run.RunId, counts.Imported, counts.Duplicates, counts.Classified, counts.Failures, inactiveSkipped);
         return scraperRun;
     }
 
@@ -424,6 +448,16 @@ public sealed class IngestionJob : BackgroundService
     private static bool IsTruncated(SourceCoverage? coverage)
         => coverage is not null
            && ((coverage.TruncatedBy ?? []).Length > 0 || coverage.Outcome == "max-records");
+
+    private static void Increment(Dictionary<string, int> counts, string key)
+        => counts[key] = counts.TryGetValue(key, out var n) ? n + 1 : 1;
+
+    private static readonly JsonSerializerOptions WebJson = new(JsonSerializerDefaults.Web);
+
+    // Stores the COVERAGE_REPORT exactly as the provider received it; falls back to a camelCase
+    // serialization only for providers that do not carry the raw text.
+    private static string? CoverageJson(CoverageReport? coverage)
+        => coverage is null ? null : coverage.RawJson ?? JsonSerializer.Serialize(coverage, WebJson);
 
     private static DateTime Latest(DateTime? existing, DateTime candidate)
         => existing.HasValue && existing.Value > candidate ? existing.Value : candidate;
