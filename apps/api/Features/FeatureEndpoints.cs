@@ -1,4 +1,5 @@
 using PermitTorch.Api.Features.Account;
+using PermitTorch.Api.Features.Admin;
 using PermitTorch.Api.Features.Billing;
 using PermitTorch.Api.Features.Leads;
 using PermitTorch.Api.Features.Markets;
@@ -13,13 +14,13 @@ public static class FeatureEndpoints
     /// Called once from FeaturesSetup.MapFeatureEndpoints(WebApplication).</summary>
     public static IEndpointRouteBuilder MapFeatureEndpointGroups(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapMarketsEndpoints();
         endpoints.MapLeadsEndpoints();
+        endpoints.MapMarketsEndpoints();
         endpoints.MapSavedLeadsEndpoints();
         endpoints.MapAccountEndpoints();
         endpoints.MapSampleLeadsEndpoints();
         endpoints.MapBillingEndpoints();
-
+        endpoints.MapAdminEndpoints();
         return endpoints;
     }
 }
