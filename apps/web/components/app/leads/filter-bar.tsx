@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { buildLeadsSearch, FIRE_CATEGORIES, PERMIT_STATUSES } from "./query";
+import { buildLeadsSearch, FIRE_CATEGORIES, PERMIT_STATUSES, STATUS_LABELS } from "./query";
 
 export type FilterKey = "category" | "score" | "age" | "status";
 
@@ -37,10 +37,6 @@ const AGE_OPTIONS: Option[] = [
   { value: "3", label: "Last 3 days" }, { value: "7", label: "Last 7 days" },
   { value: "30", label: "Last 30 days" },
 ];
-export const STATUS_LABELS: Record<PermitStatus, string> = {
-  NEW: "New", ACTIVE: "Active", INSPECTION: "Inspection",
-  FAILED: "Failed", CLOSED: "Closed", UNKNOWN: "Unknown",
-};
 const STATUS_OPTIONS: Option[] = [
   { value: "all", label: "All" },
   ...PERMIT_STATUSES.map((s) => ({ value: s, label: STATUS_LABELS[s] })),

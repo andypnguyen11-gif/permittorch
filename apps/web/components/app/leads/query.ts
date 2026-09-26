@@ -9,6 +9,11 @@ export const PERMIT_STATUSES: PermitStatus[] = [
   "NEW", "ACTIVE", "INSPECTION", "FAILED", "CLOSED", "UNKNOWN",
 ];
 
+export const STATUS_LABELS: Record<PermitStatus, string> = {
+  NEW: "New", ACTIVE: "Active", INSPECTION: "Inspection",
+  FAILED: "Failed", CLOSED: "Closed", UNKNOWN: "Unknown",
+};
+
 type SP = Record<string, string | string[] | undefined>;
 const first = (v: string | string[] | undefined): string | undefined => {
   const s = Array.isArray(v) ? v[0] : v;
