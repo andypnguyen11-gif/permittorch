@@ -37,7 +37,7 @@ function ResetPasswordForm({ initialEmail, onBack }: { initialEmail: string; onB
   };
 
   return (
-    <Card className="shadow-sm">
+    <Card className="shadow-sm [--card-spacing:--spacing(6)]">
       <CardHeader>
         <CardTitle><h1 className="text-xl font-semibold tracking-tight">Reset your password</h1></CardTitle>
         <CardDescription>We’ll email you a link to choose a new password.</CardDescription>
@@ -115,7 +115,7 @@ export function LoginForm() {
   const busy = isSubmitting || googlePending || redirecting;
 
   return (
-    <Card className="shadow-sm">
+    <Card className="shadow-sm [--card-spacing:--spacing(6)]">
       <CardHeader>
         <CardTitle><h1 className="text-xl font-semibold tracking-tight">Sign in to PermitTorch</h1></CardTitle>
         <CardDescription>Welcome back — your leads are waiting.</CardDescription>
