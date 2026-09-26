@@ -713,8 +713,8 @@ namespace PermitTorch.Api.Tests.Infrastructure;
 
 public sealed class PostgresFixture : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder()
-        .WithImage("postgres:17-alpine")
+    // Image in the constructor: the parameterless PostgreSqlBuilder() is obsolete in Testcontainers 4.x (CS0618).
+    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:17-alpine")
         .Build();
 
     public string ConnectionString => _container.GetConnectionString();

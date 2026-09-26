@@ -476,8 +476,8 @@ The master contract leaves gaps that WS2 must fill; these decisions are additive
   /// tests needing service overrides construct their own instance with TestServices set.</summary>
   public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
   {
-      private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder()
-          .WithImage("postgres:16-alpine")
+      // Image in the constructor: the parameterless PostgreSqlBuilder() is obsolete in Testcontainers 4.x (CS0618).
+      private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:17-alpine")
           .Build();
 
       public Action<IServiceCollection>? TestServices { get; init; }
