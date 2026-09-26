@@ -1,0 +1,73 @@
+// @vitest-environment jsdom
+import "./dom-cleanup";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+import { render, screen, within } from "@testing-library/react";
+
+const redirect = vi.fn((path: string) => { throw new Error(`REDIRECT:${path}`); });
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+  redirect: (p: string) => redirect(p),
+  notFound: () => { throw new Error("NOT_FOUND"); },
+}));
+vi.mock("@/components/app/get-token", () => ({ getApiToken: async () => "mock-token" }));
+
+import LeadsPage from "@/app/app/leads/page";
+import * as api from "@/lib/api";
+import { SESSION_EXPIRED_DIGEST } from "@/components/app/session-digest";
+
+beforeAll(() => vi.stubEnv("NEXT_PUBLIC_API_MOCK", "1"));
+
+const renderPage = async (sp: Record<string, string>) =>
+  render(await LeadsPage({ searchParams: Promise.resolve(sp) }));
+
+describe("/app/leads page (mock API)", () => {
+  it("renders every fixture lead with freshness and totals", async () => {
+    await renderPage({});
+    expect(screen.getByRole("heading", { name: "Leads" })).toBeInTheDocument();
+    expect(screen.getByText(/Updated 12 minutes ago/)).toBeInTheDocument();
+    expect(screen.getByText("Showing 1 to 25 of 25 results")).toBeInTheDocument();
+    expect(within(screen.getByRole("table")).getAllByRole("link")).toHaveLength(25);
+  });
+
+  it("applies URL filters through lib/api", async () => {
+    await renderPage({ minScore: "90", category: "FIRE_SPRINKLER" });
+    const links = within(screen.getByRole("table")).getAllByRole("link");
+    expect(links.map((l) => l.textContent)).toEqual([
+      "Distribution Center — New Construction",
+      "Warehouse Fire Sprinkler System",
+      "Logistics Hub Fire Sprinkler Package",
+    ]);
+  });
+
+  it("redirects a page past the end to the last page, keeping the filters", async () => {
+    await expect(renderPage({ category: "FIRE_ALARM", page: "7" })).rejects.toThrow(
+      "REDIRECT:/app/leads?category=FIRE_ALARM",
+    );
+    const spy = vi.spyOn(api, "getLeads").mockResolvedValueOnce({
+      items: [], total: 60, page: 5, pageSize: 25, freshness: { lastUpdatedAt: null },
+    });
+    await expect(renderPage({ page: "5" })).rejects.toThrow("REDIRECT:/app/leads?page=3");
+    spy.mockRestore();
+  });
+
+  it("does not redirect an empty result set", async () => {
+    await renderPage({ q: "zzz-no-such-lead", page: "4" });
+    expect(screen.getByText("No results")).toBeInTheDocument();
+  });
+
+  it("shows the search term and the empty state when nothing matches", async () => {
+    await renderPage({ q: "zzz-no-such-lead" });
+    expect(screen.getByText("“zzz-no-such-lead”")).toBeInTheDocument();
+    expect(screen.getByText("No leads match these filters")).toBeInTheDocument();
+    expect(screen.getByText("No results")).toBeInTheDocument();
+  });
+
+  it("tags a 401 for the session-recovery boundary instead of redirecting to /login", async () => {
+    const spy = vi.spyOn(api, "getLeads").mockRejectedValueOnce(new api.ApiError("expired", 401));
+    await expect(renderPage({})).rejects.toMatchObject({
+      status: 401,
+      digest: SESSION_EXPIRED_DIGEST,
+    });
+    spy.mockRestore();
+  });
+});
