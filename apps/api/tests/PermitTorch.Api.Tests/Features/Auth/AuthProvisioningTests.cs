@@ -11,7 +11,7 @@ public class AuthProvisioningTests(ApiFactory factory)
     [Fact]
     public async Task Protected_endpoint_returns_401_without_token()
     {
-        var response = await factory.CreateClient().GetAsync("/api/auth-probe");
+        var response = await factory.CreateClient().GetAsync("/api/account/me");
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
@@ -23,7 +23,7 @@ public class AuthProvisioningTests(ApiFactory factory)
             "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9." +
             "eyJzdWIiOiJ1c2VyX2ZvcmdlZCIsImlzcyI6Imh0dHBzOi8vdGVzdC1pc3N1ZXIucGVybWl0dG9yY2gubG9jYWwifQ." +
             "invalidsignatureinvalidsignatureinvalidsig");
-        var response = await client.GetAsync("/api/auth-probe");
+        var response = await client.GetAsync("/api/account/me");
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
@@ -33,7 +33,7 @@ public class AuthProvisioningTests(ApiFactory factory)
         var sub = $"user_{Guid.NewGuid():N}";
         var email = $"{sub}@example.com";
 
-        var response = await factory.CreateClientFor(sub, email).GetAsync("/api/auth-probe");
+        var response = await factory.CreateClientFor(sub, email).GetAsync("/api/account/me");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var user = await factory.QueryAsync(db => db.AppUsers
@@ -52,8 +52,8 @@ public class AuthProvisioningTests(ApiFactory factory)
         var sub = $"user_{Guid.NewGuid():N}";
         var client = factory.CreateClientFor(sub, $"{sub}@example.com");
 
-        (await client.GetAsync("/api/auth-probe")).EnsureSuccessStatusCode();
-        (await client.GetAsync("/api/auth-probe")).EnsureSuccessStatusCode();
+        (await client.GetAsync("/api/account/me")).EnsureSuccessStatusCode();
+        (await client.GetAsync("/api/account/me")).EnsureSuccessStatusCode();
 
         var count = await factory.QueryAsync(db => db.AppUsers.CountAsync(u => u.FirebaseUid == sub));
         Assert.Equal(1, count);
@@ -65,10 +65,10 @@ public class AuthProvisioningTests(ApiFactory factory)
         // Regression test for WS0 final-review fix G: MapFeatureEndpoints must call
         // UseCors/UseAuthentication/UseAuthorization/UseRateLimiter explicitly, in that
         // order, so CORS runs before authorization and a preflight to a protected route
-        // (like /api/auth-probe, policy "User") never gets swallowed by a 401 with no
+        // (like /api/account/me, policy "User") never gets swallowed by a 401 with no
         // Access-Control-Allow-Origin header.
         var client = factory.CreateClient();
-        var request = new HttpRequestMessage(HttpMethod.Options, "/api/auth-probe");
+        var request = new HttpRequestMessage(HttpMethod.Options, "/api/account/me");
         request.Headers.Add("Origin", "https://web.test.permittorch.local");
         request.Headers.Add("Access-Control-Request-Method", "GET");
         var response = await client.SendAsync(request);
