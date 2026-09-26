@@ -159,4 +159,28 @@ describe("SampleLeadsForm", () => {
     await act(async () => { resolve(); });
     expect(await screen.findByText(/request received/i)).toBeDefined();
   });
+
+  it("uses a friendly message for a 400 without an API error body", async () => {
+    vi.mocked(api.submitSampleLeadRequest).mockRejectedValue(new api.ApiError("API request failed with status 400", 400));
+    render(<SampleLeadsForm markets={mockMarkets} />);
+    fillValid();
+    fireEvent.click(screen.getByRole("button", { name: /send my sample leads/i }));
+    expect(await screen.findByText("We couldn't accept that request. Check your details and try again.")).toBeDefined();
+    expect(screen.queryByText(/API request failed/)).toBeNull();
+  });
+
+  it("explains and disables the form when no markets are available", () => {
+    const submit = vi.mocked(api.submitSampleLeadRequest);
+    submit.mockClear();
+    render(<SampleLeadsForm markets={[]} />);
+    const select = screen.getByLabelText(/market/i);
+    expect(select).toBeDisabled();
+    const reasonId = select.getAttribute("aria-describedby")!;
+    expect(document.getElementById(reasonId)?.textContent).toBe("Markets are updating — check back shortly.");
+    const button = screen.getByRole("button", { name: /send my sample leads/i });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("aria-describedby", reasonId);
+    fireEvent.submit(button.closest("form")!);
+    expect(submit).not.toHaveBeenCalled();
+  });
 });

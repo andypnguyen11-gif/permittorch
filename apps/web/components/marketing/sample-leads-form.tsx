@@ -14,6 +14,11 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export const RATE_LIMIT_MESSAGE = "Too many requests — please wait a minute and try again.";
 export const GENERIC_ERROR_MESSAGE = "Something went wrong sending your request. Try again in a minute.";
+export const INVALID_REQUEST_MESSAGE = "We couldn't accept that request. Check your details and try again.";
+export const MARKETS_UPDATING_MESSAGE = "Markets are updating — check back shortly.";
+
+// lib/api.ts falls back to this message when the API sent no { error } body.
+const API_FALLBACK_MESSAGE = /^API request failed with status \d+$/;
 
 type Status = "idle" | "submitting" | "success" | "error";
 type FieldKey = "name" | "email" | "company" | "marketSlug";
@@ -24,7 +29,9 @@ const FIELD_ORDER: FieldKey[] = ["name", "email", "company", "marketSlug"];
 export function sampleLeadErrorMessage(err: unknown): string {
   if (err instanceof ApiError) {
     if (err.status === 429) return RATE_LIMIT_MESSAGE;
-    if (err.status === 400 && err.message) return err.message;
+    if (err.status === 400) {
+      return err.message && !API_FALLBACK_MESSAGE.test(err.message) ? err.message : INVALID_REQUEST_MESSAGE;
+    }
   }
   return GENERIC_ERROR_MESSAGE;
 }
@@ -40,6 +47,7 @@ export function SampleLeadsForm({ markets }: { markets: Market[] }) {
   const [submitError, setSubmitError] = useState("");
   // State updates are async; the ref blocks a second submit fired before re-render.
   const inFlight = useRef(false);
+  const noMarkets = markets.length === 0;
   const successRef = useRef<HTMLHeadingElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
@@ -63,7 +71,7 @@ export function SampleLeadsForm({ markets }: { markets: Market[] }) {
 
   async function handleSubmit(ev: FormEvent) {
     ev.preventDefault();
-    if (status === "submitting" || inFlight.current) return;
+    if (noMarkets || status === "submitting" || inFlight.current) return;
     const e = validate();
     setErrors(e);
     const firstInvalid = FIELD_ORDER.find((k) => e[k]);
@@ -132,17 +140,25 @@ export function SampleLeadsForm({ markets }: { markets: Market[] }) {
         <select id={`${uid}-marketSlug`} ref={marketRef} value={marketSlug}
           onChange={(ev) => setMarketSlug(ev.target.value)}
           aria-invalid={Boolean(errors.marketSlug)}
-          aria-describedby={errors.marketSlug ? errorId("marketSlug") : undefined}
+          disabled={noMarkets}
+          aria-describedby={noMarkets ? `${uid}-markets-updating` : errors.marketSlug ? errorId("marketSlug") : undefined}
           className="h-9 w-full rounded-md border border-neutral-200 bg-white px-3 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-700">
-          <option value="">Choose your market…</option>
+          <option value="">{noMarkets ? MARKETS_UPDATING_MESSAGE : "Choose your market…"}</option>
           {markets.map((m) => (
             <option key={m.slug} value={m.slug}>{`${m.city}, ${m.state}`}</option>
           ))}
         </select>
+        {noMarkets && (
+          <p id={`${uid}-markets-updating`} className="mt-1 text-sm text-neutral-600">
+            {MARKETS_UPDATING_MESSAGE}
+          </p>
+        )}
         {errorText("marketSlug")}
       </div>
       <div className="sm:col-span-2">
-        <Button type="submit" disabled={status === "submitting"} className={ctaClasses("default", "w-full")}>
+        <Button type="submit" disabled={noMarkets || status === "submitting"}
+          aria-describedby={noMarkets ? `${uid}-markets-updating` : undefined}
+          className={ctaClasses("default", "w-full")}>
           {status === "submitting" ? "Sending…" : "Send My Sample Leads"}
         </Button>
         <div role="alert" className="empty:hidden">

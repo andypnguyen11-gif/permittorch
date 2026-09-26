@@ -28,6 +28,13 @@ describe("relativeUpdatedLabel", () => {
   });
 });
 
+describe("unparseable timestamps", () => {
+  it("never render NaN", () => {
+    expect(relativeUpdatedLabel("not-a-date", NOW)).not.toMatch(/NaN/);
+    expect(relativeUpdatedLabel("not-a-date", NOW)).toBe(absoluteUpdatedLabel("not-a-date"));
+  });
+});
+
 describe("absoluteUpdatedLabel", () => {
   it("formats an explicit UTC timestamp", () => {
     expect(absoluteUpdatedLabel("2026-09-26T14:05:00Z")).toBe("Updated Sep 26, 2026 14:05 UTC");

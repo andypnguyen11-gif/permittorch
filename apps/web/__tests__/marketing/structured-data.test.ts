@@ -3,7 +3,7 @@ import { articleJsonLd, organizationJsonLd, websiteJsonLd } from "@/lib/marketin
 import { pricingProductJsonLd, PRICING_TIERS } from "@/components/marketing/pricing-tiers";
 import { blogPosts } from "@/components/marketing/blog-posts";
 import { SCORE_EXAMPLE, SCORE_WEIGHTS } from "@/components/marketing/score-example";
-import * as og from "@/app/(marketing)/opengraph-image";
+import * as og from "@/components/marketing/og-card";
 
 describe("structured data", () => {
   it("describes the Organization and WebSite", () => {

@@ -6,8 +6,8 @@ export const SITE_TAGLINE = "Fire protection leads from public permit data";
 
 /**
  * Public URL of the default social card (app/(marketing)/og-image.png/route.ts,
- * which renders app/(marketing)/opengraph-image.tsx). A dotted path bypasses the
- * auth middleware matcher; the convention route "/opengraph-image-<hash>" does not.
+ * rendered by components/marketing/og-card.tsx). A dotted path bypasses the auth
+ * middleware matcher.
  */
 export const DEFAULT_OG_IMAGE_PATH = "/og-image.png";
 
@@ -29,9 +29,14 @@ export interface BuildMetadataInput {
   path: string;       // must start with "/"
   ogImage?: string;   // absolute URL; defaults to DEFAULT_OG_IMAGE
   absoluteTitle?: boolean;
+  /** OpenGraph object type; blog posts use "article" with their publish date. */
+  ogType?: "website" | "article";
+  publishedTime?: string;
 }
 
-export function buildMetadata({ title, description, path, ogImage, absoluteTitle }: BuildMetadataInput): Metadata {
+export function buildMetadata({
+  title, description, path, ogImage, absoluteTitle, ogType = "website", publishedTime,
+}: BuildMetadataInput): Metadata {
   const url = new URL(path, SITE_URL).toString();
   const image = ogImage ? { url: ogImage } : DEFAULT_OG_IMAGE;
   return {
@@ -43,7 +48,9 @@ export function buildMetadata({ title, description, path, ogImage, absoluteTitle
       description,
       url,
       siteName: SITE_NAME,
-      type: "website",
+      ...(ogType === "article"
+        ? { type: "article" as const, ...(publishedTime ? { publishedTime } : {}) }
+        : { type: "website" as const }),
       locale: "en_US",
       images: [image],
     },

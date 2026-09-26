@@ -36,6 +36,7 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/",
 }));
 
+import * as api from "@/lib/api";
 import { getMarketsWithData, hasRealData } from "@/lib/marketing/markets-with-data";
 import sitemap from "@/app/sitemap";
 import LocationsPage from "@/app/(marketing)/locations/page";
@@ -84,10 +85,32 @@ describe("zero-data markets get no public surface", () => {
   });
 
   it.each([
-    ["texas", "el-paso"], ["oklahoma", "tulsa"], ["arizona", "mesa"], ["texas", "nowhere"],
+    ["texas", "el-paso"], ["oklahoma", "tulsa"], ["texas", "nowhere"],
   ])("/locations/%s/%s returns notFound()", async (state, city) => {
     await expect(MarketPage({ params: Promise.resolve({ state, city }) })).rejects.toThrow("NEXT_NOT_FOUND");
     expect(await generateMetadata({ params: Promise.resolve({ state, city }) })).toEqual({});
+  });
+
+  it("an unknown slug 404s after one getMarkets call and no stats calls", async () => {
+    vi.mocked(api.getMarkets).mockClear();
+    vi.mocked(api.getMarketStats).mockClear();
+    await expect(MarketPage({ params: Promise.resolve({ state: "texas", city: "nowhere" }) }))
+      .rejects.toThrow("NEXT_NOT_FOUND");
+    expect(api.getMarkets).toHaveBeenCalledTimes(1);
+    expect(api.getMarketStats).not.toHaveBeenCalled();
+  });
+
+  it("a real market whose stats request fails throws instead of 404ing", async () => {
+    const params = { state: "arizona", city: "mesa" };
+    await expect(MarketPage({ params: Promise.resolve(params) })).rejects.toThrow("stats unavailable for mesa-az");
+    await expect(generateMetadata({ params: Promise.resolve(params) })).rejects.toThrow("stats unavailable");
+  });
+
+  it("fetches stats only for the requested market", async () => {
+    vi.mocked(api.getMarketStats).mockClear();
+    await MarketPage({ params: Promise.resolve({ state: "texas", city: "austin" }) });
+    expect(api.getMarketStats).toHaveBeenCalledTimes(1);
+    expect(api.getMarketStats).toHaveBeenCalledWith("austin-tx");
   });
 
   it("a market with data still renders", async () => {

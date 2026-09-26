@@ -10,7 +10,10 @@ const pad = (n: number) => String(n).padStart(2, "0");
 /** Relative label ("Updated 6 hours ago") measured against `now`. */
 export function relativeUpdatedLabel(lastUpdatedAt: string | null, now: Date = new Date()): string {
   if (!lastUpdatedAt) return AWAITING_FIRST_UPDATE;
-  const ms = now.getTime() - new Date(lastUpdatedAt).getTime();
+  const updated = new Date(lastUpdatedAt).getTime();
+  // Unparseable timestamp: fall back to the absolute label (never "NaN minutes ago").
+  if (Number.isNaN(updated) || Number.isNaN(now.getTime())) return absoluteUpdatedLabel(lastUpdatedAt);
+  const ms = now.getTime() - updated;
   const minutes = Math.max(1, Math.floor(ms / 60_000));
   const unit = (n: number, u: string) => `Updated ${n} ${u}${n === 1 ? "" : "s"} ago`;
   if (minutes < 60) return unit(minutes, "minute");

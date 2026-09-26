@@ -55,6 +55,21 @@ describe("marketing page metadata", () => {
     }
   });
 
+  it("marks blog posts as OpenGraph articles and other pages as websites", async () => {
+    for (const [page, md] of await allPageMetadata()) {
+      const og = md.openGraph as { type?: string; publishedTime?: string };
+      expect(og.type, page).toBe(page.startsWith("post:") ? "article" : "website");
+      if (page.startsWith("post:")) expect(og.publishedTime).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    }
+  });
+
+  it("points every page's social image at /og-image.png", async () => {
+    for (const [page, md] of await allPageMetadata()) {
+      expect((md.openGraph as { images?: { url: string }[] }).images?.[0]?.url, page).toBe("https://permittorch.com/og-image.png");
+      expect((md.twitter as { images?: string[] }).images, page).toEqual(["https://permittorch.com/og-image.png"]);
+    }
+  });
+
   it("uses the absolute branded title on the homepage", () => {
     expect(renderedTitle(home)).toBe("PermitTorch — Fire Protection Leads From Public Permit Data");
   });

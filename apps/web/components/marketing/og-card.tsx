@@ -1,3 +1,6 @@
+// Default 1200x630 social card, served by app/(marketing)/og-image.png/route.ts.
+// Deliberately NOT a Next opengraph-image convention file: inside the route group
+// that would publish /opengraph-image-<hash>, which the auth middleware redirects.
 import { ImageResponse } from "next/og";
 import { SITE_NAME, SITE_TAGLINE } from "@/lib/seo";
 
@@ -7,7 +10,7 @@ export const contentType = "image/png";
 
 const ORANGE = "#c2410c"; // orange-700: brand accent with AA contrast on white
 
-export default function OpengraphImage() {
+export function renderOgCard() {
   return new ImageResponse(
     (
       <div style={{

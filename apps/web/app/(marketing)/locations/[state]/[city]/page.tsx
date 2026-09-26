@@ -1,7 +1,8 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getMarketsWithData } from "@/lib/marketing/markets-with-data";
+import { getMarketStats, getMarkets } from "@/lib/api";
+import { getMarketsWithData, hasRealData } from "@/lib/marketing/markets-with-data";
 import { buildMetadata, jsonLd } from "@/lib/seo";
 import { Breadcrumbs, breadcrumbJsonLd } from "@/components/marketing/breadcrumbs";
 import { ctaClasses } from "@/components/marketing/cta";
@@ -16,9 +17,11 @@ import { MarketSources } from "@/components/marketing/market-sources";
 import { marketNarrative } from "@/lib/marketing/market-narrative";
 import { getMarketSources } from "@/lib/marketing/source-registry";
 
-// PRD §24 + CLAUDE.md: pages exist ONLY for markets with real data (see
-// getMarketsWithData). Params are prebuilt for those markets; any other param —
-// unknown city, or a known market with no data — renders notFound(). Dynamic
+// PRD §24 + CLAUDE.md: pages exist ONLY for markets with real data. Params are
+// prebuilt from getMarketsWithData(); at request time the market is resolved from
+// the catalog first (junk URLs cost one getMarkets call), then its own stats are
+// fetched. Unknown city or no data → notFound(). A stats *failure* throws, so ISR
+// keeps serving the last good render instead of caching a 404. Dynamic
 // params stay enabled so a market whose data comes online after deploy gets its
 // page on the next hourly revalidation, matching the (also revalidated) sitemap.
 export const dynamicParams = true;
@@ -32,7 +35,7 @@ export async function generateStaticParams() {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { state, city } = await params;
-  const entry = await findMarketWithData(state, city);
+  const entry = await resolveMarket(state, city);
   if (!entry) return {};
   const { market } = entry;
   const stateName = stateDisplayName(market.state);
@@ -43,15 +46,17 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   });
 }
 
-async function findMarketWithData(state: string, city: string) {
-  const entries = await getMarketsWithData();
-  const market = findMarketByLocationParams(entries.map((e) => e.market), state, city);
-  return market ? entries.find((e) => e.market.slug === market.slug) : undefined;
+/** Market + stats for URL params; null when unknown or without real data. Stats errors propagate. */
+async function resolveMarket(state: string, city: string) {
+  const market = findMarketByLocationParams(await getMarkets(), state, city);
+  if (!market) return null;
+  const stats = await getMarketStats(market.slug);
+  return hasRealData(stats) ? { market, stats } : null;
 }
 
 export default async function MarketPage({ params }: Props) {
   const { state, city } = await params;
-  const entry = await findMarketWithData(state, city);
+  const entry = await resolveMarket(state, city);
   if (!entry) notFound();
   const { market, stats } = entry;
   const stateName = stateDisplayName(market.state);
