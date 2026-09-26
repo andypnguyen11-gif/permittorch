@@ -25,12 +25,12 @@ export default function BlogIndexPage() {
       <div className="mt-12 space-y-10">
         {posts.map((p) => (
           <article key={p.slug}>
-            <p className="text-sm text-neutral-400">{dateFmt.format(new Date(p.publishedAt))}</p>
+            <p className="text-sm text-neutral-500">{dateFmt.format(new Date(p.publishedAt))}</p>
             <h2 className="mt-1 text-2xl font-semibold">
-              <Link href={`/blog/${p.slug}`} className="hover:text-orange-600">{p.title}</Link>
+              <Link href={`/blog/${p.slug}`} className="hover:text-orange-700">{p.title}</Link>
             </h2>
             <p className="mt-2 leading-relaxed text-neutral-600">{p.description}</p>
-            <Link href={`/blog/${p.slug}`} className="mt-2 inline-block text-sm font-medium text-orange-600">
+            <Link href={`/blog/${p.slug}`} className="mt-2 inline-block text-sm font-medium text-orange-700">
               Read the guide →
             </Link>
           </article>

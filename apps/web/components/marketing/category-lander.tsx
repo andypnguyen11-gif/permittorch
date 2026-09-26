@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Market } from "@permittorch/types";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { ctaClasses } from "@/components/marketing/cta";
 import { SampleLeadsForm } from "@/components/marketing/sample-leads-form";
 import { SAMPLE_LEADS_HEADING, SAMPLE_LEADS_SENTENCE } from "@/components/marketing/sample-leads-copy";
 
@@ -126,10 +127,11 @@ export function CategoryLander({ content, markets }: { content: CategoryLanderCo
         <p className="mx-auto mt-5 max-w-2xl text-lg leading-relaxed text-neutral-600">{content.subline}</p>
         <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
           <Link href="/signup"
-            className={cn(buttonVariants({ size: "lg" }), "bg-orange-500 px-8 text-white hover:bg-orange-600")}>
+            className={ctaClasses("hero")}>
             Find Leads in Your Market
           </Link>
-          <Link href="#sample-leads" className={cn(buttonVariants({ size: "lg", variant: "outline" }), "px-8")}>
+          <Link href="#sample-leads"
+            className={cn(buttonVariants({ size: "lg", variant: "outline" }), "h-11 px-6 text-base font-semibold")}>
             See Sample Leads
           </Link>
         </div>
@@ -168,7 +170,7 @@ export function CategoryLander({ content, markets }: { content: CategoryLanderCo
         <h2 className="text-2xl font-bold tracking-tight">{content.ctaHeading}</h2>
         <p className="mx-auto mt-3 max-w-md text-neutral-600">{content.ctaBody}</p>
         <Link href="/signup"
-          className={cn(buttonVariants({ size: "lg" }), "mt-6 bg-orange-500 px-8 text-white hover:bg-orange-600")}>
+          className={ctaClasses("lg", "mt-6")}>
           Start Free
         </Link>
       </section>

@@ -29,14 +29,14 @@ export default async function LocationsPage() {
           {entries.map(({ market: m, stats }) => (
             <Link key={m.slug} href={marketLocationPath(m)}
               className="group rounded-2xl border border-neutral-200 p-6 transition-shadow hover:shadow-md">
-              <h2 className="text-xl font-semibold group-hover:text-orange-600">
+              <h2 className="text-xl font-semibold group-hover:text-orange-700">
                 {m.city}, {m.state}
               </h2>
               <p className="mt-1 text-sm text-neutral-500">
                 {stats.totalLast30Days} fire-related permits in {m.city}, {stateDisplayName(m.state)} in the last 30 days
               </p>
               <div className="mt-2"><FreshnessLine lastUpdatedAt={stats.lastUpdatedAt} /></div>
-              <span className="mt-4 inline-block text-sm font-medium text-orange-600">
+              <span className="mt-4 inline-block text-sm font-medium text-orange-700">
                 View market →
               </span>
             </Link>
@@ -45,7 +45,7 @@ export default async function LocationsPage() {
       )}
       <p className="mt-12 text-sm text-neutral-500">
         Don&apos;t see your city? We only list a market once its public permit data is flowing.
-        Email <a href="mailto:support@permittorch.com" className="text-orange-600 underline">support@permittorch.com</a> to
+        Email <a href="mailto:support@permittorch.com" className="text-orange-700 underline">support@permittorch.com</a> to
         ask about yours.
       </p>
     </div>

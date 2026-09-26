@@ -3,8 +3,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { buildMetadata, jsonLd } from "@/lib/seo";
 import { articleJsonLd } from "@/lib/marketing/structured-data";
-import { buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { ctaClasses } from "@/components/marketing/cta";
 import { blogPosts, getBlogPost } from "@/components/marketing/blog-posts";
 
 export const dynamicParams = false;
@@ -33,7 +32,7 @@ export default async function BlogPostPage({ params }: Props) {
     <article className="mx-auto max-w-3xl px-4 py-20 sm:px-6">
       <Link href="/blog" className="text-sm text-neutral-500 hover:text-neutral-900">← All resources</Link>
       <h1 className="mt-4 text-4xl font-bold tracking-tight">{post.title}</h1>
-      <p className="mt-3 text-sm text-neutral-400">
+      <p className="mt-3 text-sm text-neutral-500">
         {new Intl.DateTimeFormat("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" })
           .format(new Date(post.publishedAt))} · PermitTorch
       </p>
@@ -54,7 +53,7 @@ export default async function BlogPostPage({ params }: Props) {
           PermitTorch does everything in this guide automatically — monitored sources, fire-only
           classification, explainable 0–100 scores.
         </p>
-        <Link href="/signup" className={cn(buttonVariants(), "mt-4 bg-orange-500 text-white hover:bg-orange-600")}>
+        <Link href="/signup" className={ctaClasses("default", "mt-4")}>
           Start Free
         </Link>
       </aside>

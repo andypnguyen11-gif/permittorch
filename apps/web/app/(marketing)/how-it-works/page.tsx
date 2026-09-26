@@ -1,8 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { buildMetadata } from "@/lib/seo";
-import { buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { ctaClasses } from "@/components/marketing/cta";
 import { HOW_IT_WORKS_STEPS } from "@/components/marketing/how-it-works-steps";
 import { SCORE_EXAMPLE } from "@/components/marketing/score-example";
 
@@ -24,7 +23,7 @@ export default function HowItWorksPage() {
       <ol className="mt-14 space-y-12">
         {HOW_IT_WORKS_STEPS.map((s) => (
           <li key={s.step} className="flex gap-5">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-100 font-bold text-orange-600">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-100 font-bold text-orange-700">
               {s.step}
             </div>
             <div>
@@ -43,11 +42,11 @@ export default function HowItWorksPage() {
         </p>
 
         <div className="mt-8 rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm sm:p-8">
-          <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">
+          <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
             Illustrative example — not a live lead
           </p>
           <div className="mt-3 flex items-center gap-4">
-            <span className="flex h-14 w-14 items-center justify-center rounded-xl bg-orange-500 text-2xl font-bold text-white">
+            <span className="flex h-14 w-14 items-center justify-center rounded-xl bg-orange-700 text-2xl font-bold text-white">
               {SCORE_EXAMPLE.total}
             </span>
             <div>
@@ -59,7 +58,7 @@ export default function HowItWorksPage() {
             {SCORE_EXAMPLE.signals.map((s) => (
               <li key={s.type} className="flex items-center justify-between py-2.5 text-sm">
                 <span className="text-neutral-700">{s.label}</span>
-                <span className="font-semibold text-orange-600">+{s.points}</span>
+                <span className="font-semibold text-orange-700">+{s.points}</span>
               </li>
             ))}
           </ul>
@@ -78,7 +77,7 @@ export default function HowItWorksPage() {
           Start free and watch tomorrow&apos;s permits show up scored and sorted.
         </p>
         <Link href="/signup"
-          className={cn(buttonVariants({ size: "lg" }), "mt-6 bg-orange-500 px-8 text-white hover:bg-orange-600")}>
+          className={ctaClasses("lg", "mt-6")}>
           Find Leads in Your Market
         </Link>
       </section>

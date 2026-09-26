@@ -5,12 +5,15 @@
 // edit package.json (file-ownership rule). Rewritten with fireEvent, which
 // exercises the identical component behavior and assertions.
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { SampleLeadsForm } from "@/components/marketing/sample-leads-form";
 import { mockMarkets } from "@/lib/fixtures/markets";
 import * as api from "@/lib/api";
 
-vi.mock("@/lib/api", () => ({ submitSampleLeadRequest: vi.fn() }));
+vi.mock("@/lib/api", async (importOriginal) => ({
+  ApiError: (await importOriginal<typeof import("@/lib/api")>()).ApiError,
+  submitSampleLeadRequest: vi.fn(),
+}));
 
 // vitest.config.mts does not set `test.globals: true`, so
 // @testing-library/react's afterEach-based auto-cleanup never registers.
@@ -88,5 +91,72 @@ describe("SampleLeadsForm", () => {
     fillValid();
     fireEvent.click(screen.getByRole("button", { name: /send my sample leads/i }));
     expect(await screen.findByText(/something went wrong/i)).toBeDefined();
+  });
+
+  it("tells the visitor to wait when rate limited (429)", async () => {
+    vi.mocked(api.submitSampleLeadRequest).mockRejectedValue(new api.ApiError("Rate limit exceeded", 429));
+    render(<SampleLeadsForm markets={mockMarkets} />);
+    fillValid();
+    fireEvent.click(screen.getByRole("button", { name: /send my sample leads/i }));
+    const alert = await screen.findByText("Too many requests — please wait a minute and try again.");
+    expect(alert.closest("[role=alert]")).not.toBeNull();
+    expect(screen.queryByText(/something went wrong/i)).toBeNull();
+  });
+
+  it("shows the server's validation message on 400", async () => {
+    vi.mocked(api.submitSampleLeadRequest).mockRejectedValue(
+      new api.ApiError("A sample for this market was already sent to this email.", 400),
+    );
+    render(<SampleLeadsForm markets={mockMarkets} />);
+    fillValid();
+    fireEvent.click(screen.getByRole("button", { name: /send my sample leads/i }));
+    expect(await screen.findByText("A sample for this market was already sent to this email.")).toBeDefined();
+    expect(screen.queryByText(/too many requests/i)).toBeNull();
+  });
+
+  it("wires each invalid field to its error with aria-describedby and focuses the first", async () => {
+    render(<SampleLeadsForm markets={mockMarkets} />);
+    fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: "Dana" } });
+    fireEvent.click(screen.getByRole("button", { name: /send my sample leads/i }));
+    const email = screen.getByLabelText(/work email/i);
+    await waitFor(() => expect(document.activeElement).toBe(email));
+    for (const [label, msg] of [
+      [/work email/i, "Enter a valid work email."],
+      [/company/i, "Enter your company name."],
+      [/market/i, "Pick a market."],
+    ] as const) {
+      const input = screen.getByLabelText(label);
+      expect(input).toHaveAttribute("aria-invalid", "true");
+      const id = input.getAttribute("aria-describedby");
+      expect(id).toBeTruthy();
+      expect(document.getElementById(id!)?.textContent).toBe(msg);
+    }
+    expect(screen.getByLabelText(/^name/i)).not.toHaveAttribute("aria-describedby");
+  });
+
+  it("moves focus to the success heading", async () => {
+    vi.mocked(api.submitSampleLeadRequest).mockResolvedValue(undefined);
+    render(<SampleLeadsForm markets={mockMarkets} />);
+    fillValid();
+    fireEvent.click(screen.getByRole("button", { name: /send my sample leads/i }));
+    const heading = await screen.findByRole("heading", { name: /request received/i });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    expect(heading).toHaveAttribute("tabindex", "-1");
+  });
+
+  it("ignores a second submit while the first is in flight", async () => {
+    let resolve!: () => void;
+    const submit = vi.mocked(api.submitSampleLeadRequest);
+    submit.mockClear();
+    submit.mockImplementation(() => new Promise<void>((r) => { resolve = r; }));
+    const { container } = render(<SampleLeadsForm markets={mockMarkets} />);
+    fillValid();
+    const form = container.querySelector("form")!;
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    expect(submit).toHaveBeenCalledTimes(1);
+    await act(async () => { resolve(); });
+    expect(await screen.findByText(/request received/i)).toBeDefined();
   });
 });

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { FlameMark } from "@/components/marketing/site-nav";
+import { ICON_ACCENT } from "@/components/marketing/cta";
 
 const COLUMNS = [
   {
@@ -36,8 +37,8 @@ export function SiteFooter() {
       <div className="mx-auto grid max-w-6xl gap-10 px-4 py-14 sm:px-6 md:grid-cols-4">
         <div>
           <div className="flex items-center gap-2 text-lg font-bold">
-            <FlameMark className="h-5 w-5 text-orange-500" />
-            <span>Permit<span className="text-orange-500">Torch</span></span>
+            <FlameMark className={`h-5 w-5 ${ICON_ACCENT}`} />
+            <span>Permit<span className="text-orange-700">Torch</span></span>
           </div>
           <p className="mt-3 max-w-xs text-sm leading-relaxed text-neutral-500">
             Permit intelligence for fire-protection contractors.
@@ -45,8 +46,10 @@ export function SiteFooter() {
         </div>
         {COLUMNS.map((col) => (
           <div key={col.heading}>
-            <h3 className="text-sm font-semibold text-neutral-900">{col.heading}</h3>
-            <ul className="mt-3 space-y-2">
+            <p id={`footer-${col.heading.toLowerCase()}`} className="text-sm font-semibold text-neutral-900">
+              {col.heading}
+            </p>
+            <ul aria-labelledby={`footer-${col.heading.toLowerCase()}`} className="mt-3 space-y-2">
               {col.links.map((l) => (
                 <li key={l.href}>
                   <Link href={l.href} className="text-sm text-neutral-500 hover:text-neutral-900">
@@ -59,7 +62,7 @@ export function SiteFooter() {
         ))}
       </div>
       <div className="border-t border-neutral-200">
-        <p className="mx-auto max-w-6xl px-4 py-6 text-xs leading-relaxed text-neutral-400 sm:px-6">
+        <p className="mx-auto max-w-6xl px-4 py-6 text-xs leading-relaxed text-neutral-500 sm:px-6">
           &copy; 2026 PermitTorch. Lead data is derived from publicly available government permit and
           inspection records. PermitTorch does not guarantee accuracy or completeness — verify every
           opportunity independently. Records may be delayed or corrected by the issuing jurisdiction.

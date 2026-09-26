@@ -2,6 +2,7 @@ import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import type { PlanTier } from "@permittorch/types";
 import { cn } from "@/lib/utils";
+import { BADGE_CLASSES, ICON_ACCENT, ctaClasses } from "@/components/marketing/cta";
 import { SITE_NAME, SITE_URL } from "@/lib/seo";
 
 export interface PricingTier {
@@ -88,7 +89,7 @@ export function pricingProductJsonLd() {
 function Check() {
   return (
     <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"
-      className="mt-0.5 h-4 w-4 shrink-0 text-orange-500">
+      className={cn("mt-0.5 h-4 w-4 shrink-0", ICON_ACCENT)}>
       <path fillRule="evenodd" clipRule="evenodd"
         d="M16.7 5.3a1 1 0 0 1 0 1.4l-7 7a1 1 0 0 1-1.4 0l-3-3a1 1 0 1 1 1.4-1.4L9 11.6l6.3-6.3a1 1 0 0 1 1.4 0Z" />
     </svg>
@@ -106,7 +107,7 @@ export function PricingTiers() {
               : "rounded-2xl border border-neutral-200 bg-white p-8"
           }>
           {t.highlighted && (
-            <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-orange-500 px-3 py-0.5 text-xs font-semibold text-white">
+            <span className={cn("absolute -top-3 left-1/2 -translate-x-1/2 rounded-full px-3 py-0.5 text-xs font-semibold", BADGE_CLASSES)}>
               Recommended
             </span>
           )}
@@ -124,11 +125,11 @@ export function PricingTiers() {
               <li key={f} className="flex gap-2 text-sm text-neutral-700"><Check />{f}</li>
             ))}
           </ul>
-          <Link href={signupHrefForPlan(t.plan)} className={cn(
-            buttonVariants({ variant: t.highlighted ? "default" : "outline" }),
-            "mt-8 w-full",
-            t.highlighted && "bg-orange-500 text-white hover:bg-orange-600",
-          )}>
+          <Link href={signupHrefForPlan(t.plan)} className={
+            t.highlighted
+              ? ctaClasses("default", "mt-8 w-full")
+              : cn(buttonVariants({ variant: "outline" }), "mt-8 w-full")
+          }>
             {t.cta}
           </Link>
         </div>
