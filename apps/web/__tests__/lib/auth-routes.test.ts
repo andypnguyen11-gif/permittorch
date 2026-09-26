@@ -6,11 +6,15 @@ describe("locked public routes", () => {
     "/", "/pricing", "/how-it-works", "/fire-protection-leads", "/fire-protection-leads/texas",
     "/fire-sprinkler-leads", "/fire-alarm-leads", "/locations", "/locations/texas/austin",
     "/blog", "/blog/post-1", "/login", "/login/reset", "/signup", "/api/login", "/api/logout", "/api/anything",
+    "/terms", "/privacy",
   ])("treats %s as public", (path) => {
     expect(isPublicPath(path)).toBe(true);
   });
 
-  it.each(["/app", "/app/leads", "/app/leads/abc", "/app/saved", "/app/admin/sources", "/pricing/secret", "/fire-sprinkler-leads/x"])(
+  it.each([
+    "/app", "/app/leads", "/app/leads/abc", "/app/saved", "/app/admin/sources", "/pricing/secret",
+    "/fire-sprinkler-leads/x", "/terms/x", "/privacy/x",
+  ])(
     "treats %s as protected",
     (path) => {
       expect(isPublicPath(path)).toBe(false);

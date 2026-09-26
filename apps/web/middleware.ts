@@ -36,5 +36,9 @@ export const config = {
     "/api/logout",
     // Run on every page except Next.js internals and static assets.
     "/((?!_next|favicon.ico|.*\\..*).*)",
+    // The catch-all above excludes any path containing a dot, so dashboard
+    // routes like /app/leads/abc.json would skip the session check. Force
+    // the whole /app surface through the middleware explicitly.
+    "/app/:path*",
   ],
 };

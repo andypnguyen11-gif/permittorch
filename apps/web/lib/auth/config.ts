@@ -12,6 +12,8 @@ const PUBLIC_PATH_PATTERNS: RegExp[] = [
   /^\/fire-alarm-leads$/,
   /^\/locations(\/.*)?$/,
   /^\/blog(\/.*)?$/,
+  /^\/terms$/,
+  /^\/privacy$/,
   /^\/login(\/.*)?$/,
   /^\/signup(\/.*)?$/,
   /^\/api(\/.*)?$/,
