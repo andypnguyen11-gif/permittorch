@@ -1,0 +1,51 @@
+export type FireCategory = "FIRE_SPRINKLER" | "FIRE_ALARM" | "FIRE_SUPPRESSION"
+  | "KITCHEN_SUPPRESSION" | "FIRE_INSPECTION" | "VIOLATION_CORRECTION" | "GENERAL_FIRE_PROTECTION";
+export type PermitStatus = "NEW" | "ACTIVE" | "INSPECTION" | "FAILED" | "CLOSED" | "UNKNOWN";
+export type PlanTier = "STARTER" | "PRO" | "TERRITORY";
+export type DigestFrequency = "NONE" | "DAILY" | "WEEKLY";
+export type SavedLeadStatus = "SAVED" | "CONTACTED";
+export type HealthStatus = "HEALTHY" | "WARNING" | "STALE" | "FAILED" | "DISABLED";
+
+export interface Paged<T> { items: T[]; total: number; page: number; pageSize: number; }
+export interface Freshness { lastUpdatedAt: string | null; }   // ISO
+
+export interface LeadSummary {
+  id: string; score: number; title: string;
+  address: string | null; city: string; state: string;
+  category: FireCategory; permitType: string | null; status: PermitStatus;
+  filedDate: string | null; estimatedValue: number | null;
+  reason: string; isNew: boolean;   // isNew = firstDetectedAt < 72h ago
+}
+export interface LeadsResponse extends Paged<LeadSummary> { freshness: Freshness; }
+
+export interface LeadSignal { signalType: string; description: string; weight: number; }
+export interface LeadDetail extends LeadSummary {
+  confidence: number; firstDetectedAt: string; lastUpdatedAt: string;
+  permit: {
+    permitNumber: string | null; description: string | null; zip: string | null;
+    issuedDate: string | null; squareFootage: number | null;
+    ownerName: string | null; contractorName: string | null;
+  };
+  participants: { role: string; name: string }[];
+  signals: LeadSignal[];
+  source: { name: string; url: string; lastCheckedAt: string | null };
+}
+
+export interface Market { id: string; name: string; city: string; state: string; slug: string; }
+export interface MarketStats {
+  slug: string; totalLast30Days: number;
+  byCategory: Record<FireCategory, number>; lastUpdatedAt: string | null;
+}
+export interface SavedLeadItem { id: string; status: SavedLeadStatus; createdAt: string; lead: LeadSummary; }
+export interface AccountMe {
+  email: string; role: "MEMBER" | "ADMIN" | "SUPER_ADMIN";
+  organizationName: string; plan: PlanTier | null; digestFrequency: DigestFrequency;
+}
+export interface AdminSource {
+  id: string; name: string; city: string; state: string; active: boolean;
+  healthStatus: HealthStatus; lastSuccessfulRunAt: string | null; recordsLastRun: number;
+}
+export interface ScraperRunSummary {
+  id: string; apifyRunId: string; status: string; startedAt: string; finishedAt: string | null;
+  recordsImported: number; duplicatesSkipped: number; failures: number; durationSeconds: number;
+}
