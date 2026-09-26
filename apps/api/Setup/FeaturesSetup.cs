@@ -2,6 +2,7 @@ using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
 using PermitTorch.Api.Features;
+using PermitTorch.Api.Features.Auth;
 using PermitTorch.Api.Features.Shared;
 
 namespace PermitTorch.Api.Setup;
@@ -15,9 +16,17 @@ public static class FeaturesSetup
         // LOCKED wire format for every minimal-API request/response body
         services.Configure<Microsoft.AspNetCore.Http.Json.JsonOptions>(o => ApiJson.Configure(o.SerializerOptions));
 
-        // Firebase configuration replaces the bare handler in Task 3
-        services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();
-        services.AddAuthorization();
+        services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+            .AddJwtBearer(options => FirebaseJwt.Configure(options, configuration));
+        services.AddAuthorization(options =>
+        {
+            options.AddPolicy("User", policy => policy.RequireAuthenticatedUser());
+            options.AddPolicy("SuperAdmin", policy => policy
+                .RequireAuthenticatedUser()
+                .AddRequirements(new SuperAdminRequirement()));
+        });
+        services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, SuperAdminHandler>();
+        services.AddScoped<CurrentUserService>();
 
         var webOrigin = configuration["WEB_ORIGIN"] ?? "http://localhost:3000";
         services.AddCors(o => o.AddPolicy(CorsPolicy, policy => policy
