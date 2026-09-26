@@ -66,6 +66,7 @@ public static class FeaturesSetup
             o.WebOrigin = configuration["WEB_ORIGIN"] ?? "http://localhost:3000";
         });
         services.AddSingleton<StripeGateway>();
+        services.AddScoped<StripeWebhookProcessor>();
 
         return services;
     }

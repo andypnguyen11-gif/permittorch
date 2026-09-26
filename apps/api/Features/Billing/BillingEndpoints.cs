@@ -16,7 +16,7 @@ public static class BillingEndpoints
         var group = endpoints.MapGroup("/api/billing").RequireAuthorization("User");
         group.MapPost("/checkout", CreateCheckout);
         group.MapPost("/portal", CreatePortal);
-        // POST /api/webhooks/stripe lands in Task 12 (unauthenticated, signature-verified)
+        endpoints.MapPost("/api/webhooks/stripe", HandleWebhook);
         return endpoints;
     }
 
@@ -102,5 +102,33 @@ public static class BillingEndpoints
         var origin = options.Value.WebOrigin.TrimEnd('/');
         var url = await stripe.CreatePortalUrlAsync(customerId, $"{origin}/app/account", ct);
         return Results.Ok(new CheckoutResponse(url));
+    }
+
+    private static async Task<IResult> HandleWebhook(
+        HttpRequest request, StripeWebhookProcessor processor,
+        IOptions<BillingOptions> options, ILoggerFactory loggerFactory, CancellationToken ct)
+    {
+        using var reader = new StreamReader(request.Body);
+        var payload = await reader.ReadToEndAsync(ct);
+
+        Stripe.Event stripeEvent;
+        try
+        {
+            // SIGNATURE VERIFICATION FIRST — nothing is processed on failure (PRD §58)
+            stripeEvent = Stripe.EventUtility.ConstructEvent(
+                payload,
+                request.Headers["Stripe-Signature"],
+                options.Value.WebhookSecret,
+                throwOnApiVersionMismatch: false);
+        }
+        catch (Stripe.StripeException exception)
+        {
+            loggerFactory.CreateLogger("StripeWebhook")
+                .LogWarning(exception, "Rejected Stripe webhook with invalid signature");
+            return ApiErrors.BadRequest("Invalid Stripe signature");
+        }
+
+        await processor.ProcessAsync(stripeEvent, ct);
+        return Results.Ok();
     }
 }
