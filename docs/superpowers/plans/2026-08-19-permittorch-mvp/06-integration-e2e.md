@@ -34,6 +34,8 @@ WS5-specific rules:
 
 ## Task 1: Rebase and merge ws/pipeline into main
 
+> After this merge, WS2's `ApiFactory` (Task 2 merge) must set `builder.UseSetting("Pipeline:Enabled", "false")` so the ingestion, monitor and rescoring hosted services never start inside integration tests — do that in Task 5 (reconciliation) if the WS2 branch did not already include it.
+
 **Files:** none created — git history only (`main` gains WS1's `apps/api/Domain/`, `Infrastructure/`, `Jobs/`, `Setup/PipelineSetup.cs`, pipeline tests).
 **Interfaces:** consumes locked pipeline interfaces (master §5). Defines the reusable **FULL GATE** command block used verbatim after every merge.
 

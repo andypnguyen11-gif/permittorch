@@ -287,7 +287,7 @@ public record ScoredSignal(string SignalType, string Description, int Weight);
 public class ScoringOptions { public Dictionary<string, int> Weights; }   // keys = SignalType strings
 ```
 
-Signal types (locked strings): `NEW_COMMERCIAL_BUILD`, `FIRE_SPRINKLER_SCOPE`, `FIRE_ALARM_SCOPE`, `FAILED_INSPECTION`, `PERMIT_RECENT`, `HIGH_PROJECT_VALUE`, `LARGE_SQUARE_FOOTAGE`, `NO_CONTRACTOR_LISTED`, `OLD_PERMIT`, `CLOSED_PERMIT`. Default weights per PRD §15.
+Signal types (locked strings): `NEW_COMMERCIAL_BUILD`, `FIRE_SPRINKLER_SCOPE`, `FIRE_ALARM_SCOPE`, `FAILED_INSPECTION`, `PERMIT_RECENT`, `HIGH_PROJECT_VALUE`, `LARGE_SQUARE_FOOTAGE`, `NO_CONTRACTOR_LISTED`, `OLD_PERMIT`, `CLOSED_PERMIT`, plus `BASE_SCORE` (weight 30, "Baseline for a classified fire-protection permit" — persisted like every other signal so the whole score is traceable; added 2026-09-26, WS1 review). Default weights per PRD §15.
 
 ---
 
@@ -463,6 +463,8 @@ export class ApiError extends Error { readonly status: number }
   - **F. CI** also runs `pnpm --filter web build` with `NEXT_PUBLIC_API_MOCK=1` and a placeholder `NEXT_PUBLIC_FIREBASE_API_KEY`.
   - **G. Middleware ordering (WS2):** ASP.NET Core auto-inserts `UseAuthentication`/`UseAuthorization` before anything added inside `MapFeatureEndpoints`, so a `UseCors` call added there would run after authorization. WS2 must call `app.UseCors(); app.UseAuthentication(); app.UseAuthorization(); app.UseRateLimiter();` explicitly at the top of `MapFeatureEndpoints` (explicit calls suppress the auto-insertion) and add an integration test that an `OPTIONS` preflight to an authenticated route returns the CORS headers.
   - **H. Dev port:** `apps/api/Properties/launchSettings.json` now uses port 5000 (contract, matches §10's API dev base URL).
+
+- **WS1 review rulings (2026-09-26):** the base 30 points are persisted as a `BASE_SCORE` LeadSignal (WS4 renders it as the first, baseline row of the score explanation). `PipelineSetup.AddPipelineServices` honours config `Pipeline:Enabled` (default true): when false the hosted jobs (ingestion, source-health monitor, daily rescoring) are not registered — WS5 sets `Pipeline:Enabled=false` in the API integration-test factory so hosted jobs never run inside `WebApplicationFactory` tests. A daily rescoring pass recomputes scores for opportunities filed in the last 91 days so time-based signals (`PERMIT_RECENT`, `OLD_PERMIT`) stay honest. Source freshness timestamps come from the Apify run's finish time, never ingestion time.
 
 ## 11. Workstream Plan Files
 

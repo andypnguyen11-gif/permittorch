@@ -2526,6 +2526,8 @@ const signals = [
   { signalType: "OLD_PERMIT", description: "Permit aging beyond 30 days", weight: -20 },
 ];
 
+// Note (WS1 ruling 2026-09-26): the API returns a first signal `BASE_SCORE` (+30, "Baseline for a classified
+// fire-protection permit"); render it as the first row like any other signal — do not hide or special-case it.
 describe("SignalList (score explanation, PRD §16)", () => {
   it("renders the headline with the score", () => {
     render(<SignalList score={91} signals={signals} />);
