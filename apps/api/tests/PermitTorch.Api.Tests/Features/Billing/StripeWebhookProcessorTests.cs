@@ -114,6 +114,40 @@ public class StripeWebhookProcessorTests(ApiFactory factory)
         Assert.Equal(2, stored.Markets.Count);
     }
 
+    [Theory]
+    [InlineData("price_starter_test", 1)]
+    [InlineData("price_pro_test", 1)]
+    [InlineData("price_territory_test", 5)]
+    public async Task Synced_markets_are_capped_by_plan_keeping_metadata_order(string priceId, int expected)
+    {
+        var markets = Enumerable.Range(0, 6).Select(_ => TestSeed.Market("Cap")).ToArray();
+        var (org, user, pref) = TestSeed.User($"user_{Guid.NewGuid():N}", "cap@example.com");
+        var local = TestSeed.Subscription(org, PermitTorch.Api.Data.PlanTier.Territory, "trialing");
+        await factory.SeedAsync(db => { db.AddRange(markets); db.AddRange(org, user, pref, local); });
+        var ordered = markets.Reverse().ToArray();
+
+        await ProcessAsync(SubscriptionEvent("customer.subscription.updated", new Stripe.Subscription
+        {
+            Id = local.StripeSubscriptionId!,
+            CustomerId = local.StripeCustomerId,
+            Status = "active",
+            Items = new StripeList<SubscriptionItem>
+            {
+                Data = [new SubscriptionItem { Price = new Price { Id = priceId } }],
+            },
+            Metadata = new Dictionary<string, string>
+            {
+                ["marketSlugs"] = string.Join(',', ordered.Select(m => m.Slug)),
+            },
+        }));
+
+        var stored = await factory.QueryAsync(db => db.Subscriptions.Include(s => s.Markets)
+            .SingleAsync(s => s.Id == local.Id));
+        Assert.Equal(expected, stored.Markets.Count);
+        Assert.Contains(stored.Markets, m => m.MarketId == ordered[0].Id);   // first market always kept
+        Assert.All(stored.Markets, m => Assert.Contains(m.MarketId, ordered.Take(expected).Select(x => x.Id)));
+    }
+
     [Fact]
     public async Task Subscription_deleted_cancels_without_touching_markets()
     {

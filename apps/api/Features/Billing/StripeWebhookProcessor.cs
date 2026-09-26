@@ -102,9 +102,18 @@ public sealed class StripeWebhookProcessor(
             : null;
         if (string.IsNullOrWhiteSpace(csv)) return;
 
+        // Market cap follows the synced plan: Territory keeps up to 5 (PRD §26), every
+        // other plan keeps only the first slug, whatever the metadata claims.
+        var cap = subscription.Plan == PermitTorch.Api.Data.PlanTier.Territory ? 5 : 1;
         var slugs = csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Distinct().Take(5).ToArray();   // Territory cap (PRD §26)
-        var marketIds = await db.Markets.Where(m => slugs.Contains(m.Slug)).Select(m => m.Id).ToListAsync(ct);
+            .Distinct().ToArray();
+        var known = await db.Markets.Where(m => slugs.Contains(m.Slug))
+            .Select(m => new { m.Id, m.Slug }).ToListAsync(ct);
+        var marketIds = slugs
+            .Select(slug => known.FirstOrDefault(m => m.Slug == slug)?.Id)
+            .OfType<Guid>()
+            .Take(cap)
+            .ToList();
         if (marketIds.Count == 0)
         {
             logger.LogWarning("Stripe metadata market slugs {Slugs} matched no markets — keeping existing", csv);

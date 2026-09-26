@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Microsoft.Extensions.Options;
 using Stripe;
 using Stripe.Checkout;
@@ -22,7 +23,8 @@ public class StripeGateway(IOptions<BillingOptions> options)
     }
 
     public virtual async Task<string> CreateCheckoutSessionAsync(string customerId, string priceId,
-        Dictionary<string, string> metadata, string successUrl, string cancelUrl, CancellationToken ct)
+        Dictionary<string, string> metadata, string successUrl, string cancelUrl, int? trialPeriodDays,
+        CancellationToken ct)
     {
         var session = await new SessionService(Client).CreateAsync(new SessionCreateOptions
         {
@@ -31,15 +33,20 @@ public class StripeGateway(IOptions<BillingOptions> options)
             LineItems = [new SessionLineItemOptions { Price = priceId, Quantity = 1 }],
             SubscriptionData = new SessionSubscriptionDataOptions
             {
-                TrialPeriodDays = 7,           // PRD §27 free trial
+                TrialPeriodDays = trialPeriodDays,   // PRD §27 free trial; null once the org has subscribed before
                 Metadata = metadata,           // survives onto the Subscription for webhook market attach
             },
             Metadata = metadata,
             SuccessUrl = successUrl,
             CancelUrl = cancelUrl,
+            IntegrationIdentifier = NewIntegrationIdentifier(),
         }, cancellationToken: ct);
         return session.Url;
     }
+
+    /// <summary>"permittorch-checkout-" + 8 random lowercase letters — tags the session for Stripe-side tracing.</summary>
+    public static string NewIntegrationIdentifier() =>
+        "permittorch-checkout-" + RandomNumberGenerator.GetString("abcdefghijklmnopqrstuvwxyz", 8);
 
     public virtual async Task<string> CreatePortalUrlAsync(string customerId, string returnUrl, CancellationToken ct)
     {
