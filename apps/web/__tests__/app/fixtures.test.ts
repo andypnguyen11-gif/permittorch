@@ -178,6 +178,7 @@ describe("saved/account/admin fixtures", () => {
     const filtered = mockAdminRuns({ sourceId: "src-001" });
     expect(filtered.items.length).toBeGreaterThan(0);
     expect(filtered.items.length).toBeLessThan(10);
+    for (const run of all.items) expect(run).not.toHaveProperty("__sourceId");
   });
 });
 

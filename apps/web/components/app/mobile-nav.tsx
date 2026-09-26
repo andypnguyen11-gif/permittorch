@@ -16,7 +16,7 @@ export function MobileNav({ role, plan }: { role: AccountMe["role"]; plan?: Plan
       >
         <Menu className="size-5" aria-hidden />
       </SheetTrigger>
-      <SheetContent side="left" className="w-60 max-w-60 gap-0 p-0 sm:max-w-60">
+      <SheetContent side="left" className="gap-0 p-0 data-[side=left]:w-60 data-[side=left]:sm:max-w-60">
         <SheetTitle className="sr-only">Navigation</SheetTitle>
         <Sidebar role={role} plan={plan} onNavigate={() => setOpen(false)} />
       </SheetContent>

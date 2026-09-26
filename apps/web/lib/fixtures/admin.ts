@@ -59,6 +59,10 @@ export function mockAdminRuns(
     : runs;
   const items = filtered
     .slice((page - 1) * pageSize, page * pageSize)
-    .map(({ __sourceId: _ignored, ...run }) => run);
+    .map((r) => {
+      const run: ScraperRunSummary & { __sourceId?: string } = { ...r };
+      delete run.__sourceId;
+      return run;
+    });
   return { items, total: filtered.length, page, pageSize };
 }

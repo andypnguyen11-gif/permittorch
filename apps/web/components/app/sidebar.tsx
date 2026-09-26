@@ -84,7 +84,7 @@ export function Sidebar({ role, plan, onNavigate }: {
         )}
       </nav>
       {showUpsell && (
-        <div className="m-3 rounded-xl border border-orange-100 bg-gradient-to-b from-orange-50 to-white p-4">
+        <div className="m-3 rounded-xl border border-orange-100 [@media(max-height:700px)]:hidden bg-gradient-to-b from-orange-50 to-white p-4">
           <p className="flex items-center gap-1.5 text-sm font-semibold text-stone-900">
             <Sparkles className="size-4 text-orange-500" aria-hidden />
             Unlock more markets
