@@ -127,6 +127,7 @@ WS5-specific rules:
 > - **Manual reclassification:** add `FireOpportunity.CategoryOverridden` (bool, default false) + migration; the admin reclassify endpoint sets it and rescores via `ScoringEngine` with `new ClassificationResult(category, 1.0m, "manual")`; `IngestionJob` skips reclassification for overridden opportunities. Tests on both sides.
 > - **Middleware guard:** in `apps/web/middleware.ts`, when `authConfig.cookieSignatureKeys.length === 0`, log once and treat every request as unauthenticated (public → next, protected → redirect `/login`) instead of throwing.
 > - **Title template:** decide whether pages keep plain titles (WS3/WS4 already dropped their suffixes) — no root layout change needed.
+> - **Forwarded headers spoof check (deploy):** after the API is live on Railway, run `curl -s -H 'X-Forwarded-For: 1.2.3.4' https://<api>/api/health` and confirm the request log's client IP is your real address, not 1.2.3.4. If Railway strips client-supplied XFF and a CDN adds a trusted hop, set `ForwardedHeaders__ForwardLimit=2`; otherwise keep the default 1. Also add `API_PUBLIC_URL` to Railway variables.
 > - **Stripe portal configuration:** in the Dashboard's Customer Portal settings, either disable plan switching or accept that non-Territory downgrades keep one market (API enforces).
 
 
