@@ -13,7 +13,7 @@ Read these before making significant changes:
 - [Tasks.md](Tasks.md) — phased task breakdown
 - [UI Mockup.png](UI%20Mockup.png) — visual style reference for the dashboard (light theme, orange brand accents, sidebar nav, score-badged lead table, right-rail source health/digest/activity panels). **Style reference only — the data shown in it is illustrative, not accurate.**
 
-**Stack:** Next.js + TypeScript (web, Vercel) · ASP.NET Core / C# (API, Railway) · PostgreSQL (Railway) · Clerk (auth) · Stripe (billing) · Resend (email) · Tailwind + shadcn/ui.
+**Stack:** Next.js + TypeScript (web, Vercel) · ASP.NET Core / C# (API, Railway) · PostgreSQL (Railway) · Firebase Auth (auth) · Stripe (billing) · Resend (email) · Tailwind + shadcn/ui.
 
 ## Git Rules
 

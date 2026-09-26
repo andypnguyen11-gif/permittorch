@@ -699,10 +699,10 @@ export default function TermsPage() {
 ```
 
 - [ ] Implement `apps/web/app/(marketing)/privacy/page.tsx` — same page shell and `SECTIONS` pattern, `buildMetadata({ title: "Privacy Policy — PermitTorch", description: "What PermitTorch collects, how we use it, and how public-record permit data fits in.", path: "/privacy" })`, with these sections (write them out fully in the file):
-  1. **What we collect** — account details (name, email, company) via Clerk; billing via Stripe (we never store card numbers); sample-lead requests (name, work email, company, market); product usage analytics (PostHog).
+  1. **What we collect** — account details (name, email, company) via Firebase Authentication (Google); billing via Stripe (we never store card numbers); sample-lead requests (name, work email, company, market); product usage analytics (PostHog).
   2. **Permit data is public-record data** — the leads themselves describe properties and permits published by government jurisdictions, not our users; we retain source URL, jurisdiction, and retrieval timestamp for every record; we do not guarantee its accuracy and users must verify independently; records may be delayed or corrected by jurisdictions.
   3. **How we use your information** — operate the service, send digests and sample leads you request, process payments, improve the product. We do not sell personal information.
-  4. **Service providers** — Clerk (authentication), Stripe (billing), Resend (email), PostHog (analytics), hosting providers. Each receives only what it needs.
+  4. **Service providers** — Firebase Authentication (Google) (authentication), Stripe (billing), Resend (email), PostHog (analytics), hosting providers. Each receives only what it needs.
   5. **Retention and deletion** — account data kept while the account is active; email support@permittorch.com to delete your account and associated personal data.
   6. **Contact** — support@permittorch.com.
 - [ ] `pnpm vitest run __tests__/marketing` — nav test green.

@@ -6,7 +6,7 @@
 
 **Architecture:** Server components fetch through the locked `lib/api.ts` client (which, under `NEXT_PUBLIC_API_MOCK=1`, returns fixtures WS4 creates in `apps/web/lib/fixtures/`); small client components handle filters, optimistic saves, and forms. All business data shaping lives in pure, TDD'd functions (`mockLeadsResponse`, query parse/build, formatters) so the UI stays thin. Admin surfaces are role-gated server-side via `AccountMe.role`.
 
-**Tech Stack:** Next.js 15 App Router, TypeScript strict, Tailwind CSS, shadcn/ui (Table, Badge, Select, Card, Skeleton, Tooltip, Sonner), @clerk/nextjs (UserButton, useAuth), lucide-react icons, Vitest + @testing-library/react.
+**Tech Stack:** Next.js 15 App Router, TypeScript strict, Tailwind CSS, shadcn/ui (Table, Badge, Select, Card, Skeleton, Tooltip, Sonner, DropdownMenu), `firebase` (client SDK) + `next-firebase-auth-edge`, lucide-react icons, Vitest + @testing-library/react.
 
 **Spec:**
 - `docs/superpowers/plans/2026-08-19-permittorch-mvp/00-overview-and-contracts.md` (LOCKED contracts — §7 types, §8 `lib/api.ts` signatures)
@@ -17,7 +17,7 @@
 
 - Worktree: `../pt-dashboard`, branch `ws/dashboard`, branched from `main` after WS0. All commands below run from the worktree root unless a `cd` is shown.
 - Next.js 15+ (App Router), TypeScript strict, Tailwind CSS, shadcn/ui. Tests: Vitest + @testing-library/react. Node 22 LTS, pnpm workspaces.
-- **File ownership (hard rule):** create/modify ONLY `apps/web/app/app/`, `apps/web/components/app/`, `apps/web/lib/fixtures/` (all files EXCEPT `markets.ts`, which WS3 owns), `apps/web/__tests__/app/`. NEVER touch `app/(marketing)/`, `middleware.ts`, `package.json`, `packages/types/`, `lib/api.ts` (consume only), `lib/seo.ts`. shadcn primitives under `components/ui/` are WS0-installed — consume only; if one is genuinely missing, generate it with `pnpm dlx shadcn@latest add <name>` from `apps/web/` (generated files are deterministic, so a WS3 add/add merge is content-identical) and note it in the commit body.
+- **File ownership (hard rule):** create/modify ONLY `apps/web/app/app/`, `apps/web/app/(auth)/` (login and signup pages only — added for the Firebase Auth pages this plan now owns), `apps/web/components/app/`, `apps/web/lib/fixtures/` (all files EXCEPT `markets.ts`, which WS3 owns), `apps/web/__tests__/app/`. NEVER touch `app/(marketing)/`, `middleware.ts`, `lib/auth/config.ts`, `lib/firebase/client.ts` (all three WS0-frozen), `package.json`, `packages/types/`, `lib/api.ts` (consume only), `lib/seo.ts`. shadcn primitives under `components/ui/` are WS0-installed — consume only; if one is genuinely missing, generate it with `pnpm dlx shadcn@latest add <name>` from `apps/web/` (generated files are deterministic, so a WS3 add/add merge is content-identical) and note it in the commit body.
 - **Mock mode:** everything is built and verified with `NEXT_PUBLIC_API_MOCK=1`. `lib/api.ts` (WS0, locked) returns fixtures from `apps/web/lib/fixtures/` in mock mode. Never bypass `lib/api.ts` in pages/components — always call its exported functions so WS5 can flip the env var off without touching WS4 code.
 - Fixture module contract (LOCKED by WS0's `lib/api.ts`, which is frozen): `lib/fixtures/index.ts` must export **the same function names as `lib/api.ts` with token parameters dropped** — `getLeads(params)`, `getLead(id)`, `getSavedLeads()`, `saveLead(id)`, `updateSavedLead(id, status)`, `unsaveLead(id)`, `getAccountMarkets()`, `getAccountMe()`, `updateEmailPreferences(frequency)`, `submitSampleLeadRequest(input)`, `createCheckout(plan)`, `createBillingPortal()`, `getAdminSources()`, `getAdminRuns(params)`, `setSourceActive(id, active)`. WS0 ships these as throwing stubs; WS4 replaces the bodies as thin adapters over this plan's internal `mock*` data/functions (`mockLeadsResponse(query)`, `mockLeadDetail(id)`, `mockSavedLeads`, `mockAccountMe`, `mockAdminSources`, `mockAdminRuns(params)`). `getMarkets`/`getMarketStats` are NOT in the index contract — `lib/api.ts` imports `mockMarkets`/`mockMarketStats` directly from WS3-owned `./markets`.
 - UI style: match `UI Mockup.png` — light theme, orange (#F97316-family / Tailwind `orange-500`) accents, left sidebar nav, score-badged tables, right-rail panels. Mockup data is illustrative only.
@@ -26,7 +26,7 @@
 - Commit messages: imperative, descriptive, **no PR/task references, no Claude co-author trailers**.
 - Test scope (this workstream ONLY runs its own suite): `cd apps/web && pnpm vitest run __tests__/app`. Type check: `cd apps/web && pnpm tsc --noEmit`. Full cross-suite + E2E verification happens in WS5.
 - Types import: this plan writes `import type { … } from "@permittorch/types"`. If WS0's `packages/types/package.json` declares a different package name, use that exact name everywhere instead — change nothing else. `LeadsQuery` is imported from `@/lib/api` (locked §8).
-- Clerk is installed and `middleware.ts` (untouchable) already protects `/app`; sign in with the dev Clerk instance when visually verifying.
+- Firebase Auth is installed and `middleware.ts` (untouchable, WS0-owned) already protects `/app`; sign in through the app's own `/login` page (Firebase email/password or Google) when visually verifying.
 
 ## File Map (what WS4 creates)
 
@@ -46,7 +46,8 @@ apps/web/components/app/
   score-badge.tsx         # ScoreBadge
   category-chip.tsx       # CategoryChip + CATEGORY_LABELS
   sidebar.tsx             # Sidebar (client, role-gated admin section)
-  top-bar.tsx             # TopBar (client: ⌘K search, market selector, UserButton)
+  top-bar.tsx             # TopBar (client: ⌘K search, market selector, AccountMenu)
+  account-menu.tsx        # AccountMenu (client, DropdownMenu with email + sign out)
   leads/query.ts          # parseLeadsSearchParams, buildLeadsSearch
   leads/filter-bar.tsx    # FilterBar (client)
   leads/lead-table.tsx    # LeadTable + empty state
@@ -1130,16 +1131,17 @@ git commit -m "Add score band formatters, score badge, and category chip"
 ### Task 4: App shell — layout, sidebar (role-gated), top bar
 
 **Files:**
-- Create: `apps/web/components/app/get-token.ts`, `apps/web/components/app/use-api-token.ts`, `apps/web/components/app/sidebar.tsx`, `apps/web/components/app/top-bar.tsx`, `apps/web/app/app/layout.tsx`
+- Create: `apps/web/components/app/get-token.ts`, `apps/web/components/app/use-api-token.ts`, `apps/web/components/app/sidebar.tsx`, `apps/web/components/app/top-bar.tsx`, `apps/web/components/app/account-menu.tsx`, `apps/web/app/app/layout.tsx`
 - Test: `apps/web/__tests__/app/sidebar.test.tsx`
 
 **Interfaces:**
-- Consumes: `getAccountMe(token): Promise<AccountMe>`, `getMarkets(): Promise<Market[]>` from `@/lib/api`; `UserButton` + `auth`/`useAuth` from `@clerk/nextjs` / `@clerk/nextjs/server`; `Select` primitives from `@/components/ui/select`; `Toaster` from `@/components/ui/sonner`.
+- Consumes: `getAccountMe(token): Promise<AccountMe>`, `getMarkets(): Promise<Market[]>` from `@/lib/api`; `getTokens` from `next-firebase-auth-edge`, `cookies` from `next/headers`, `authConfig` from `@/lib/auth/config` (server-only, WS0-frozen); `firebaseAuth` from `@/lib/firebase/client` (WS0-frozen), `signOut` from `firebase/auth`; `Select` primitives from `@/components/ui/select`; `DropdownMenu` primitives from `@/components/ui/dropdown-menu`; `Toaster` from `@/components/ui/sonner`.
 - Produces (used by every page task):
   - `getApiToken(): Promise<string>` (server-only helper)
   - `useApiToken(): () => Promise<string>` (client hook)
   - `Sidebar({ role }: { role: AccountMe["role"] })` (client) — renders admin section ONLY when `role === "SUPER_ADMIN"`
-  - `TopBar({ markets }: { markets: Market[] })` (client)
+  - `TopBar({ markets, email }: { markets: Market[]; email: string })` (client)
+  - `AccountMenu({ email }: { email: string })` (client) — shadcn `DropdownMenu` showing the signed-in email with a "Sign out" item
   - `app/app/layout.tsx` — shell wrapping all `/app` pages, mounts `<Toaster />`
 
 - [ ] **Step 1: Write the failing sidebar role-gating test** — `apps/web/__tests__/app/sidebar.test.tsx`
@@ -1193,27 +1195,28 @@ Run: `cd apps/web && pnpm vitest run __tests__/app/sidebar.test.tsx` — Expecte
 
 ```typescript
 // components/app/get-token.ts (server components only)
-import { auth } from "@clerk/nextjs/server";
+import { cookies } from "next/headers";
+import { getTokens } from "next-firebase-auth-edge";
+import { authConfig } from "@/lib/auth/config";
 
 export async function getApiToken(): Promise<string> {
   if (process.env.NEXT_PUBLIC_API_MOCK === "1") return "mock-token";
-  const { getToken } = await auth();
-  return (await getToken()) ?? "";
+  const tokens = await getTokens(await cookies(), authConfig);
+  return tokens?.token ?? "";
 }
 ```
 
 ```typescript
 // components/app/use-api-token.ts
 "use client";
-import { useAuth } from "@clerk/nextjs";
 import { useCallback } from "react";
+import { firebaseAuth } from "@/lib/firebase/client";
 
 export function useApiToken(): () => Promise<string> {
-  const { getToken } = useAuth();
   return useCallback(async () => {
     if (process.env.NEXT_PUBLIC_API_MOCK === "1") return "mock-token";
-    return (await getToken()) ?? "";
-  }, [getToken]);
+    return (await firebaseAuth.currentUser?.getIdToken()) ?? "";
+  }, []);
 }
 ```
 
@@ -1304,20 +1307,57 @@ export function Sidebar({ role }: { role: AccountMe["role"] }) {
 
 Run: `cd apps/web && pnpm vitest run __tests__/app/sidebar.test.tsx` — Expected: PASS.
 
-- [ ] **Step 5: Implement `top-bar.tsx`**
+- [ ] **Step 5: Implement `account-menu.tsx` and `top-bar.tsx`**
 
 ```tsx
+// components/app/account-menu.tsx
+"use client";
+import { useRouter } from "next/navigation";
+import { LogOut, User } from "lucide-react";
+import { signOut } from "firebase/auth";
+import { firebaseAuth } from "@/lib/firebase/client";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
+export function AccountMenu({ email }: { email: string }) {
+  const router = useRouter();
+
+  async function handleSignOut() {
+    await signOut(firebaseAuth);
+    await fetch("/api/logout");
+    router.push("/login");
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-100 text-orange-600" aria-label="Account menu">
+        <User className="h-4 w-4" aria-hidden />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <div className="px-2 py-1.5 text-sm text-gray-500">{email}</div>
+        <DropdownMenuItem onSelect={handleSignOut} className="gap-2 text-red-600">
+          <LogOut className="h-4 w-4" aria-hidden /> Sign out
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+```
+
+```tsx
+// components/app/top-bar.tsx
 "use client";
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Search } from "lucide-react";
-import { UserButton } from "@clerk/nextjs";
 import type { Market } from "@permittorch/types";
+import { AccountMenu } from "@/components/app/account-menu";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 
-export function TopBar({ markets }: { markets: Market[] }) {
+export function TopBar({ markets, email }: { markets: Market[]; email: string }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -1364,7 +1404,7 @@ export function TopBar({ markets }: { markets: Market[] }) {
           ))}
         </SelectContent>
       </Select>
-      <UserButton afterSignOutUrl="/" />
+      <AccountMenu email={email} />
     </header>
   );
 }
@@ -1387,7 +1427,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <div className="flex h-screen bg-gray-50 text-gray-900">
       <Sidebar role={me.role} />
       <div className="flex min-w-0 flex-1 flex-col">
-        <TopBar markets={markets} />
+        <TopBar markets={markets} email={me.email} />
         <main className="flex-1 overflow-y-auto p-6">{children}</main>
       </div>
       <Toaster richColors position="top-right" />
@@ -1396,18 +1436,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 }
 ```
 
-> If `@/components/ui/sonner` does not exist, run `cd apps/web && pnpm dlx shadcn@latest add sonner select badge table card skeleton tooltip` once (see Global Constraints) and note it in the commit body.
+> If `@/components/ui/sonner` or `@/components/ui/dropdown-menu` does not exist, run `cd apps/web && pnpm dlx shadcn@latest add sonner select badge table card skeleton tooltip dropdown-menu` once (see Global Constraints) and note it in the commit body.
 
 - [ ] **Step 7: Visual verify**
 
 Run: `cd apps/web && NEXT_PUBLIC_API_MOCK=1 pnpm dev`, sign in, open `http://localhost:3000/app`.
-Check: white left sidebar with flame logo ("Permit" black + "Torch" orange); nav order Overview/Leads/Saved/Alerts/Markets/Account; Admin section (Sources/Runs/Users/Subscriptions) visible because `mockAccountMe.role === "SUPER_ADMIN"`; active item has orange text on orange-50 pill; top bar shows search with ⌘K hint (press ⌘K → input focuses; type "warehouse" + Enter → `/app/leads?q=warehouse`), market selector listing fixture markets, Clerk avatar. Page body renders children (Overview is built in Task 10 — a 404/empty page body is fine for now).
+Check: white left sidebar with flame logo ("Permit" black + "Torch" orange); nav order Overview/Leads/Saved/Alerts/Markets/Account; Admin section (Sources/Runs/Users/Subscriptions) visible because `mockAccountMe.role === "SUPER_ADMIN"`; active item has orange text on orange-50 pill; top bar shows search with ⌘K hint (press ⌘K → input focuses; type "warehouse" + Enter → `/app/leads?q=warehouse`), market selector listing fixture markets, account menu showing the signed-in email. Page body renders children (Overview is built in Task 10 — a 404/empty page body is fine for now).
 
 - [ ] **Step 8: Type check and commit**
 
 ```bash
 cd apps/web && pnpm tsc --noEmit
-git add apps/web/app/app/layout.tsx apps/web/components/app/sidebar.tsx apps/web/components/app/top-bar.tsx apps/web/components/app/get-token.ts apps/web/components/app/use-api-token.ts apps/web/__tests__/app/sidebar.test.tsx
+git add apps/web/app/app/layout.tsx apps/web/components/app/sidebar.tsx apps/web/components/app/top-bar.tsx apps/web/components/app/account-menu.tsx apps/web/components/app/get-token.ts apps/web/components/app/use-api-token.ts apps/web/__tests__/app/sidebar.test.tsx
 git commit -m "Add app shell with role-gated sidebar and command-K top bar"
 ```
 
@@ -3508,15 +3548,15 @@ export default async function AdminUsersPage() {
     <div className="max-w-2xl space-y-4">
       <h1 className="text-2xl font-bold">Users</h1>
       <Card>
-        <CardHeader><CardTitle className="text-base">Managed via Clerk for MVP</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-base">Managed via Firebase console</CardTitle></CardHeader>
         <CardContent className="space-y-3 text-sm text-gray-600">
           <p>
-            User accounts, invitations, sessions, and organization membership are administered in the
-            Clerk dashboard. An in-app user admin ships post-MVP.
+            User accounts, sign-in methods, and sessions are administered in the Firebase console.
+            An in-app user admin ships post-MVP.
           </p>
-          <a href="https://dashboard.clerk.com" target="_blank" rel="noopener noreferrer"
+          <a href="https://console.firebase.google.com" target="_blank" rel="noopener noreferrer"
             className="inline-flex items-center gap-1 font-medium text-orange-600 hover:underline">
-            Open Clerk dashboard <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+            Open Firebase console <ExternalLink className="h-3.5 w-3.5" aria-hidden />
           </a>
         </CardContent>
       </Card>
@@ -3572,7 +3612,428 @@ git commit -m "Add role-gated admin pages for sources, runs, users, and subscrip
 
 ---
 
-### Task 15: Final verification pass
+### Task 15: Login page — `/login`
+
+**Files:**
+- Create: `apps/web/app/(auth)/login/page.tsx`, `apps/web/components/app/auth/login-form.tsx`
+- Test: `apps/web/__tests__/app/login-form.test.tsx`
+
+**Interfaces:**
+- Consumes: `signInWithEmailAndPassword`, `signInWithPopup`, `GoogleAuthProvider`, `sendPasswordResetEmail` from `firebase/auth`; `firebaseAuth` from `@/lib/firebase/client` (WS0-frozen); `useRouter` from `next/navigation`; `Card`, `CardHeader`, `CardTitle`, `CardContent`, `Input`, `Button`, `Label` from `@/components/ui/*`.
+- Produces:
+  - `LoginForm()` (client) — email/password sign-in, "Continue with Google" button, "Forgot password?" link, inline error messages
+  - the `/login` route (public per the WS0-locked route list in `lib/auth/config.ts` — this task only renders the page; it does not touch routing)
+
+- [ ] **Step 1: Write the failing test first** — `apps/web/__tests__/app/login-form.test.tsx`
+
+```tsx
+// @vitest-environment jsdom
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+
+const push = vi.fn();
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
+vi.mock("@/lib/firebase/client", () => ({ firebaseAuth: {} }));
+vi.mock("firebase/auth", () => ({
+  signInWithEmailAndPassword: vi.fn(),
+  signInWithPopup: vi.fn(),
+  GoogleAuthProvider: vi.fn(),
+  sendPasswordResetEmail: vi.fn(),
+}));
+vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true }));
+
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { LoginForm } from "@/components/app/auth/login-form";
+
+beforeEach(() => vi.clearAllMocks());
+
+describe("LoginForm", () => {
+  it("signs in with email/password, sets the session cookie, and redirects to /app/leads", async () => {
+    vi.mocked(signInWithEmailAndPassword).mockResolvedValue({
+      user: { getIdToken: vi.fn().mockResolvedValue("id-token-123") },
+    } as never);
+
+    render(<LoginForm />);
+    await userEvent.type(screen.getByLabelText("Email"), "rep@example.com");
+    await userEvent.type(screen.getByLabelText("Password"), "hunter2!!");
+    await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/app/leads"));
+    expect(fetch).toHaveBeenCalledWith("/api/login", {
+      method: "POST",
+      headers: { Authorization: "Bearer id-token-123" },
+    });
+  });
+
+  it("shows an inline error for invalid credentials instead of redirecting", async () => {
+    vi.mocked(signInWithEmailAndPassword).mockRejectedValue({ code: "auth/invalid-credential" });
+
+    render(<LoginForm />);
+    await userEvent.type(screen.getByLabelText("Email"), "rep@example.com");
+    await userEvent.type(screen.getByLabelText("Password"), "wrong");
+    await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+    expect(await screen.findByText("Incorrect email or password.")).toBeInTheDocument();
+    expect(push).not.toHaveBeenCalled();
+  });
+});
+```
+
+Run: `cd apps/web && pnpm vitest run __tests__/app/login-form.test.tsx` — Expected: FAIL (module not found).
+
+- [ ] **Step 2: Implement `login-form.tsx`**
+
+```tsx
+// components/app/auth/login-form.tsx
+"use client";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  GoogleAuthProvider, sendPasswordResetEmail, signInWithEmailAndPassword, signInWithPopup,
+} from "firebase/auth";
+import { firebaseAuth } from "@/lib/firebase/client";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+
+const ERROR_MESSAGES: Record<string, string> = {
+  "auth/invalid-credential": "Incorrect email or password.",
+  "auth/user-not-found": "Incorrect email or password.",
+  "auth/wrong-password": "Incorrect email or password.",
+  "auth/too-many-requests": "Too many attempts. Try again in a few minutes.",
+  "auth/network-request-failed": "Network error — check your connection and try again.",
+};
+
+function messageFor(code: string): string {
+  return ERROR_MESSAGES[code] ?? "Something went wrong. Please try again.";
+}
+
+async function completeSignIn(idToken: string, router: ReturnType<typeof useRouter>) {
+  await fetch("/api/login", { method: "POST", headers: { Authorization: `Bearer ${idToken}` } });
+  router.push("/app/leads");
+}
+
+export function LoginForm() {
+  const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [resetSent, setResetSent] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    try {
+      const credential = await signInWithEmailAndPassword(firebaseAuth, email, password);
+      await completeSignIn(await credential.user.getIdToken(), router);
+    } catch (err) {
+      setError(messageFor((err as { code?: string }).code ?? ""));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleGoogle() {
+    setError(null);
+    try {
+      const credential = await signInWithPopup(firebaseAuth, new GoogleAuthProvider());
+      await completeSignIn(await credential.user.getIdToken(), router);
+    } catch (err) {
+      setError(messageFor((err as { code?: string }).code ?? ""));
+    }
+  }
+
+  async function handleResetPassword() {
+    if (!email) {
+      setError("Enter your email above first, then click \"Forgot password?\".");
+      return;
+    }
+    await sendPasswordResetEmail(firebaseAuth, email);
+    setResetSent(true);
+  }
+
+  return (
+    <Card className="w-full max-w-sm">
+      <CardHeader><CardTitle className="text-xl">Sign in to PermitTorch</CardTitle></CardHeader>
+      <CardContent className="space-y-4">
+        <form className="space-y-4" onSubmit={handleSubmit}>
+          <div className="space-y-1.5">
+            <Label htmlFor="email">Email</Label>
+            <Input id="email" type="email" required autoComplete="email"
+              value={email} onChange={(e) => setEmail(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="password">Password</Label>
+            <Input id="password" type="password" required autoComplete="current-password"
+              value={password} onChange={(e) => setPassword(e.target.value)} />
+          </div>
+          {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+          {resetSent && <p className="text-sm text-green-600">Password reset email sent.</p>}
+          <Button type="submit" disabled={submitting} className="w-full bg-orange-500 hover:bg-orange-600">
+            Sign in
+          </Button>
+        </form>
+        <button type="button" onClick={handleResetPassword}
+          className="text-sm font-medium text-orange-600 hover:underline">
+          Forgot password?
+        </button>
+        <Button type="button" variant="outline" className="w-full" onClick={handleGoogle}>
+          Continue with Google
+        </Button>
+        <p className="text-center text-sm text-gray-500">
+          No account? <a href="/signup" className="font-medium text-orange-600 hover:underline">Sign up</a>
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+```
+
+- [ ] **Step 3: Implement the route** — `apps/web/app/(auth)/login/page.tsx`
+
+```tsx
+import type { Metadata } from "next";
+import { LoginForm } from "@/components/app/auth/login-form";
+
+export const metadata: Metadata = { title: "Sign in · PermitTorch" };
+
+export default function LoginPage() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-gray-50 p-6">
+      <LoginForm />
+    </div>
+  );
+}
+```
+
+- [ ] **Step 4: Run tests + type check to verify pass**
+
+```bash
+cd apps/web && pnpm vitest run __tests__/app/login-form.test.tsx && pnpm tsc --noEmit
+```
+
+Expected: PASS.
+
+- [ ] **Step 5: Visual verify**
+
+Run: `cd apps/web && NEXT_PUBLIC_API_MOCK=1 pnpm dev`, open `http://localhost:3000/login`.
+Check: centered light-theme card, orange "Sign in" button, focus rings visible on Tab, "Continue with Google" button, "Forgot password?" link, submitting wrong credentials shows the inline red error text without a page reload.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add "apps/web/app/(auth)/login" apps/web/components/app/auth/login-form.tsx apps/web/__tests__/app/login-form.test.tsx
+git commit -m "Add Firebase email/password and Google sign-in page"
+```
+
+---
+
+### Task 16: Signup page — `/signup`
+
+**Files:**
+- Create: `apps/web/app/(auth)/signup/page.tsx`, `apps/web/components/app/auth/signup-form.tsx`
+- Test: `apps/web/__tests__/app/signup-form.test.tsx`
+
+**Interfaces:**
+- Consumes: `createUserWithEmailAndPassword`, `signInWithPopup`, `GoogleAuthProvider` from `firebase/auth`; `firebaseAuth` from `@/lib/firebase/client` (WS0-frozen); same shadcn primitives as Task 15.
+- Produces:
+  - `SignupForm()` (client) — email/password account creation, "Continue with Google" button, inline error messages
+  - the `/signup` route (public per the WS0-locked route list)
+
+- [ ] **Step 1: Write the failing test first** — `apps/web/__tests__/app/signup-form.test.tsx`
+
+```tsx
+// @vitest-environment jsdom
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+
+const push = vi.fn();
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
+vi.mock("@/lib/firebase/client", () => ({ firebaseAuth: {} }));
+vi.mock("firebase/auth", () => ({
+  createUserWithEmailAndPassword: vi.fn(),
+  signInWithPopup: vi.fn(),
+  GoogleAuthProvider: vi.fn(),
+}));
+vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true }));
+
+import { createUserWithEmailAndPassword } from "firebase/auth";
+import { SignupForm } from "@/components/app/auth/signup-form";
+
+beforeEach(() => vi.clearAllMocks());
+
+describe("SignupForm", () => {
+  it("creates the account, sets the session cookie, and redirects to /app/leads", async () => {
+    vi.mocked(createUserWithEmailAndPassword).mockResolvedValue({
+      user: { getIdToken: vi.fn().mockResolvedValue("id-token-456") },
+    } as never);
+
+    render(<SignupForm />);
+    await userEvent.type(screen.getByLabelText("Email"), "new@example.com");
+    await userEvent.type(screen.getByLabelText("Password"), "hunter2!!");
+    await userEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/app/leads"));
+    expect(fetch).toHaveBeenCalledWith("/api/login", {
+      method: "POST",
+      headers: { Authorization: "Bearer id-token-456" },
+    });
+  });
+
+  it("shows an inline error when the email is already registered", async () => {
+    vi.mocked(createUserWithEmailAndPassword).mockRejectedValue({ code: "auth/email-already-in-use" });
+
+    render(<SignupForm />);
+    await userEvent.type(screen.getByLabelText("Email"), "new@example.com");
+    await userEvent.type(screen.getByLabelText("Password"), "hunter2!!");
+    await userEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+    expect(await screen.findByText("An account with this email already exists.")).toBeInTheDocument();
+    expect(push).not.toHaveBeenCalled();
+  });
+});
+```
+
+Run: `cd apps/web && pnpm vitest run __tests__/app/signup-form.test.tsx` — Expected: FAIL (module not found).
+
+- [ ] **Step 2: Implement `signup-form.tsx`**
+
+```tsx
+// components/app/auth/signup-form.tsx
+"use client";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { GoogleAuthProvider, createUserWithEmailAndPassword, signInWithPopup } from "firebase/auth";
+import { firebaseAuth } from "@/lib/firebase/client";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+
+const ERROR_MESSAGES: Record<string, string> = {
+  "auth/email-already-in-use": "An account with this email already exists.",
+  "auth/weak-password": "Choose a password with at least 6 characters.",
+  "auth/invalid-email": "Enter a valid email address.",
+  "auth/network-request-failed": "Network error — check your connection and try again.",
+};
+
+function messageFor(code: string): string {
+  return ERROR_MESSAGES[code] ?? "Something went wrong. Please try again.";
+}
+
+async function completeSignIn(idToken: string, router: ReturnType<typeof useRouter>) {
+  await fetch("/api/login", { method: "POST", headers: { Authorization: `Bearer ${idToken}` } });
+  router.push("/app/leads");
+}
+
+export function SignupForm() {
+  const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    try {
+      const credential = await createUserWithEmailAndPassword(firebaseAuth, email, password);
+      await completeSignIn(await credential.user.getIdToken(), router);
+    } catch (err) {
+      setError(messageFor((err as { code?: string }).code ?? ""));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleGoogle() {
+    setError(null);
+    try {
+      const credential = await signInWithPopup(firebaseAuth, new GoogleAuthProvider());
+      await completeSignIn(await credential.user.getIdToken(), router);
+    } catch (err) {
+      setError(messageFor((err as { code?: string }).code ?? ""));
+    }
+  }
+
+  return (
+    <Card className="w-full max-w-sm">
+      <CardHeader><CardTitle className="text-xl">Create your PermitTorch account</CardTitle></CardHeader>
+      <CardContent className="space-y-4">
+        <form className="space-y-4" onSubmit={handleSubmit}>
+          <div className="space-y-1.5">
+            <Label htmlFor="email">Email</Label>
+            <Input id="email" type="email" required autoComplete="email"
+              value={email} onChange={(e) => setEmail(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="password">Password</Label>
+            <Input id="password" type="password" required autoComplete="new-password"
+              value={password} onChange={(e) => setPassword(e.target.value)} />
+          </div>
+          {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+          <Button type="submit" disabled={submitting} className="w-full bg-orange-500 hover:bg-orange-600">
+            Create account
+          </Button>
+        </form>
+        <Button type="button" variant="outline" className="w-full" onClick={handleGoogle}>
+          Continue with Google
+        </Button>
+        <p className="text-center text-sm text-gray-500">
+          Already have an account? <a href="/login" className="font-medium text-orange-600 hover:underline">Sign in</a>
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+```
+
+- [ ] **Step 3: Implement the route** — `apps/web/app/(auth)/signup/page.tsx`
+
+```tsx
+import type { Metadata } from "next";
+import { SignupForm } from "@/components/app/auth/signup-form";
+
+export const metadata: Metadata = { title: "Sign up · PermitTorch" };
+
+export default function SignupPage() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-gray-50 p-6">
+      <SignupForm />
+    </div>
+  );
+}
+```
+
+- [ ] **Step 4: Run tests + type check to verify pass**
+
+```bash
+cd apps/web && pnpm vitest run __tests__/app/signup-form.test.tsx && pnpm tsc --noEmit
+```
+
+Expected: PASS.
+
+- [ ] **Step 5: Visual verify**
+
+Run: `cd apps/web && NEXT_PUBLIC_API_MOCK=1 pnpm dev`, open `http://localhost:3000/signup`.
+Check: same card styling as `/login`; creating an account with an already-registered email shows the inline error; successful signup redirects to `/app/leads`.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add "apps/web/app/(auth)/signup" apps/web/components/app/auth/signup-form.tsx apps/web/__tests__/app/signup-form.test.tsx
+git commit -m "Add Firebase email/password and Google signup page"
+```
+
+---
+
+### Task 17: Final verification pass
 
 **Files:**
 - Modify: none expected (fix-ups only if verification fails)
@@ -3584,12 +4045,12 @@ git commit -m "Add role-gated admin pages for sources, runs, users, and subscrip
 - [ ] **Step 1: Run the full owned test suite**
 
 Run: `cd apps/web && pnpm vitest run __tests__/app`
-Expected: all test files pass (fixtures, format, score-badge, leads-query, filter-bar, lead-table, signal-list, saved-list, sidebar, admin-gate). Fix any failure before proceeding — use superpowers:systematic-debugging, not guesswork.
+Expected: all test files pass (fixtures, format, score-badge, leads-query, filter-bar, lead-table, signal-list, saved-list, sidebar, admin-gate, login-form, signup-form). Fix any failure before proceeding — use superpowers:systematic-debugging, not guesswork.
 
 - [ ] **Step 2: Type check and production build**
 
 Run: `cd apps/web && pnpm tsc --noEmit && NEXT_PUBLIC_API_MOCK=1 pnpm build`
-Expected: zero type errors; build succeeds (dynamic `/app` routes are fine — they render per-request with Clerk auth).
+Expected: zero type errors; build succeeds (dynamic `/app` routes are fine — they render per-request with Firebase Auth).
 
 - [ ] **Step 3: Full visual walkthrough** (`cd apps/web && NEXT_PUBLIC_API_MOCK=1 pnpm dev`)
 
@@ -3601,11 +4062,13 @@ Expected: zero type errors; build succeeds (dynamic `/app` routes are fine — t
 - [ ] `/app/account` — profile, plan card, entitled markets, disabled billing buttons with tooltip
 - [ ] `/app/markets` — counts, view-leads links, locked-card upgrade CTA
 - [ ] `/app/admin/*` — four pages render; MEMBER fixture redirect spot-check (revert after)
+- [ ] `/login` — email/password sign-in, Google button, forgot-password flow, inline error on bad credentials
+- [ ] `/signup` — account creation, Google button, inline error on duplicate email
 - [ ] No console errors in the browser during the walkthrough
 
 - [ ] **Step 4: Confirm no files outside WS4 ownership changed**
 
-Run: `git diff --name-only main...ws/dashboard | grep -Ev '^apps/web/(app/app/|components/app/|lib/fixtures/|__tests__/app/)'`
+Run: `git diff --name-only main...ws/dashboard | grep -Ev '^apps/web/(app/app/|app/\(auth\)/|components/app/|lib/fixtures/|__tests__/app/)'`
 Expected: empty output (the `markets.ts` stub, if created, IS inside `lib/fixtures/` and is acceptable; anything else must be reverted).
 
 - [ ] **Step 5: Commit any verification fix-ups**

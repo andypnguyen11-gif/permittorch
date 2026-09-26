@@ -17,7 +17,7 @@ This document describes the technical architecture for the PermitTorch MVP: a le
 | Backend | ASP.NET Core Web API (C#) | Long-term home for the data pipeline and domain logic |
 | Database | PostgreSQL (single instance) | Handles OLTP + search + aggregates for MVP; no Redis/Elasticsearch initially |
 | Data collection | Apify actors (separate repo) | Existing scraper; isolated behind a provider abstraction |
-| Auth | Clerk | Not a competitive advantage — buy, don't build |
+| Auth | Firebase Auth | Not a competitive advantage — buy, don't build |
 | Billing | Stripe Billing | Subscriptions, trials, customer portal, webhooks |
 | Email | Resend | Digest + transactional email |
 | Observability | Sentry (errors) + PostHog (product analytics) | Minimum viable observability |
@@ -33,7 +33,7 @@ flowchart LR
     subgraph External["External Systems"]
         MP[Municipal Permit Portals]
         APIFY[Apify Platform<br/>scraper actors — separate repo]
-        CLERK[Clerk<br/>authentication]
+        FIREBASE[Firebase Auth<br/>authentication]
         STRIPE[Stripe<br/>billing]
         RESEND[Resend<br/>email delivery]
     end
@@ -54,8 +54,8 @@ flowchart LR
     APIFY -->|datasets via Actor API / webhook| API
     API --> DB
     WEB -->|REST + JWT| API
-    WEB <--> CLERK
-    API -->|verify JWT| CLERK
+    WEB <--> FIREBASE
+    API -->|verify ID token| FIREBASE
     STRIPE -->|webhooks| API
     WEB -->|checkout / portal| STRIPE
     API -->|digests, transactional| RESEND
@@ -112,7 +112,7 @@ Two surfaces in one app:
 | Authenticated app | `/app/leads`, `/app/leads/[id]`, `/app/saved`, `/app/alerts`, `/app/account` | Server components + client interactivity |
 | Admin | `/app/admin/sources`, `/app/admin/runs`, `/app/admin/users`, `/app/admin/subscriptions` | Role-gated (server-side check, never UI-only) |
 
-The web app holds **no domain logic**. It authenticates via Clerk, calls the API with the session JWT, and renders. SEO city pages fetch pre-computed aggregates from the API — they only exist for markets with real data (PRD §24).
+The web app holds **no domain logic**. It authenticates via Firebase Auth, calls the API with the session JWT, and renders. SEO city pages fetch pre-computed aggregates from the API — they only exist for markets with real data (PRD §24).
 
 ### 4.2 ASP.NET Core API (`apps/api`)
 
@@ -129,7 +129,7 @@ PermitTorch.Api/
     EmailDigests/     # digest generation and preferences
     Admin/            # source health, scraper runs, manual overrides
   Domain/             # Permit, FireOpportunity, LeadSignal, scoring engine
-  Infrastructure/     # IPermitSourceProvider, ApifyPermitProvider, Clerk JWT validation, Resend client
+  Infrastructure/     # IPermitSourceProvider, ApifyPermitProvider, Firebase ID-token validation, Resend client
   Jobs/               # ingestion, health checks, digest sender, stale-record expiry
   Data/               # EF Core DbContext, migrations
 ```
@@ -170,7 +170,7 @@ Search uses Postgres indexes, `ILIKE`, and full-text search when needed. No Elas
 sequenceDiagram
     participant U as User (browser)
     participant W as Next.js (Railway)
-    participant C as Clerk
+    participant C as Firebase Auth
     participant A as ASP.NET Core API
     participant P as PostgreSQL
 
@@ -178,7 +178,7 @@ sequenceDiagram
     W->>C: Verify session
     C-->>W: Session + JWT
     W->>A: GET /api/leads (Bearer JWT, filters)
-    A->>A: Validate JWT (Clerk JWKS)
+    A->>A: Validate ID token (Firebase issuer/audience)
     A->>P: Load user → org → subscription → entitled markets
     A->>P: Query fire_opportunities scoped to entitled markets
     P-->>A: Scored leads + signals
@@ -239,7 +239,7 @@ Data reliability is the #1 technical risk (PRD §60), so monitoring is an MVP fe
 | Concern | Approach |
 | --- | --- |
 | Transport | HTTPS everywhere (Railway default) |
-| Authentication | Clerk; API validates JWTs against Clerk JWKS |
+| Authentication | Firebase Auth; API validates ID tokens against Firebase issuer/audience |
 | Authorization | Server-side, role-based; market entitlements enforced in queries; admin routes require admin role |
 | SQL injection | EF Core parameterized queries only — no string-built SQL |
 | Stripe webhooks | Signature verification on every event before processing |

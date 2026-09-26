@@ -4,9 +4,9 @@
 
 **Goal:** Take the four parallel workstream branches (ws/pipeline, ws/api, ws/marketing, ws/dashboard), merge them serially into `main` with a full verification gate after each merge, wire the web app to the real API (mock off), seed local data, instrument analytics and error reporting, prove every critical flow with Playwright E2E against the real local stack, and deploy the whole system to Railway (API + web + Postgres) with a production checklist. This workstream is SERIAL and runs last — it owns `main` and may touch any file.
 
-**Architecture:** Modular monolith per Architecture.md — Next.js web (marketing + dashboard) calls the ASP.NET Core API with a Clerk JWT; the API enforces market entitlement in queries against a single PostgreSQL database. WS5 adds no new architecture; it adds the connective tissue: seed data, env plumbing, docker-compose Postgres for local dev, PostHog/Sentry instrumentation, a Playwright suite at `e2e/`, Dockerfiles for both apps, and Railway project wiring (two Docker services + Postgres in one project, private networking to the DB, public domains for browser traffic).
+**Architecture:** Modular monolith per Architecture.md — Next.js web (marketing + dashboard) calls the ASP.NET Core API with a Firebase ID token; the API enforces market entitlement in queries against a single PostgreSQL database. WS5 adds no new architecture; it adds the connective tissue: seed data, env plumbing, docker-compose Postgres for local dev, PostHog/Sentry instrumentation, a Playwright suite at `e2e/`, Dockerfiles for both apps, and Railway project wiring (two Docker services + Postgres in one project, private networking to the DB, public domains for browser traffic).
 
-**Tech Stack:** .NET 10 / ASP.NET Core minimal APIs / EF Core 10 / Npgsql / xUnit · Next.js 15+ App Router / TypeScript strict / Tailwind / shadcn/ui / Vitest · Node 22 / pnpm workspaces · Playwright + @clerk/testing · PostgreSQL 16 (docker-compose locally, Railway managed in prod) · Clerk · Stripe (+ Stripe CLI) · Resend · Sentry (`Sentry.AspNetCore`, `@sentry/nextjs`) · PostHog (`posthog-js`) · Railway (primary deploy for API **and** web) · Vercel (documented alternative for web only).
+**Tech Stack:** .NET 10 / ASP.NET Core minimal APIs / EF Core 10 / Npgsql / xUnit · Next.js 15+ App Router / TypeScript strict / Tailwind / shadcn/ui / Vitest · Node 22 / pnpm workspaces · Playwright · PostgreSQL 16 (docker-compose locally, Railway managed in prod) · Firebase Auth (`firebase`, `next-firebase-auth-edge`, `firebase-admin`) · Stripe (+ Stripe CLI) · Resend · Sentry (`Sentry.AspNetCore`, `@sentry/nextjs`) · PostHog (`posthog-js`) · Railway (primary deploy for API **and** web) · Vercel (documented alternative for web only).
 
 **Spec:** `/Users/andynguyen/Desktop/Permit Torch/docs/superpowers/plans/2026-08-19-permittorch-mvp/00-overview-and-contracts.md` (LOCKED contracts — §1 merge order, §6 API contract, §8 client, §9 env vars) · `/Users/andynguyen/Desktop/Permit Torch/Architecture.md` (§2 hosting, §5 auth flow, §8 security) · `/Users/andynguyen/Desktop/Permit Torch/Prd.md` (§41 hosting, §48–49 observability/analytics, §80–81 phases) · `/Users/andynguyen/Desktop/Permit Torch/CLAUDE.md` · `/Users/andynguyen/Desktop/Permit Torch/Tasks.md`
 
@@ -141,7 +141,7 @@ WS5-specific rules:
 ## Task 6: Local Postgres via docker-compose and env plumbing
 
 **Files:** `docker-compose.yml` (create, repo root), `.env.example` (create or extend, repo root), `.env` (create locally, git-ignored), `apps/web/.env.local` (create locally, git-ignored), `.gitignore` (verify `.env` and `.env.local` entries).
-**Interfaces:** env var names per master §9 plus WS5 additions: `CLERK_SUPERADMIN_USER_ID`, `CLERK_SUPERADMIN_EMAIL`, `E2E_ENTITLED_CLERK_USER_ID`, `E2E_ENTITLED_EMAIL`, `E2E_UNENTITLED_CLERK_USER_ID`, `E2E_UNENTITLED_EMAIL`, `E2E_USER_PASSWORD`, `RUN_MIGRATIONS_ON_STARTUP`, `WEB_ORIGIN`, `NEXT_PUBLIC_SENTRY_DSN`.
+**Interfaces:** env var names per master §9 plus WS5 additions: `SUPERADMIN_FIREBASE_UID`, `SUPERADMIN_EMAIL`, `E2E_ENTITLED_FIREBASE_UID`, `E2E_ENTITLED_EMAIL`, `E2E_UNENTITLED_FIREBASE_UID`, `E2E_UNENTITLED_EMAIL`, `E2E_USER_PASSWORD`, `RUN_MIGRATIONS_ON_STARTUP`, `WEB_ORIGIN`, `NEXT_PUBLIC_SENTRY_DSN`.
 
 - [ ] Create `docker-compose.yml` at repo root:
   ```yaml
@@ -177,9 +177,7 @@ WS5-specific rules:
   DATABASE_URL=postgresql://permittorch:permittorch@localhost:5432/permittorch
   APIFY_TOKEN=                                   # leave empty locally -> seeder inserts sample permits
   APIFY_TASK_ID=xatpyth2FgbUydjLd                # scrapelabmax/permittorch-daily (master §10)
-  CLERK_SECRET_KEY=sk_test_replace
-  CLERK_JWKS_URL=https://your-subdomain.clerk.accounts.dev/.well-known/jwks.json
-  CLERK_ISSUER=https://your-subdomain.clerk.accounts.dev
+  FIREBASE_PROJECT_ID=permittorch-dev
   STRIPE_SECRET_KEY=sk_test_replace
   STRIPE_WEBHOOK_SECRET=whsec_replace
   STRIPE_PRICE_STARTER=price_replace
@@ -191,23 +189,29 @@ WS5-specific rules:
   WEB_ORIGIN=http://localhost:3000               # CORS allow-origin + Stripe redirect base
   RUN_MIGRATIONS_ON_STARTUP=true
   ASPNETCORE_URLS=http://localhost:5000
-  # --- Seeder / E2E identities (Clerk user IDs, user_...) ---
-  CLERK_SUPERADMIN_USER_ID=
-  CLERK_SUPERADMIN_EMAIL=e2e-admin+clerk_test@permittorch.dev
-  E2E_ENTITLED_CLERK_USER_ID=
-  E2E_ENTITLED_EMAIL=e2e-entitled+clerk_test@permittorch.dev
-  E2E_UNENTITLED_CLERK_USER_ID=
-  E2E_UNENTITLED_EMAIL=e2e-unentitled+clerk_test@permittorch.dev
+  # --- Seeder / E2E identities (Firebase Auth uids) ---
+  SUPERADMIN_FIREBASE_UID=
+  SUPERADMIN_EMAIL=e2e-admin@permittorch.dev
+  E2E_ENTITLED_FIREBASE_UID=
+  E2E_ENTITLED_EMAIL=e2e-entitled@permittorch.dev
+  E2E_UNENTITLED_FIREBASE_UID=
+  E2E_UNENTITLED_EMAIL=e2e-unentitled@permittorch.dev
   E2E_USER_PASSWORD=
-  # --- Web (apps/web/.env.local mirrors the NEXT_PUBLIC_* + CLERK_SECRET_KEY subset) ---
+  # --- Web (apps/web/.env.local mirrors the NEXT_PUBLIC_* + server Firebase subset) ---
   NEXT_PUBLIC_API_URL=http://localhost:5000
   NEXT_PUBLIC_API_MOCK=                          # UNSET from WS5 onward (real API)
-  NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_replace
-  CLERK_PUBLISHABLE_KEY=pk_test_replace          # same value; read by @clerk/testing
+  NEXT_PUBLIC_FIREBASE_API_KEY=replace
+  NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=permittorch-dev.firebaseapp.com
+  NEXT_PUBLIC_FIREBASE_PROJECT_ID=permittorch-dev
+  NEXT_PUBLIC_FIREBASE_APP_ID=replace
+  FIREBASE_CLIENT_EMAIL=replace
+  FIREBASE_PRIVATE_KEY=replace                   # paste with literal \n sequences
+  AUTH_COOKIE_SIGNATURE_KEY_CURRENT=replace       # openssl rand -base64 48
+  AUTH_COOKIE_SIGNATURE_KEY_PREVIOUS=replace      # openssl rand -base64 48
   NEXT_PUBLIC_POSTHOG_KEY=
   NEXT_PUBLIC_SENTRY_DSN=
   ```
-- [ ] `cp .env.example .env` (fill real values as Task 7 produces them) and create `apps/web/.env.local` containing exactly: `NEXT_PUBLIC_API_URL=http://localhost:5000`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=<pk_test_…>`, `CLERK_SECRET_KEY=<sk_test_…>`, `NEXT_PUBLIC_POSTHOG_KEY=<phc_…>`, `NEXT_PUBLIC_SENTRY_DSN=<dsn>` — and **no** `NEXT_PUBLIC_API_MOCK` line (mock is now permanently off for local dev).
+- [ ] `cp .env.example .env` (fill real values as Task 7 produces them) and create `apps/web/.env.local` containing exactly: `NEXT_PUBLIC_API_URL=http://localhost:5000`, `NEXT_PUBLIC_FIREBASE_API_KEY=<…>`, `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=<…>`, `NEXT_PUBLIC_FIREBASE_PROJECT_ID=<…>`, `NEXT_PUBLIC_FIREBASE_APP_ID=<…>`, `FIREBASE_PROJECT_ID=<…>`, `FIREBASE_CLIENT_EMAIL=<…>`, `FIREBASE_PRIVATE_KEY=<…>`, `AUTH_COOKIE_SIGNATURE_KEY_CURRENT=<…>`, `AUTH_COOKIE_SIGNATURE_KEY_PREVIOUS=<…>`, `NEXT_PUBLIC_POSTHOG_KEY=<phc_…>`, `NEXT_PUBLIC_SENTRY_DSN=<dsn>` — and **no** `NEXT_PUBLIC_API_MOCK` line (mock is now permanently off for local dev).
 - [ ] Verify `.gitignore` covers `.env` and `.env.local` (`grep -n "^\.env" .gitignore apps/web/.gitignore 2>/dev/null`); add entries if missing.
 - [ ] Commit: `git add docker-compose.yml .env.example .gitignore && git commit -m "Add local Postgres compose file and environment template"`.
 - [ ] Convention for every later step that runs the API or a script needing secrets: load the env file with
@@ -216,16 +220,13 @@ WS5-specific rules:
   ```
   (referred to below as **LOAD ENV**).
 
-## Task 7: HUMAN — third-party service setup (Clerk, Stripe, Resend, Sentry, PostHog)
+## Task 7: HUMAN — third-party service setup (Firebase, Stripe, Resend, Sentry, PostHog)
 
 **Files:** none in repo — values land in `.env` and `apps/web/.env.local`.
-**Interfaces:** produces every credential in master §9. Clerk dev-instance value formats: `CLERK_ISSUER = https://<subdomain>.clerk.accounts.dev` and `CLERK_JWKS_URL = https://<subdomain>.clerk.accounts.dev/.well-known/jwks.json`, where `<subdomain>` is shown as the "Frontend API URL" in the Clerk dashboard (it is also recoverable by base64-decoding the tail of the `pk_test_…` key). Production Clerk instances instead use `https://clerk.<your-domain>`.
+**Interfaces:** produces every credential in master §9.
 
-- [ ] **HUMAN:** Create the Clerk application. Go to https://dashboard.clerk.com → **Create application** → name `PermitTorch` → enable **Email** sign-in with **Password** (and keep email verification code on). On the **Configure → API keys** page copy: Publishable key (`pk_test_…`) → `.env` `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` + `CLERK_PUBLISHABLE_KEY` + `apps/web/.env.local`; Secret key (`sk_test_…`) → `.env` `CLERK_SECRET_KEY` + `apps/web/.env.local`; the **Frontend API URL** (e.g. `https://relaxed-mole-42.clerk.accounts.dev`) → set `CLERK_ISSUER` to that URL and `CLERK_JWKS_URL` to that URL + `/.well-known/jwks.json`.
-- [ ] **HUMAN:** In Clerk dashboard → **Users** → **Create user**, create three users, all with the SAME password you invent and store in `.env` `E2E_USER_PASSWORD` (Clerk treats `+clerk_test` addresses as test users; OTP is always 424242):
-  1. `e2e-admin+clerk_test@permittorch.dev` → open the created user, copy its User ID (`user_…`) → `.env` `CLERK_SUPERADMIN_USER_ID`.
-  2. `e2e-entitled+clerk_test@permittorch.dev` → copy ID → `E2E_ENTITLED_CLERK_USER_ID`.
-  3. `e2e-unentitled+clerk_test@permittorch.dev` → copy ID → `E2E_UNENTITLED_CLERK_USER_ID`.
+- [ ] **HUMAN:** Firebase project setup. Go to https://console.firebase.google.com → create (or reuse) a project named `PermitTorch` → **Build → Authentication → Get started → Sign-in method** → enable **Email/Password** and **Google**. Under **Project settings → General → Your apps**, register a **Web app** and copy the config values into `.env` and `apps/web/.env.local`: `apiKey` → `NEXT_PUBLIC_FIREBASE_API_KEY`, `authDomain` → `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`, `projectId` → `NEXT_PUBLIC_FIREBASE_PROJECT_ID` (and `.env`'s `FIREBASE_PROJECT_ID`), `appId` → `NEXT_PUBLIC_FIREBASE_APP_ID`. Under **Project settings → Service accounts → Generate new private key**, download the JSON and copy `client_email` → `FIREBASE_CLIENT_EMAIL` and `private_key` → `FIREBASE_PRIVATE_KEY` (paste the key with its literal `\n` sequences intact, quoted). Generate the two cookie signature keys with `openssl rand -base64 48` (run it twice) → `.env` `AUTH_COOKIE_SIGNATURE_KEY_CURRENT` and `AUTH_COOKIE_SIGNATURE_KEY_PREVIOUS`.
+- [ ] **HUMAN:** Invent and store the shared E2E password in `.env` `E2E_USER_PASSWORD`. Then run the user-creation script this workstream adds (`node e2e/scripts/create-users.mjs`, see Task 11) with `.env` loaded (LOAD ENV) — it creates three Firebase users (`e2e-admin@permittorch.dev`, `e2e-entitled@permittorch.dev`, `e2e-unentitled@permittorch.dev`) via `firebase-admin` and prints their uids. Paste the printed uids into `.env`: `SUPERADMIN_FIREBASE_UID`, `E2E_ENTITLED_FIREBASE_UID`, `E2E_UNENTITLED_FIREBASE_UID` (`SUPERADMIN_EMAIL`, `E2E_ENTITLED_EMAIL`, `E2E_UNENTITLED_EMAIL` are already set to the plain addresses above).
 - [ ] **HUMAN:** Stripe test-mode products. Go to https://dashboard.stripe.com (toggle **Test mode** ON) → **Product catalog** → **Add product** three times: `PermitTorch Starter` recurring monthly USD $49.00; `PermitTorch Pro` $129.00; `PermitTorch Territory` $249.00. Open each product's price and copy the `price_…` ID → `.env` `STRIPE_PRICE_STARTER` / `STRIPE_PRICE_PRO` / `STRIPE_PRICE_TERRITORY`. From **Developers → API keys** copy the test Secret key (`sk_test_…`) → `STRIPE_SECRET_KEY`.
 - [ ] **HUMAN:** Stripe CLI for local webhooks. Install (`brew install stripe/stripe-cli/stripe`), run `stripe login` (opens browser, confirm pairing), then in a dedicated terminal that stays open during local dev and E2E:
   ```bash
@@ -403,19 +404,19 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
 
       private static async Task UpsertSuperAdminAsync(AppDbContext db, IConfiguration config, CancellationToken ct)
       {
-          var clerkId = config["CLERK_SUPERADMIN_USER_ID"];
-          if (string.IsNullOrWhiteSpace(clerkId))
+          var firebaseUid = config["SUPERADMIN_FIREBASE_UID"];
+          if (string.IsNullOrWhiteSpace(firebaseUid))
           {
-              Console.WriteLine("WARN: CLERK_SUPERADMIN_USER_ID not set - skipping SuperAdmin seed.");
+              Console.WriteLine("WARN: SUPERADMIN_FIREBASE_UID not set - skipping SuperAdmin seed.");
               return;
           }
-          var email = config["CLERK_SUPERADMIN_EMAIL"] ?? "admin@permittorch.dev";
-          if (await db.AppUsers.AnyAsync(u => u.ClerkUserId == clerkId, ct)) return;
+          var email = config["SUPERADMIN_EMAIL"] ?? "admin@permittorch.dev";
+          if (await db.AppUsers.AnyAsync(u => u.FirebaseUid == firebaseUid, ct)) return;
           var org = new Organization { Id = Guid.NewGuid(), Name = "PermitTorch (Internal)" };
           db.Organizations.Add(org);
           db.AppUsers.Add(new AppUser
           {
-              Id = Guid.NewGuid(), ClerkUserId = clerkId, Email = email,
+              Id = Guid.NewGuid(), FirebaseUid = firebaseUid, Email = email,
               OrganizationId = org.Id, Role = UserRole.SuperAdmin,
           });
       }
@@ -424,16 +425,16 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
           AppDbContext db, Dictionary<string, Market> markets, IConfiguration config, CancellationToken ct)
       {
           // Entitled org: active Pro subscription on austin-tx only.
-          var entitledId = config["E2E_ENTITLED_CLERK_USER_ID"];
+          var entitledId = config["E2E_ENTITLED_FIREBASE_UID"];
           if (!string.IsNullOrWhiteSpace(entitledId) &&
-              !await db.AppUsers.AnyAsync(u => u.ClerkUserId == entitledId, ct))
+              !await db.AppUsers.AnyAsync(u => u.FirebaseUid == entitledId, ct))
           {
               var org = new Organization { Id = Guid.NewGuid(), Name = "Acme Fire Protection" };
               db.Organizations.Add(org);
               db.AppUsers.Add(new AppUser
               {
-                  Id = Guid.NewGuid(), ClerkUserId = entitledId,
-                  Email = config["E2E_ENTITLED_EMAIL"] ?? "e2e-entitled+clerk_test@permittorch.dev",
+                  Id = Guid.NewGuid(), FirebaseUid = entitledId,
+                  Email = config["E2E_ENTITLED_EMAIL"] ?? "e2e-entitled@permittorch.dev",
                   OrganizationId = org.Id, Role = UserRole.Member,
               });
               var sub = new Subscription
@@ -450,16 +451,16 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
           }
 
           // Unentitled org: user exists, NO subscription row.
-          var unentitledId = config["E2E_UNENTITLED_CLERK_USER_ID"];
+          var unentitledId = config["E2E_UNENTITLED_FIREBASE_UID"];
           if (!string.IsNullOrWhiteSpace(unentitledId) &&
-              !await db.AppUsers.AnyAsync(u => u.ClerkUserId == unentitledId, ct))
+              !await db.AppUsers.AnyAsync(u => u.FirebaseUid == unentitledId, ct))
           {
               var org = new Organization { Id = Guid.NewGuid(), Name = "NoPlan Fire Co" };
               db.Organizations.Add(org);
               db.AppUsers.Add(new AppUser
               {
-                  Id = Guid.NewGuid(), ClerkUserId = unentitledId,
-                  Email = config["E2E_UNENTITLED_EMAIL"] ?? "e2e-unentitled+clerk_test@permittorch.dev",
+                  Id = Guid.NewGuid(), FirebaseUid = unentitledId,
+                  Email = config["E2E_UNENTITLED_EMAIL"] ?? "e2e-unentitled@permittorch.dev",
                   OrganizationId = org.Id, Role = UserRole.Member,
               });
           }
@@ -638,17 +639,17 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
 - [ ] Verify CORS: `curl -s -i -X OPTIONS http://localhost:5000/api/leads -H "Origin: http://localhost:3000" -H "Access-Control-Request-Method: GET" | grep -i access-control` → expect `Access-Control-Allow-Origin: http://localhost:3000`. If absent, add to Program.cs (before `builder.Build()`): `builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.WithOrigins(Environment.GetEnvironmentVariable("WEB_ORIGIN") ?? "http://localhost:3000").AllowAnyHeader().AllowAnyMethod()));` and `app.UseCors();` after build; commit `Allow web origin via CORS policy driven by WEB_ORIGIN`.
 - [ ] Start the web app with mock OFF (terminal 2): `pnpm --dir apps/web dev` → expect Next.js ready on `http://localhost:3000`. Confirm no `NEXT_PUBLIC_API_MOCK` in `apps/web/.env.local`.
 - [ ] Verify unauthenticated market data flows from the real API: `curl -s http://localhost:5000/api/markets` → expect JSON array of 31 markets including slugs `austin-tx`, `san-antonio-tx`, `fort-worth-tx`. Open `http://localhost:3000/locations/texas/austin` in a browser → expect real aggregate numbers (from `/api/markets/austin-tx/stats`), not fixture numbers.
-- [ ] Verify the full auth flow end-to-end (Architecture §5): in the browser, log in at `http://localhost:3000/login` as `e2e-entitled+clerk_test@permittorch.dev` (password = `E2E_USER_PASSWORD`), land on `/app/leads` → expect the seeded Austin leads table (scores 94, 90, 88, …) and an "Updated … ago" freshness line. This proves: Clerk session → JWT minted with issuer `https://<subdomain>.clerk.accounts.dev` → API validates against `CLERK_JWKS_URL` → entitlement query returns austin-tx rows only.
-- [ ] Verify entitlement scoping at the API layer directly. In the browser devtools console on `/app/leads` run `await window.Clerk.session.getToken()` and copy the JWT, then:
+- [ ] Verify the full auth flow end-to-end (Architecture §5): in the browser, log in at `http://localhost:3000/login` as `e2e-entitled@permittorch.dev` (password = `E2E_USER_PASSWORD`), land on `/app/leads` → expect the seeded Austin leads table (scores 94, 90, 88, …) and an "Updated … ago" freshness line. This proves: Firebase sign-in → ID token minted with issuer `https://securetoken.google.com/{FIREBASE_PROJECT_ID}` → `/api/login` sets the `AuthToken` session cookie → API validates the bearer ID token's issuer/audience against `FIREBASE_PROJECT_ID` → entitlement query returns austin-tx rows only.
+- [ ] Verify entitlement scoping at the API layer directly. Getting a raw bearer token from the running browser session isn't reliable via devtools console (the Firebase client instance isn't reliably reachable from global scope), so instead: on `/app/leads`, open devtools **Network** tab, find any `/api/leads` request, and copy its `Authorization` request header value, then:
   ```bash
-  TOKEN="<paste>"
+  TOKEN="<paste, without the leading 'Bearer '>"
   curl -s "http://localhost:5000/api/leads?page=1&pageSize=25" -H "Authorization: Bearer $TOKEN" | head -c 600
   # → expect: items[] containing only city "Austin" leads, total 7, freshness.lastUpdatedAt non-null
   curl -s -o /dev/null -w "%{http_code}\n" \
     "http://localhost:5000/api/leads/00000000-0000-4000-8000-000000000201" -H "Authorization: Bearer $TOKEN"
   # → expect: 404   (San Antonio lead is outside the entitled market)
   ```
-- [ ] Log in as `e2e-unentitled+clerk_test@permittorch.dev` → expect `/app/leads` to show the locked/empty no-subscription state (whatever WS4 built), never another org's data.
+- [ ] Log in as `e2e-unentitled@permittorch.dev` → expect `/app/leads` to show the locked/empty no-subscription state (whatever WS4 built), never another org's data.
 
 ## Task 10: Analytics wrapper, PostHog init, Sentry in both apps
 
@@ -695,9 +696,9 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
     initialized = true;
   }
 
-  export function identifyUser(clerkUserId: string, email?: string): void {
+  export function identifyUser(firebaseUid: string, email?: string): void {
     if (!initialized) return;
-    posthog.identify(clerkUserId, email ? { email } : undefined);
+    posthog.identify(firebaseUid, email ? { email } : undefined);
   }
 
   export function track<E extends AnalyticsEvent>(event: E, props: EventProps[E]): void {
@@ -710,23 +711,25 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
   "use client";
 
   import { useEffect } from "react";
-  import { useUser } from "@clerk/nextjs";
+  import { onAuthStateChanged } from "firebase/auth";
+  import { firebaseAuth } from "@/lib/firebase/client";
   import { initAnalytics, identifyUser } from "@/lib/analytics";
 
   export function AnalyticsProvider({ children }: { children: React.ReactNode }) {
-    const { user } = useUser();
     useEffect(() => {
       initAnalytics();
     }, []);
     useEffect(() => {
-      if (user) identifyUser(user.id, user.primaryEmailAddress?.emailAddress);
-    }, [user]);
+      return onAuthStateChanged(firebaseAuth, (user) => {
+        if (user) identifyUser(user.uid, user.email ?? undefined);
+      });
+    }, []);
     return <>{children}</>;
   }
   ```
-  Mount it in `apps/web/app/layout.tsx` inside the existing `<ClerkProvider>`, wrapping `{children}`. (Adjust the `@/` import alias to the project's tsconfig paths.)
+  Mount it in `apps/web/app/layout.tsx`, wrapping `{children}`. (Adjust the `@/` import alias to the project's tsconfig paths.)
 - [ ] Add the eight call sites — locate each component by grep (WS3/WS4 chose the filenames), add the import + one `track(...)` call:
-  1. `signup` — grep `signUp\|SignUp` under `apps/web/app/(marketing)/`; configure the signup flow's after-signup destination to `/app/leads?signup=1` (Clerk component prop `forceRedirectUrl` or env `NEXT_PUBLIC_CLERK_SIGN_UP_FORCE_REDIRECT_URL`), then in the `/app/leads` page's client shell fire `track("signup", {})` once when `searchParams` contains `signup=1` and strip the param with `router.replace`.
+  1. `signup` — grep `router.push` under `apps/web/app/(auth)/signup/`; after the signup page's `createUserWithEmailAndPassword` + `/api/login` flow succeeds, push to `/app/leads?signup=1` (instead of the plain `/app/leads` the login page uses), then in the `/app/leads` page's client shell fire `track("signup", {})` once when `searchParams` contains `signup=1` and strip the param with `router.replace`.
   2. `pricing_viewed` — `useEffect(() => { track("pricing_viewed", {}) }, [])` in a small client component rendered by `apps/web/app/(marketing)/pricing/page.tsx`.
   3. `lead_opened` — in the lead-detail client component (grep `getLead(` under `apps/web/app/app/leads/`): `track("lead_opened", { leadId, score, category })` on mount.
   4. `lead_saved` — in the save-button handler (grep `saveLead(` under `apps/web/components/app/`): after a successful save.
@@ -798,9 +801,9 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
   git add -A && git commit -m "Add PostHog analytics wrapper with typed events and Sentry error reporting in web and API"
   ```
 
-## Task 11: Playwright E2E scaffold with Clerk testing tokens
+## Task 11: Playwright E2E scaffold, driving the app's own `/login` form
 
-**Files:** `e2e/package.json` (create), `pnpm-workspace.yaml` (modify: add `e2e`), `e2e/playwright.config.ts` (create), `e2e/global-setup.ts` (create), `e2e/helpers/auth.ts` (create), `e2e/tests/` (dir), `e2e/.gitignore` (create: `test-results/`, `playwright-report/`).
+**Files:** `e2e/package.json` (create), `pnpm-workspace.yaml` (modify: add `e2e`), `e2e/playwright.config.ts` (create), `e2e/global-setup.ts` (create), `e2e/helpers/auth.ts` (create), `e2e/scripts/create-users.mjs` (create), `e2e/tests/` (dir), `e2e/.gitignore` (create: `test-results/`, `playwright-report/`).
 **Interfaces:** `signIn(page, USERS.entitled | USERS.unentitled | USERS.superadmin)` helper; deterministic seed IDs from Task 8; runner command `set -a; source .env; set +a; pnpm --dir e2e exec playwright test`.
 
 - [ ] Create `e2e/package.json`:
@@ -811,11 +814,46 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
     "scripts": { "test": "playwright test" },
     "devDependencies": {
       "@playwright/test": "^1.49.0",
-      "@clerk/testing": "^1.4.0"
+      "firebase-admin": "^13.0.0"
     }
   }
   ```
   Add `- e2e` to `pnpm-workspace.yaml`, then `pnpm install && pnpm --dir e2e exec playwright install chromium` → expect chromium download completes.
+- [ ] Create `e2e/scripts/create-users.mjs` (idempotent Firebase test-user provisioning, run once by Task 7's HUMAN step):
+  ```javascript
+  import { cert, initializeApp } from "firebase-admin/app";
+  import { getAuth } from "firebase-admin/auth";
+
+  const projectId = process.env.FIREBASE_PROJECT_ID;
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+  const privateKey = (process.env.FIREBASE_PRIVATE_KEY ?? "").replace(/\\n/g, "\n");
+  const password = process.env.E2E_USER_PASSWORD;
+
+  if (!projectId || !clientEmail || !privateKey || !password) {
+    console.error("Missing FIREBASE_PROJECT_ID / FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY / E2E_USER_PASSWORD");
+    process.exit(1);
+  }
+
+  initializeApp({ credential: cert({ projectId, clientEmail, privateKey }) });
+  const auth = getAuth();
+
+  const users = [
+    { label: "SUPERADMIN", email: "e2e-admin@permittorch.dev" },
+    { label: "E2E_ENTITLED", email: "e2e-entitled@permittorch.dev" },
+    { label: "E2E_UNENTITLED", email: "e2e-unentitled@permittorch.dev" },
+  ];
+
+  for (const { label, email } of users) {
+    let user;
+    try {
+      user = await auth.getUserByEmail(email);
+    } catch {
+      user = await auth.createUser({ email, password, emailVerified: true });
+    }
+    console.log(`${label}_FIREBASE_UID=${user.uid}`);
+  }
+  ```
+  Run it with the env file loaded: `set -a; source .env; set +a; node e2e/scripts/create-users.mjs` → paste the three printed `..._FIREBASE_UID=` lines into `.env` as `SUPERADMIN_FIREBASE_UID`, `E2E_ENTITLED_FIREBASE_UID`, `E2E_UNENTITLED_FIREBASE_UID`.
 - [ ] Create `e2e/playwright.config.ts`:
   ```typescript
   import { defineConfig } from "@playwright/test";
@@ -851,15 +889,13 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
   ```
 - [ ] Create `e2e/global-setup.ts`:
   ```typescript
-  import { clerkSetup } from "@clerk/testing/playwright";
-
   export default async function globalSetup() {
-    await clerkSetup(); // reads CLERK_PUBLISHABLE_KEY + CLERK_SECRET_KEY from env
+    // No global auth-provider setup needed: signIn() in helpers/auth.ts drives
+    // the app's own /login form directly for each test.
   }
   ```
 - [ ] Create `e2e/helpers/auth.ts`:
   ```typescript
-  import { clerk, setupClerkTestingToken } from "@clerk/testing/playwright";
   import type { Page } from "@playwright/test";
 
   export interface TestUser {
@@ -871,43 +907,36 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
 
   export const USERS = {
     entitled: {
-      email: process.env.E2E_ENTITLED_EMAIL ?? "e2e-entitled+clerk_test@permittorch.dev",
+      email: process.env.E2E_ENTITLED_EMAIL ?? "e2e-entitled@permittorch.dev",
       password,
     },
     unentitled: {
-      email: process.env.E2E_UNENTITLED_EMAIL ?? "e2e-unentitled+clerk_test@permittorch.dev",
+      email: process.env.E2E_UNENTITLED_EMAIL ?? "e2e-unentitled@permittorch.dev",
       password,
     },
     superadmin: {
-      email: process.env.CLERK_SUPERADMIN_EMAIL ?? "e2e-admin+clerk_test@permittorch.dev",
+      email: process.env.SUPERADMIN_EMAIL ?? "e2e-admin@permittorch.dev",
       password,
     },
   } satisfies Record<string, TestUser>;
 
   export async function signIn(page: Page, user: TestUser): Promise<void> {
-    await setupClerkTestingToken({ page });
-    await page.goto("/");
-    await clerk.signIn({
-      page,
-      signInParams: { strategy: "password", identifier: user.email, password: user.password },
-    });
-  }
-
-  export async function getApiToken(page: Page): Promise<string> {
-    return page.evaluate(async () => {
-      // @ts-expect-error Clerk is attached to window by @clerk/nextjs
-      return (await window.Clerk.session.getToken()) as string;
-    });
+    await page.goto("/login");
+    await page.getByLabel(/email/i).fill(user.email);
+    await page.getByLabel(/password/i).fill(user.password);
+    await page.getByRole("button", { name: /sign in/i }).click();
+    await page.waitForURL("/app/leads");
   }
   ```
+  Align the label/role selectors with the actual `/login` form markup from WS4's new login page (05-app-dashboard.md) before running — tighten the regexes to the real accessible names.
 - [ ] Ensure the database is freshly seeded before the suite: `set -a; source .env; set +a; dotnet run --project apps/api -- seed` → expect the Task 8 counts (idempotent re-run is fine).
 - [ ] Smoke the scaffold with zero specs: `set -a; source .env; set +a; pnpm --dir e2e exec playwright test` → expect both webServers boot (health URL + web URL reachable) and Playwright reports no tests found (specs arrive in Tasks 12–14).
-- [ ] Commit: `git add e2e pnpm-workspace.yaml pnpm-lock.yaml && git commit -m "Scaffold Playwright E2E suite with Clerk testing tokens and dual web servers"`.
+- [ ] Commit: `git add e2e pnpm-workspace.yaml pnpm-lock.yaml && git commit -m "Scaffold Playwright E2E suite driving the app's own login form"`.
 
 ## Task 12: E2E specs — marketing smoke and auth signup
 
 **Files:** `e2e/tests/marketing.spec.ts` (create), `e2e/tests/auth.spec.ts` (create).
-**Interfaces:** consumes marketing routes (Architecture §4.1) and Clerk test-mode OTP `424242` for `+clerk_test` addresses.
+**Interfaces:** consumes marketing routes (Architecture §4.1) and the new `/signup` page's email/password flow (no OTP step — Firebase email/password signup does not gate on email verification here).
 
 - [ ] First locate the sample-lead form's page: `grep -rn "submitSampleLeadRequest" apps/web/app apps/web/components` — note the route it renders on (likely `/` or a locations page). Use that route in the spec below (shown as `/` — adjust the single `goto` if WS3 placed it elsewhere) and align field labels with the actual form markup.
 - [ ] Create `e2e/tests/marketing.spec.ts`:
@@ -959,22 +988,14 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
 - [ ] Create `e2e/tests/auth.spec.ts`:
   ```typescript
   import { test, expect } from "@playwright/test";
-  import { setupClerkTestingToken } from "@clerk/testing/playwright";
 
   test("signup lands on /app/leads", async ({ page }) => {
-    await setupClerkTestingToken({ page });
-    const email = `e2e-signup-${Date.now()}+clerk_test@permittorch.dev`;
+    const email = `e2e-signup-${Date.now()}@permittorch.dev`;
 
     await page.goto("/signup");
     await page.getByLabel(/email/i).fill(email);
     await page.getByLabel(/^password/i).fill("E2e-Sup3r-Secret!42");
     await page.getByRole("button", { name: /continue|sign up|create account/i }).click();
-
-    // Clerk test-mode verification code for +clerk_test addresses is always 424242
-    const otp = page.locator('input[autocomplete="one-time-code"], [data-otp-input]').first();
-    await otp.waitFor({ state: "visible", timeout: 15_000 });
-    await otp.click();
-    await page.keyboard.type("424242");
 
     await expect(page).toHaveURL(/\/app\/leads/, { timeout: 30_000 });
   });
@@ -1050,13 +1071,12 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
     await expect(page.getByText(/contacted/i).first()).toBeVisible(); // status persisted via PATCH
   });
   ```
-- [ ] Create `e2e/tests/entitlement.spec.ts`:
+- [ ] Create `e2e/tests/entitlement.spec.ts`. Note: these specs assert entitlement scoping through the app's own rendered UI, not by calling the API directly from the test — a raw bearer token isn't reliably obtainable from the Firebase client SDK's global scope in a Playwright `page.evaluate` (see Task 9's documented manual devtools-Network-tab method for a one-off direct-API spot check):
   ```typescript
   import { test, expect } from "@playwright/test";
-  import { signIn, getApiToken, USERS } from "../helpers/auth";
+  import { signIn, USERS } from "../helpers/auth";
 
   const SAN_ANTONIO_LEAD_ID = "00000000-0000-4000-8000-000000000201";
-  const API = "http://localhost:5000";
 
   test.describe("market entitlement", () => {
     test("user without a subscription sees the locked/empty state", async ({ page }) => {
@@ -1068,30 +1088,27 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
       await expect(page.getByText(/new commercial warehouse/i)).toHaveCount(0);
     });
 
-    test("direct API GET of a non-entitled lead returns 404", async ({ page }) => {
+    test("navigating to a non-entitled lead renders the app's not-found state", async ({ page }) => {
       await signIn(page, USERS.entitled); // entitled to austin-tx ONLY
-      await page.goto("/app/leads");
-      const token = await getApiToken(page);
-      const res = await page.request.get(`${API}/api/leads/${SAN_ANTONIO_LEAD_ID}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      expect(res.status()).toBe(404); // master §6: 404 outside entitled markets, never 403 leaking existence
+      await page.goto(`/app/leads/${SAN_ANTONIO_LEAD_ID}`);
+      // master §6: API returns 404 outside entitled markets, never 403 leaking existence;
+      // the lead-detail page renders whatever not-found UI WS4 built for a 404 response.
+      await expect(
+        page.getByText(/not found|doesn't exist|no longer available/i).first()
+      ).toBeVisible({ timeout: 15_000 });
     });
 
     test("leads feed never contains other-market rows", async ({ page }) => {
       await signIn(page, USERS.entitled);
       await page.goto("/app/leads");
-      const token = await getApiToken(page);
-      const res = await page.request.get(`${API}/api/leads?page=1&pageSize=100`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const body = (await res.json()) as { items: { city: string }[]; total: number };
-      expect(body.total).toBe(7);
-      expect(body.items.every((i) => i.city === "Austin")).toBe(true);
+      await expect(page.getByText(/94/).first()).toBeVisible({ timeout: 15_000 });
+      const rows = page.getByRole("row").or(page.getByTestId("lead-card"));
+      await expect(rows).toHaveCount(7);
+      await expect(page.getByText(/san antonio/i)).toHaveCount(0);
     });
   });
   ```
-  Align the locked-state regex with WS4's actual empty/locked component copy (read `apps/web/app/app/leads/` before running; tighten the regex to the real string).
+  Align the locked-state and not-found regexes with WS4's actual empty/locked/not-found component copy (read `apps/web/app/app/leads/` before running; tighten the regex to the real strings).
 - [ ] Run: `set -a; source .env; set +a; pnpm --dir e2e exec playwright test tests/leads.spec.ts tests/saved.spec.ts tests/entitlement.spec.ts` → expect `7 passed`. Note saved-state leakage between runs: `saved.spec.ts` must pass on re-run — if the save button already shows "Saved", have the spec unsave first (add a conditional click) rather than reseeding.
 - [ ] Commit: `git add e2e && git commit -m "Add leads, saved-lead, and entitlement E2E specs"`.
 
@@ -1180,8 +1197,8 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
   docker run --rm -p 8080:8080 \
     -e DATABASE_URL="postgresql://permittorch:permittorch@host.docker.internal:5432/permittorch" \
     -e RUN_MIGRATIONS_ON_STARTUP=true \
-    -e CLERK_JWKS_URL="$CLERK_JWKS_URL" -e CLERK_ISSUER="$CLERK_ISSUER" \
-    -e CLERK_SECRET_KEY="$CLERK_SECRET_KEY" -e STRIPE_SECRET_KEY="$STRIPE_SECRET_KEY" \
+    -e FIREBASE_PROJECT_ID="$FIREBASE_PROJECT_ID" \
+    -e STRIPE_SECRET_KEY="$STRIPE_SECRET_KEY" \
     -e STRIPE_WEBHOOK_SECRET="$STRIPE_WEBHOOK_SECRET" -e WEB_ORIGIN="http://localhost:3000" \
     permittorch-api &
   sleep 8 && curl -s http://localhost:8080/api/health
@@ -1218,11 +1235,17 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
   COPY apps/web ./apps/web
 
   ARG NEXT_PUBLIC_API_URL
-  ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+  ARG NEXT_PUBLIC_FIREBASE_API_KEY
+  ARG NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+  ARG NEXT_PUBLIC_FIREBASE_PROJECT_ID
+  ARG NEXT_PUBLIC_FIREBASE_APP_ID
   ARG NEXT_PUBLIC_POSTHOG_KEY
   ARG NEXT_PUBLIC_SENTRY_DSN
   ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
-      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY \
+      NEXT_PUBLIC_FIREBASE_API_KEY=$NEXT_PUBLIC_FIREBASE_API_KEY \
+      NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=$NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN \
+      NEXT_PUBLIC_FIREBASE_PROJECT_ID=$NEXT_PUBLIC_FIREBASE_PROJECT_ID \
+      NEXT_PUBLIC_FIREBASE_APP_ID=$NEXT_PUBLIC_FIREBASE_APP_ID \
       NEXT_PUBLIC_POSTHOG_KEY=$NEXT_PUBLIC_POSTHOG_KEY \
       NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN \
       NEXT_TELEMETRY_DISABLED=1
@@ -1242,22 +1265,30 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
   ```bash
   docker build -f apps/web/Dockerfile \
     --build-arg NEXT_PUBLIC_API_URL=http://localhost:8080 \
-    --build-arg NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" \
+    --build-arg NEXT_PUBLIC_FIREBASE_API_KEY="$NEXT_PUBLIC_FIREBASE_API_KEY" \
+    --build-arg NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN="$NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN" \
+    --build-arg NEXT_PUBLIC_FIREBASE_PROJECT_ID="$NEXT_PUBLIC_FIREBASE_PROJECT_ID" \
+    --build-arg NEXT_PUBLIC_FIREBASE_APP_ID="$NEXT_PUBLIC_FIREBASE_APP_ID" \
     -t permittorch-web .
-  docker run --rm -p 3100:3000 -e CLERK_SECRET_KEY="$CLERK_SECRET_KEY" permittorch-web &
+  docker run --rm -p 3100:3000 \
+    -e FIREBASE_PROJECT_ID="$FIREBASE_PROJECT_ID" -e FIREBASE_CLIENT_EMAIL="$FIREBASE_CLIENT_EMAIL" \
+    -e FIREBASE_PRIVATE_KEY="$FIREBASE_PRIVATE_KEY" \
+    -e AUTH_COOKIE_SIGNATURE_KEY_CURRENT="$AUTH_COOKIE_SIGNATURE_KEY_CURRENT" \
+    -e AUTH_COOKIE_SIGNATURE_KEY_PREVIOUS="$AUTH_COOKIE_SIGNATURE_KEY_PREVIOUS" \
+    permittorch-web &
   sleep 5 && curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3100/
   ```
   → expect `200`. Stop the container.
 - [ ] Commit: `git add apps/web/Dockerfile apps/web/.dockerignore apps/web/next.config.ts && git commit -m "Add standalone Next.js Dockerfile for monorepo web deployment"`.
 - [ ] **HUMAN:** Push the repo to GitHub (create a private repo, `git remote add origin …`, `git push -u origin main`) — Railway deploys from GitHub.
-- [ ] **HUMAN:** Create the Railway project. At https://railway.app → **New Project** → name `permittorch` → **Add PostgreSQL** (provisions the `Postgres` service with private networking).
-- [ ] **HUMAN:** Add the API service: **New → GitHub Repo** → select the repo → open the service **Settings**: set **Service name** `api`; under Build set **Dockerfile Path** `apps/api/Dockerfile` (Root Directory stays `/` — the Dockerfile needs repo-root context); under **Networking** click **Generate Domain** (note it: `https://api-….up.railway.app`); under **Healthcheck** set path `/api/health`. In **Variables** add: `DATABASE_URL=${{Postgres.DATABASE_URL}}` (reference — resolves to the private-network URL), `RUN_MIGRATIONS_ON_STARTUP=true`, `CLERK_SECRET_KEY`, `CLERK_JWKS_URL`, `CLERK_ISSUER`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (production value arrives in Task 17), `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_TERRITORY`, `RESEND_API_KEY`, `EMAIL_FROM`, `SENTRY_DSN`, `APIFY_TOKEN`, `APIFY_TASK_ID`, `CLERK_SUPERADMIN_USER_ID`, `CLERK_SUPERADMIN_EMAIL`, and `WEB_ORIGIN=<web public URL from the next step, come back to fill it>`. Deploy → expect healthcheck green.
-- [ ] **HUMAN:** Add the web service: **New → GitHub Repo** (same repo) → **Service name** `web`; **Dockerfile Path** `apps/web/Dockerfile`; **Generate Domain** (`https://web-….up.railway.app`); Healthcheck path `/`. Variables: `NEXT_PUBLIC_API_URL=https://<api public domain>` (PUBLIC domain — the browser calls it; do not use `api.railway.internal`), `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_SENTRY_DSN`. (These are consumed at build time via the Dockerfile ARGs — Railway passes them automatically.) Deploy → expect `/` returns the homepage. Now go back and set the API service's `WEB_ORIGIN` to this web URL and redeploy the API (CORS + Stripe redirect base).
-- [ ] **HUMAN:** Seed production data (one-time): install Railway CLI (`brew install railway`), `railway login`, `railway link` (pick the `permittorch` project + `api` service environment), then run the seeder against the prod DB from your machine: `railway run --service api bash -c 'dotnet run --project apps/api -- seed'` — OR simpler and dependency-free: temporarily set a variable `SEED_ON_BOOT` is NOT provided; instead run locally with the prod DB URL: copy `DATABASE_URL` from the Postgres service's **Connect** tab (PUBLIC URL variant), then locally `DATABASE_URL="<prod public url>" CLERK_SUPERADMIN_USER_ID=... dotnet run --project apps/api -- seed` → expect the Task 8 seed-complete line. Remove the URL from your shell history afterward.
+- [ ] **HUMAN:** Create the Railway project. At https://railway.app → **New Project** → name `permittorch` → **Add PostgreSQL** (provisions the `Postgres` service with private networking). Then, on the `Postgres` service → **Settings → Backups**, enable automated backups (data lives only on this Postgres instance — Firebase is authentication only, so this is the system's one durability net).
+- [ ] **HUMAN:** Add the API service: **New → GitHub Repo** → select the repo → open the service **Settings**: set **Service name** `api`; under Build set **Dockerfile Path** `apps/api/Dockerfile` (Root Directory stays `/` — the Dockerfile needs repo-root context); under **Networking** click **Generate Domain** (note it: `https://api-….up.railway.app`); under **Healthcheck** set path `/api/health`. In **Variables** add: `DATABASE_URL=${{Postgres.DATABASE_URL}}` (reference — resolves to the private-network URL), `RUN_MIGRATIONS_ON_STARTUP=true`, `FIREBASE_PROJECT_ID`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (production value arrives in Task 17), `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_TERRITORY`, `RESEND_API_KEY`, `EMAIL_FROM`, `SENTRY_DSN`, `APIFY_TOKEN`, `APIFY_TASK_ID`, `SUPERADMIN_FIREBASE_UID`, `SUPERADMIN_EMAIL`, and `WEB_ORIGIN=<web public URL from the next step, come back to fill it>`. Deploy → expect healthcheck green.
+- [ ] **HUMAN:** Add the web service: **New → GitHub Repo** (same repo) → **Service name** `web`; **Dockerfile Path** `apps/web/Dockerfile`; **Generate Domain** (`https://web-….up.railway.app`); Healthcheck path `/`. Variables: `NEXT_PUBLIC_API_URL=https://<api public domain>` (PUBLIC domain — the browser calls it; do not use `api.railway.internal`), `NEXT_PUBLIC_FIREBASE_API_KEY`, `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`, `NEXT_PUBLIC_FIREBASE_PROJECT_ID`, `NEXT_PUBLIC_FIREBASE_APP_ID`, `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`, `AUTH_COOKIE_SIGNATURE_KEY_CURRENT`, `AUTH_COOKIE_SIGNATURE_KEY_PREVIOUS`, `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_SENTRY_DSN`. (The four `NEXT_PUBLIC_FIREBASE_*` vars are consumed at build time via the Dockerfile ARGs — Railway passes them automatically; the rest are read at runtime by `lib/auth/config.ts`.) Deploy → expect `/` returns the homepage. Now go back and set the API service's `WEB_ORIGIN` to this web URL and redeploy the API (CORS + Stripe redirect base).
+- [ ] **HUMAN:** Seed production data (one-time): install Railway CLI (`brew install railway`), `railway login`, `railway link` (pick the `permittorch` project + `api` service environment), then run the seeder against the prod DB from your machine: `railway run --service api bash -c 'dotnet run --project apps/api -- seed'` — OR simpler and dependency-free: temporarily set a variable `SEED_ON_BOOT` is NOT provided; instead run locally with the prod DB URL: copy `DATABASE_URL` from the Postgres service's **Connect** tab (PUBLIC URL variant), then locally `DATABASE_URL="<prod public url>" SUPERADMIN_FIREBASE_UID=... dotnet run --project apps/api -- seed` → expect the Task 8 seed-complete line. Remove the URL from your shell history afterward.
 
 ### Vercel alternative (web only — documented, not the primary path)
 
-If web hosting ever moves to Vercel: import the GitHub repo at https://vercel.com/new → **Root Directory** `apps/web` → framework preset Next.js (build command `next build`, install command `pnpm install` — Vercel detects the pnpm workspace from the repo-root lockfile) → set the same five web env vars (`NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_SENTRY_DSN`) in Project Settings → Environment Variables. Remove the `output: "standalone"` requirement is unnecessary — Vercel ignores it harmlessly. Update the API's `WEB_ORIGIN` to the Vercel domain. Nothing else changes.
+If web hosting ever moves to Vercel: import the GitHub repo at https://vercel.com/new → **Root Directory** `apps/web` → framework preset Next.js (build command `next build`, install command `pnpm install` — Vercel detects the pnpm workspace from the repo-root lockfile) → set the same web env vars (`NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_FIREBASE_API_KEY`, `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`, `NEXT_PUBLIC_FIREBASE_PROJECT_ID`, `NEXT_PUBLIC_FIREBASE_APP_ID`, `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`, `AUTH_COOKIE_SIGNATURE_KEY_CURRENT`, `AUTH_COOKIE_SIGNATURE_KEY_PREVIOUS`, `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_SENTRY_DSN`) in Project Settings → Environment Variables. Remove the `output: "standalone"` requirement is unnecessary — Vercel ignores it harmlessly. Update the API's `WEB_ORIGIN` to the Vercel domain. Nothing else changes.
 
 ## Task 17: Production config — Stripe webhook, env checklist, deployed smoke tests, custom domain
 
@@ -1269,8 +1300,8 @@ If web hosting ever moves to Vercel: import the GitHub repo at https://vercel.co
 
   | Var | Railway service |
   | --- | --- |
-  | `DATABASE_URL`, `APIFY_TOKEN`, `APIFY_TASK_ID`, `CLERK_SECRET_KEY`, `CLERK_JWKS_URL`, `CLERK_ISSUER`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_TERRITORY`, `RESEND_API_KEY`, `EMAIL_FROM`, `SENTRY_DSN`, `WEB_ORIGIN`, `RUN_MIGRATIONS_ON_STARTUP`, `CLERK_SUPERADMIN_USER_ID`, `CLERK_SUPERADMIN_EMAIL` | api |
-  | `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_SENTRY_DSN` | web |
+  | `DATABASE_URL`, `APIFY_TOKEN`, `APIFY_TASK_ID`, `FIREBASE_PROJECT_ID`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_TERRITORY`, `RESEND_API_KEY`, `EMAIL_FROM`, `SENTRY_DSN`, `WEB_ORIGIN`, `RUN_MIGRATIONS_ON_STARTUP`, `SUPERADMIN_FIREBASE_UID`, `SUPERADMIN_EMAIL` | api |
+  | `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_FIREBASE_API_KEY`, `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`, `NEXT_PUBLIC_FIREBASE_PROJECT_ID`, `NEXT_PUBLIC_FIREBASE_APP_ID`, `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`, `AUTH_COOKIE_SIGNATURE_KEY_CURRENT`, `AUTH_COOKIE_SIGNATURE_KEY_PREVIOUS`, `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_SENTRY_DSN` | web |
 
   (`NEXT_PUBLIC_API_MOCK` is deliberately absent everywhere in production.)
 - [ ] Smoke test the deployed system (substitute the real domains):
@@ -1283,7 +1314,7 @@ If web hosting ever moves to Vercel: import the GitHub repo at https://vercel.co
   curl -s -o /dev/null -w "%{http_code}\n" -H "Origin: https://<web>" https://<api>/api/leads  # → 401 (auth required, NOT a CORS failure)
   ```
 - [ ] **HUMAN:** Browser smoke pass on the deployed web URL: sign up with a fresh real email → verify code arrives → land on `/app/leads` (locked state, no subscription) → `/pricing` → subscribe with Stripe test card `4242 4242 4242 4242` (any future expiry/CVC) → complete checkout → return to app → expect entitled leads visible within a few seconds (webhook processed; check Stripe dashboard → Webhooks → the endpoint shows a `200`). Then open Sentry (no new errors) and PostHog (events `signup`, `pricing_viewed`, `checkout_started` present).
-- [ ] Custom-domain note (when ready — not blocking): Railway `web` service → Settings → Networking → **Custom Domain** `permittorch.com` + `www` (add the shown CNAME at the DNS provider); optionally `api.permittorch.com` on the `api` service, then update `NEXT_PUBLIC_API_URL` (rebuild web) and `WEB_ORIGIN`; in Clerk switch to a production instance for the domain (issuer becomes `https://clerk.permittorch.com` — update `CLERK_ISSUER`/`CLERK_JWKS_URL`/keys); update the Stripe webhook URL if the API domain changes.
+- [ ] Custom-domain note (when ready — not blocking): Railway `web` service → Settings → Networking → **Custom Domain** `permittorch.com` + `www` (add the shown CNAME at the DNS provider); optionally `api.permittorch.com` on the `api` service, then update `NEXT_PUBLIC_API_URL` (rebuild web) and `WEB_ORIGIN`; in the Firebase console, under **Authentication → Settings → Authorized domains**, add `permittorch.com` (and `www`) so sign-in works on the custom domain; update the Stripe webhook URL if the API domain changes.
 
 ## Task 18: Final verification gate and Tasks.md reconciliation
 

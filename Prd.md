@@ -388,7 +388,7 @@ Users must be able to:
 
 Recommended provider:
 
-**Clerk**
+**Firebase Auth**
 
 Alternative:
 
@@ -399,7 +399,7 @@ Alternative:
 
 ### Recommendation
 
-Use Clerk initially.
+Use Firebase Auth initially.
 
 Authentication itself is not part of PermitTorch's competitive advantage, so development time should not be spent rebuilding authentication.
 
@@ -2516,7 +2516,7 @@ Potential:
 | API                 | ASP.NET Core                     |
 | Database            | PostgreSQL                       |
 | Data Collection     | Apify                            |
-| Authentication      | Clerk                            |
+| Authentication      | Firebase Auth                    |
 | Billing             | Stripe                           |
 | Email               | Resend                           |
 | Analytics           | PostHog                          |

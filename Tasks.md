@@ -64,8 +64,8 @@ Ordering within a phase is roughly dependency order. Every PR includes tests (se
 
 ### 2.1 Accounts & Billing (P0)
 
-- [ ] Clerk integration: signup, login, logout, password reset, email verification
-- [ ] Clerk JWT validation middleware in API
+- [ ] Firebase Auth integration: signup, login, logout, password reset, email verification (email/password + Google)
+- [ ] Firebase ID-token validation in API
 - [ ] Organization model: orgs, memberships, roles (member/admin)
 - [ ] Market entitlements: subscription plan → accessible markets, enforced in API queries
 - [ ] Stripe Billing: checkout, free trial, upgrade/downgrade, cancellation, customer portal

@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (- [ ]) syntax for tracking.
 
-**Goal:** Implement the entire LOCKED HTTP API contract (master doc §6/§7) in `apps/api/Features/`: Clerk JWT auth with first-request user/org provisioning, subscription-market entitlements enforced in every lead query, leads feed/detail/CSV export, public markets + stats, saved leads, account + email preferences, sample-lead capture, Stripe checkout/portal/webhooks, hourly-checked Resend email digests (subscriber digests + weekly sample-lead upsell emails), super-admin operations, CORS for the web origin, and rate limiting — with unit + Testcontainers integration tests proving entitlement leakage is impossible.
+**Goal:** Implement the entire LOCKED HTTP API contract (master doc §6/§7) in `apps/api/Features/`: Firebase ID-token auth with first-request user/org provisioning, subscription-market entitlements enforced in every lead query, leads feed/detail/CSV export, public markets + stats, saved leads, account + email preferences, sample-lead capture, Stripe checkout/portal/webhooks, hourly-checked Resend email digests (subscriber digests + weekly sample-lead upsell emails), super-admin operations, CORS for the web origin, and rate limiting — with unit + Testcontainers integration tests proving entitlement leakage is impossible.
 
 **Architecture:** Vertical slices under `Features/<FeatureName>/`, each exposing a `Map<Feature>Endpoints(this IEndpointRouteBuilder)` extension. All slices are invoked from `Features/FeatureEndpoints.cs::MapFeatureEndpointGroups(IEndpointRouteBuilder)`, which is called by the WS0-provided stub `Setup/FeaturesSetup.cs::MapFeatureEndpoints(this WebApplication app)` — the frozen `Program.cs` already calls both `AddFeatureServices(builder.Configuration)` and `app.MapFeatureEndpoints()`, so **no IStartupFilter and no Program.cs edit is needed**; WS0 designed this hook to receive the `WebApplication` precisely so WS2 can add middleware (`UseRateLimiter`) and map endpoints (Task 2 documents the mechanism in full). Cross-slice plumbing lives in `Features/Shared/` (wire JSON, DTO records, error results) and `Features/Auth/` (JWT config, `CurrentUserService`, `EntitlementService`). Billing isolates Stripe SDK calls behind a `StripeGateway` class with virtual methods so integration tests can substitute a fake; webhook event mapping is a pure-ish `StripeWebhookProcessor` unit-testable against Postgres. Digests split into pure schedule math (`DigestSchedule`), pure HTML building (`DigestEmailBuilder`), a DB-driven `DigestService`, and a thin hourly `DigestBackgroundService`.
 
-**Tech Stack:** .NET 10 minimal APIs, EF Core 10 + Npgsql (FTS via `EF.Functions.ToTsVector`/`WebSearchToTsQuery`), `Microsoft.AspNetCore.Authentication.JwtBearer` (Clerk), `Microsoft.AspNetCore.RateLimiting`, Stripe.net, Resend via raw `HttpClient`, xUnit + `Microsoft.AspNetCore.Mvc.Testing` + `Testcontainers.PostgreSql`. All packages are already installed by WS0 — never touch a `.csproj`.
+**Tech Stack:** .NET 10 minimal APIs, EF Core 10 + Npgsql (FTS via `EF.Functions.ToTsVector`/`WebSearchToTsQuery`), `Microsoft.AspNetCore.Authentication.JwtBearer` (Firebase Auth), `Microsoft.AspNetCore.RateLimiting`, Stripe.net, Resend via raw `HttpClient`, xUnit + `Microsoft.AspNetCore.Mvc.Testing` + `Testcontainers.PostgreSql`. All packages are already installed by WS0 — never touch a `.csproj`.
 
 **Spec:**
 - `/Users/andynguyen/Desktop/Permit Torch/docs/superpowers/plans/2026-08-19-permittorch-mvp/00-overview-and-contracts.md` (master — LOCKED §3 entities, §6 HTTP contract, §7 response types, §9 env vars)
@@ -63,7 +63,7 @@ The master contract leaves gaps that WS2 must fill; these decisions are additive
 2. **Checkout market selection:** master §6 locks the body `{ plan }` but the webhook contract requires markets chosen at checkout via metadata. The endpoint accepts **additive optional fields**: `marketSlug` (required for STARTER/PRO) and `marketSlugs` (1–5 entries, required for TERRITORY; `marketSlug` accepted as a single-entry fallback). Missing/invalid selection → 400. WS4/WS5 consume this via their own checkout UI; the locked `{ plan }` shape still deserializes (then 400s with a clear message).
 3. **`WEB_ORIGIN`** (locked env var per coordinator, api; dev value `http://localhost:3000`): the single allowed CORS origin, and the base for Stripe URLs (success `{WEB_ORIGIN}/app/account?checkout=success`, cancel `{WEB_ORIGIN}/pricing`, portal return `{WEB_ORIGIN}/app/account`) and all digest CTA links.
 4. **`GET /api/account/me` `plan`:** the org's Subscription plan when its Stripe status is `trialing`, `active`, or `past_due`; `null` when there is no subscription or status is `canceled`/`incomplete`. (Entitlement stays stricter: only `active`/`trialing`.)
-5. **Provisioning email:** the Clerk JWT is expected to carry an `email` claim (WS5 configures the Clerk JWT template). Fallback when absent: `{sub}@unknown.permittorch.invalid` so provisioning never fails. Personal organization name = the user's email.
+5. **Provisioning email:** Firebase ID tokens carry an `email` claim natively (no JWT template step needed). Fallback when absent: `{sub}@unknown.permittorch.invalid` so provisioning never fails. Personal organization name = the user's email.
 6. **CSV export row cap:** 5,000 rows (matches the scraper's per-run cap; keeps exports bounded).
 7. **Saved leads vs. entitlement:** *saving* requires the opportunity to be inside entitled markets (404 otherwise, same as detail); *listing* saved leads returns everything the user saved, even if entitlement later lapsed (they are the user's own records).
 8. **`market` filter outside entitlements:** returns an empty page (not 403) — the query simply intersects with entitled markets.
@@ -340,12 +340,12 @@ The master contract leaves gaps that WS2 must fill; these decisions are additive
 **Interfaces:**
 - Consumes: WS0 stubs `AddFeatureServices(this IServiceCollection, IConfiguration)` / `MapFeatureEndpoints(this WebApplication)`; `public partial class Program`; `AppDbContext`; env vars `WEB_ORIGIN`, `DATABASE_URL`, `RateLimiting:GlobalPermitLimit`.
 - Produces:
-  - `public static IServiceCollection AddFeatureServices(this IServiceCollection services, IConfiguration configuration)` — v1: wire JSON, bare JwtBearer (Clerk config in Task 3), authorization, CORS policy `"web"` from `WEB_ORIGIN`, rate limiter (global 100/min/IP configurable + `"sample-leads"` 5/min/IP).
+  - `public static IServiceCollection AddFeatureServices(this IServiceCollection services, IConfiguration configuration)` — v1: wire JSON, bare JwtBearer (Firebase config in Task 3), authorization, CORS policy `"web"` from `WEB_ORIGIN`, rate limiter (global 100/min/IP configurable + `"sample-leads"` 5/min/IP).
   - `public static WebApplication MapFeatureEndpoints(this WebApplication app)` — FINAL form: `UseCors` → `UseRateLimiter` → `MapFeatureEndpointGroups()`.
   - `public static IEndpointRouteBuilder MapFeatureEndpointGroups(this IEndpointRouteBuilder endpoints)` in `Features/FeatureEndpoints.cs` — the single aggregator every later task extends by one line. (Named distinctly from the WebApplication extension because `WebApplication` implements `IEndpointRouteBuilder` — same-name overloads would be ambiguous.)
-  - `public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime { Action<IServiceCollection>? TestServices { get; init; } HttpClient CreateClientFor(string clerkUserId, string email); Task SeedAsync(Action<AppDbContext> seed); Task<T> QueryAsync<T>(Func<AppDbContext, Task<T>> query) }`
+  - `public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime { Action<IServiceCollection>? TestServices { get; init; } HttpClient CreateClientFor(string firebaseUid, string email); Task SeedAsync(Action<AppDbContext> seed); Task<T> QueryAsync<T>(Func<AppDbContext, Task<T>> query) }`
   - `public static class TestTokens { const string Issuer; static SymmetricSecurityKey SigningKey; static string Issue(string sub, string email) }`
-  - `public static class TestSeed { static Market Market(...); static Source Source(Market, DateTime? lastRun); static Permit Permit(Source, ...); static FireOpportunity Opportunity(Permit, int score, FireCategory, DateTime? firstDetectedAt); static (Organization, AppUser, EmailPreference) User(string clerkUserId, string email, UserRole role); static Subscription Subscription(Organization, PlanTier, string status, params Market[] markets) }`
+  - `public static class TestSeed { static Market Market(...); static Source Source(Market, DateTime? lastRun); static Permit Permit(Source, ...); static FireOpportunity Opportunity(Permit, int score, FireCategory, DateTime? firstDetectedAt); static (Organization, AppUser, EmailPreference) User(string firebaseUid, string email, UserRole role); static Subscription Subscription(Organization, PlanTier, string status, params Market[] markets) }`
   - `public static class TestStripe { const string WebhookSecret; static string Sign(string payload, string secret, DateTimeOffset? timestamp) }`
 
 **Steps:**
@@ -410,9 +410,9 @@ The master contract leaves gaps that WS2 must fill; these decisions are additive
 
   namespace PermitTorch.Api.Tests.Features.TestInfra;
 
-  /// <summary>Locally-issued JWTs standing in for Clerk. ApiFactory rewires the JwtBearer
+  /// <summary>Locally-issued JWTs standing in for Firebase. ApiFactory rewires the JwtBearer
   /// handler (PostConfigure) to validate against this issuer + symmetric key instead of
-  /// Clerk's JWKS, so integration tests never need network access or Clerk secrets.</summary>
+  /// Firebase's OIDC discovery, so integration tests never need network access or Firebase secrets.</summary>
   public static class TestTokens
   {
       public const string Issuer = "https://test-issuer.permittorch.local";
@@ -500,8 +500,7 @@ The master contract leaves gaps that WS2 must fill; these decisions are additive
           builder.UseEnvironment("Testing");
           builder.UseSetting("DATABASE_URL", _postgres.GetConnectionString());
           builder.UseSetting("WEB_ORIGIN", "https://web.test.permittorch.local");
-          builder.UseSetting("CLERK_ISSUER", TestTokens.Issuer);
-          builder.UseSetting("CLERK_JWKS_URL", "https://test-issuer.permittorch.local/.well-known/jwks.json");
+          builder.UseSetting("FIREBASE_PROJECT_ID", "permittorch-test");
           builder.UseSetting("STRIPE_SECRET_KEY", "sk_test_unused");
           builder.UseSetting("STRIPE_WEBHOOK_SECRET", TestStripe.WebhookSecret);
           builder.UseSetting("STRIPE_PRICE_STARTER", "price_starter_test");
@@ -515,7 +514,7 @@ The master contract leaves gaps that WS2 must fill; these decisions are additive
               services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
               {
                   options.Authority = null;
-                  options.ConfigurationManager = null;   // disable Clerk JWKS fetch (Task 3)
+                  options.ConfigurationManager = null;   // disable Firebase OIDC discovery fetch (Task 3)
                   options.MapInboundClaims = false;
                   options.TokenValidationParameters = new TokenValidationParameters
                   {
@@ -529,12 +528,12 @@ The master contract leaves gaps that WS2 must fill; these decisions are additive
           });
       }
 
-      /// <summary>Client with a Bearer token for the given Clerk user id + email claim.</summary>
-      public HttpClient CreateClientFor(string clerkUserId, string email)
+      /// <summary>Client with a Bearer token for the given Firebase uid + email claim.</summary>
+      public HttpClient CreateClientFor(string firebaseUid, string email)
       {
           var client = CreateClient();
           client.DefaultRequestHeaders.Authorization =
-              new AuthenticationHeaderValue("Bearer", TestTokens.Issue(clerkUserId, email));
+              new AuthenticationHeaderValue("Bearer", TestTokens.Issue(firebaseUid, email));
           return client;
       }
 
@@ -620,12 +619,12 @@ The master contract leaves gaps that WS2 must fill; these decisions are additive
       }
 
       public static (Organization Org, AppUser User, EmailPreference Pref) User(
-          string clerkUserId, string email, UserRole role = UserRole.Member)
+          string firebaseUid, string email, UserRole role = UserRole.Member)
       {
           var org = new Organization { Id = Guid.NewGuid(), Name = email };
           var user = new AppUser
           {
-              Id = Guid.NewGuid(), ClerkUserId = clerkUserId, Email = email,
+              Id = Guid.NewGuid(), FirebaseUid = firebaseUid, Email = email,
               OrganizationId = org.Id, Role = role,
           };
           var pref = new EmailPreference { Id = Guid.NewGuid(), UserId = user.Id, Frequency = DigestFrequency.None };
@@ -679,7 +678,7 @@ The master contract leaves gaps that WS2 must fill; these decisions are additive
           // LOCKED wire format for every minimal-API request/response body
           services.Configure<Microsoft.AspNetCore.Http.Json.JsonOptions>(o => ApiJson.Configure(o.SerializerOptions));
 
-          // Clerk configuration replaces the bare handler in Task 3
+          // Firebase configuration replaces the bare handler in Task 3
           services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();
           services.AddAuthorization();
 
@@ -740,20 +739,20 @@ The master contract leaves gaps that WS2 must fill; these decisions are additive
 
 ---
 
-### Task 3: Clerk JWT authentication, CurrentUserService provisioning, and authorization policies
+### Task 3: Firebase ID-token authentication, CurrentUserService provisioning, and authorization policies
 
 **Files:**
-- Create: `apps/api/Features/Auth/ClerkJwt.cs`
+- Create: `apps/api/Features/Auth/FirebaseJwt.cs`
 - Create: `apps/api/Features/Auth/CurrentUserService.cs`
 - Create: `apps/api/Features/Auth/SuperAdminRequirement.cs`
 - Modify: `apps/api/Setup/FeaturesSetup.cs`
 - Test: `apps/api/tests/PermitTorch.Api.Tests/Features/Auth/AuthProvisioningTests.cs`
 
 **Interfaces:**
-- Consumes: env `CLERK_JWKS_URL`, `CLERK_ISSUER`; `AppDbContext`; JwtBearer handler registered in Task 2.
+- Consumes: env `FIREBASE_PROJECT_ID`; `AppDbContext`; JwtBearer handler registered in Task 2.
 - Produces:
-  - `static class ClerkJwt { static void Configure(JwtBearerOptions options, IConfiguration configuration) }` — validates issuer `CLERK_ISSUER`, signing keys fetched from `CLERK_JWKS_URL`, no audience validation, `sub` claim preserved.
-  - `public sealed class CurrentUserService(AppDbContext db) { Task<AppUser?> GetOrProvisionAsync(ClaimsPrincipal principal, CancellationToken ct); Task<AppUser> RequireAsync(ClaimsPrincipal principal, CancellationToken ct) }` — scoped; auto-provisions AppUser + personal Organization + EmailPreference(None) on first authenticated request; race-safe via the `app_users(clerk_user_id)` unique index.
+  - `static class FirebaseJwt { static void Configure(JwtBearerOptions options, IConfiguration configuration) }` — validates issuer `https://securetoken.google.com/{FIREBASE_PROJECT_ID}` (also the OIDC discovery authority) and audience `FIREBASE_PROJECT_ID`, `sub` claim preserved.
+  - `public sealed class CurrentUserService(AppDbContext db) { Task<AppUser?> GetOrProvisionAsync(ClaimsPrincipal principal, CancellationToken ct); Task<AppUser> RequireAsync(ClaimsPrincipal principal, CancellationToken ct) }` — scoped; auto-provisions AppUser + personal Organization + EmailPreference(None) on first authenticated request; race-safe via the `app_users(firebase_uid)` unique index.
   - Policies: `"User"` (any authenticated principal), `"SuperAdmin"` (`AppUser.Role == UserRole.SuperAdmin`, checked in the DB — never from token claims).
   - `sealed class SuperAdminRequirement : IAuthorizationRequirement` + `sealed class SuperAdminHandler : AuthorizationHandler<SuperAdminRequirement>`.
   - Temporary probe endpoint `GET /api/auth-probe` (policy "User", returns 200 with the resolved user's email) — replaced by real endpoints in Task 9's step that deletes it (Account provides the permanent authenticated route).
@@ -802,7 +801,7 @@ The master contract leaves gaps that WS2 must fill; these decisions are additive
           Assert.Equal(HttpStatusCode.OK, response.StatusCode);
           var user = await factory.QueryAsync(db => db.AppUsers
               .Include(u => u.Organization)
-              .SingleAsync(u => u.ClerkUserId == sub));
+              .SingleAsync(u => u.FirebaseUid == sub));
           Assert.Equal(email, user.Email);
           Assert.Equal(UserRole.Member, user.Role);
           Assert.Equal(email, user.Organization.Name);
@@ -819,7 +818,7 @@ The master contract leaves gaps that WS2 must fill; these decisions are additive
           (await client.GetAsync("/api/auth-probe")).EnsureSuccessStatusCode();
           (await client.GetAsync("/api/auth-probe")).EnsureSuccessStatusCode();
 
-          var count = await factory.QueryAsync(db => db.AppUsers.CountAsync(u => u.ClerkUserId == sub));
+          var count = await factory.QueryAsync(db => db.AppUsers.CountAsync(u => u.FirebaseUid == sub));
           Assert.Equal(1, count);
       }
   }
@@ -829,52 +828,36 @@ The master contract leaves gaps that WS2 must fill; these decisions are additive
   cd "/Users/andynguyen/Desktop/pt-api/apps/api" && dotnet test PermitTorch.sln --filter "FullyQualifiedName~PermitTorch.Api.Tests.Features.Auth.AuthProvisioningTests"
   ```
   Expected: all four fail — `/api/auth-probe` does not exist yet (404 instead of 401/200).
-- [ ] Create `apps/api/Features/Auth/ClerkJwt.cs`:
+- [ ] Create `apps/api/Features/Auth/FirebaseJwt.cs`:
   ```csharp
   using Microsoft.AspNetCore.Authentication.JwtBearer;
-  using Microsoft.IdentityModel.Protocols;
-  using Microsoft.IdentityModel.Protocols.OpenIdConnect;
   using Microsoft.IdentityModel.Tokens;
 
   namespace PermitTorch.Api.Features.Auth;
 
-  /// <summary>JwtBearer configuration against Clerk. Signing keys come straight from
-  /// CLERK_JWKS_URL (raw JWKS document — no OIDC discovery round-trip); the issuer is
-  /// pinned to CLERK_ISSUER. ConfigurationManager caches and refreshes keys automatically,
-  /// which also gives tests a single seam to swap in a symmetric key.</summary>
-  public static class ClerkJwt
+  /// <summary>JwtBearer configuration against Firebase Auth. Setting `Authority` to the
+  /// project's secure-token issuer drives standard OIDC discovery (JWKS caches and
+  /// refreshes automatically), which also gives tests a single seam (`ConfigurationManager
+  /// = null`) to swap in a symmetric key. Firebase ID tokens carry `sub` (uid) and `email`
+  /// natively — no JWT template step needed.</summary>
+  public static class FirebaseJwt
   {
       public static void Configure(JwtBearerOptions options, IConfiguration configuration)
       {
-          var jwksUrl = configuration["CLERK_JWKS_URL"] ?? "";
-          var issuer = configuration["CLERK_ISSUER"] ?? "";
+          var projectId = configuration["FIREBASE_PROJECT_ID"] ?? "";
 
           options.MapInboundClaims = false;   // keep "sub"/"email" claim types verbatim
-          options.ConfigurationManager = new ConfigurationManager<OpenIdConnectConfiguration>(
-              jwksUrl,
-              new JwksConfigurationRetriever(),
-              new HttpDocumentRetriever { RequireHttps = jwksUrl.StartsWith("https://", StringComparison.Ordinal) });
+          options.Authority = $"https://securetoken.google.com/{projectId}";
           options.TokenValidationParameters = new TokenValidationParameters
           {
-              ValidIssuer = issuer,
               ValidateIssuer = true,
-              ValidateAudience = false,        // Clerk session tokens carry azp, not aud
-              ValidateIssuerSigningKey = true,
+              ValidIssuer = options.Authority,
+              ValidateAudience = true,
+              ValidAudience = projectId,
+              ValidateLifetime = true,
+              ClockSkew = TimeSpan.FromMinutes(1),
               NameClaimType = "sub",
           };
-      }
-
-      private sealed class JwksConfigurationRetriever : IConfigurationRetriever<OpenIdConnectConfiguration>
-      {
-          public async Task<OpenIdConnectConfiguration> GetConfigurationAsync(
-              string address, IDocumentRetriever retriever, CancellationToken cancel)
-          {
-              var json = await retriever.GetDocumentAsync(address, cancel);
-              var configuration = new OpenIdConnectConfiguration { JwksUri = address };
-              foreach (var key in new JsonWebKeySet(json).GetSigningKeys())
-                  configuration.SigningKeys.Add(key);
-              return configuration;
-          }
       }
   }
   ```
@@ -886,7 +869,7 @@ The master contract leaves gaps that WS2 must fill; these decisions are additive
 
   namespace PermitTorch.Api.Features.Auth;
 
-  /// <summary>Resolves the Clerk `sub` claim to an AppUser, auto-provisioning
+  /// <summary>Resolves the Firebase `sub` claim (uid) to an AppUser, auto-provisioning
   /// AppUser + personal Organization + EmailPreference(None) on first authenticated
   /// request (Architecture.md §5). Scoped: caches the lookup per request.</summary>
   public sealed class CurrentUserService(AppDbContext db)
@@ -897,10 +880,10 @@ The master contract leaves gaps that WS2 must fill; these decisions are additive
       {
           var sub = principal.FindFirstValue("sub");
           if (string.IsNullOrEmpty(sub)) return null;
-          if (_cached?.ClerkUserId == sub) return _cached;
+          if (_cached?.FirebaseUid == sub) return _cached;
 
           var user = await db.AppUsers.Include(u => u.Organization)
-              .FirstOrDefaultAsync(u => u.ClerkUserId == sub, ct);
+              .FirstOrDefaultAsync(u => u.FirebaseUid == sub, ct);
           user ??= await ProvisionAsync(sub,
               principal.FindFirstValue("email") ?? $"{sub}@unknown.permittorch.invalid", ct);
           return _cached = user;
@@ -916,7 +899,7 @@ The master contract leaves gaps that WS2 must fill; these decisions are additive
           var org = new Organization { Id = Guid.NewGuid(), Name = email };
           var user = new AppUser
           {
-              Id = Guid.NewGuid(), ClerkUserId = sub, Email = email,
+              Id = Guid.NewGuid(), FirebaseUid = sub, Email = email,
               OrganizationId = org.Id, Organization = org, Role = UserRole.Member,
           };
           var pref = new EmailPreference { Id = Guid.NewGuid(), UserId = user.Id, Frequency = DigestFrequency.None };
@@ -930,9 +913,9 @@ The master contract leaves gaps that WS2 must fill; these decisions are additive
           }
           catch (DbUpdateException)
           {
-              // Concurrent first request won the app_users(clerk_user_id) unique index — use theirs.
+              // Concurrent first request won the app_users(firebase_uid) unique index — use theirs.
               db.ChangeTracker.Clear();
-              return await db.AppUsers.Include(u => u.Organization).FirstAsync(u => u.ClerkUserId == sub, ct);
+              return await db.AppUsers.Include(u => u.Organization).FirstAsync(u => u.FirebaseUid == sub, ct);
           }
       }
   }
@@ -960,12 +943,12 @@ The master contract leaves gaps that WS2 must fill; these decisions are additive
       }
   }
   ```
-- [ ] Modify `apps/api/Setup/FeaturesSetup.cs` — replace the two auth lines from Task 2 with the Clerk + policy registration, and add the scoped services (only this region of the file changes):
+- [ ] Modify `apps/api/Setup/FeaturesSetup.cs` — replace the two auth lines from Task 2 with the Firebase + policy registration, and add the scoped services (only this region of the file changes):
   ```csharp
   // replaces: services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();
   //           services.AddAuthorization();
   services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-      .AddJwtBearer(options => ClerkJwt.Configure(options, configuration));
+      .AddJwtBearer(options => FirebaseJwt.Configure(options, configuration));
   services.AddAuthorization(options =>
   {
       options.AddPolicy("User", policy => policy.RequireAuthenticatedUser());
@@ -994,7 +977,7 @@ The master contract leaves gaps that WS2 must fill; these decisions are additive
   Expected: all four green (401 anonymous, 401 forged signature, provisioning, idempotent re-use).
 - [ ] Commit:
   ```bash
-  cd "/Users/andynguyen/Desktop/pt-api" && git add apps/api/Features apps/api/Setup/FeaturesSetup.cs apps/api/tests && git commit -m "Add Clerk JWT validation with first-request user and org provisioning"
+  cd "/Users/andynguyen/Desktop/pt-api" && git add apps/api/Features apps/api/Setup/FeaturesSetup.cs apps/api/tests && git commit -m "Add Firebase ID-token validation with first-request user and org provisioning"
   ```
 
 ---
@@ -2377,7 +2360,7 @@ The master contract leaves gaps that WS2 must fill; these decisions are additive
           Assert.Equal(HttpStatusCode.OK, response.StatusCode);
           var stored = await factory.QueryAsync(async db =>
               await db.EmailPreferences.SingleAsync(
-                  p => db.AppUsers.Any(u => u.Id == p.UserId && u.ClerkUserId == sub)));
+                  p => db.AppUsers.Any(u => u.Id == p.UserId && u.FirebaseUid == sub)));
           Assert.Equal(DigestFrequency.Daily, stored.Frequency);
       }
 
@@ -4384,9 +4367,9 @@ The master contract leaves gaps that WS2 must fill; these decisions are additive
           // LOCKED wire format for every minimal-API request/response body
           services.Configure<Microsoft.AspNetCore.Http.Json.JsonOptions>(o => ApiJson.Configure(o.SerializerOptions));
 
-          // Clerk JWT (CLERK_JWKS_URL / CLERK_ISSUER) + policies
+          // Firebase ID token (FIREBASE_PROJECT_ID) + policies
           services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-              .AddJwtBearer(options => ClerkJwt.Configure(options, configuration));
+              .AddJwtBearer(options => FirebaseJwt.Configure(options, configuration));
           services.AddAuthorization(options =>
           {
               options.AddPolicy("User", policy => policy.RequireAuthenticatedUser());
@@ -4515,4 +4498,4 @@ WS2 is complete when all of the following hold in `../pt-api` on `ws/api`:
 3. Entitlement leakage tests pass: a user entitled to market A can never see market B leads via feed, detail, export, save, or digest.
 4. `git diff --stat main` shows changes ONLY under `apps/api/Features/`, `apps/api/Setup/FeaturesSetup.cs`, `apps/api/tests/PermitTorch.Api.Tests/Features/`, plus the authorized `Data/Entities.cs` + `Data/Migrations/*AddEmailPreferenceLastSentAt*` exception.
 5. No commit message references tasks/PRs; no co-author trailers.
-6. Handoff notes for WS5 (integration): set real `CLERK_JWKS_URL`/`CLERK_ISSUER` (and include an `email` claim in the Clerk JWT template), `WEB_ORIGIN`, `STRIPE_*` (webhook endpoint `POST /api/webhooks/stripe`), `RESEND_API_KEY`/`EMAIL_FROM`; checkout callers must pass `marketSlug` (STARTER/PRO) or `marketSlugs` (TERRITORY).
+6. Handoff notes for WS5 (integration): set real `FIREBASE_PROJECT_ID`, `WEB_ORIGIN`, `STRIPE_*` (webhook endpoint `POST /api/webhooks/stripe`), `RESEND_API_KEY`/`EMAIL_FROM`; checkout callers must pass `marketSlug` (STARTER/PRO) or `marketSlugs` (TERRITORY).
