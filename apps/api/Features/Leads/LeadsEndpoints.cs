@@ -12,7 +12,7 @@ public static class LeadsEndpoints
         var group = endpoints.MapGroup("/api/leads").RequireAuthorization("User");
         group.MapGet("", GetLeads);
         group.MapGet("/{id:guid}", GetLead);
-        // group.MapGet("/export.csv", ...) lands in Task 7
+        group.MapGet("/export.csv", ExportCsv);
         return endpoints;
     }
 
@@ -83,5 +83,35 @@ public static class LeadsEndpoints
             found.Confidence, found.Row.FirstDetectedAt, found.LastUpdatedAt,
             found.Permit, found.Participants, found.Signals,
             new LeadSourceDto(found.SourceName, found.PermitSourceUrl, found.SourceLastCheckedAt)));
+    }
+
+    private static async Task<IResult> ExportCsv(
+        HttpContext http, AppDbContext db, CurrentUserService currentUser, EntitlementService entitlements,
+        string? market, string? category, int? minScore, int? maxAgeDays, string? status, string? q,
+        CancellationToken ct)
+    {
+        // page/pageSize are ignored for export; defaults keep TryParse contract intact
+        if (!LeadFilters.TryParse(market, category, minScore, maxAgeDays, status, q, null, null,
+                out var filters, out var error))
+            return ApiErrors.BadRequest(error);
+
+        var user = await currentUser.RequireAsync(http.User, ct);
+        var plan = await entitlements.GetEntitledPlanAsync(user.OrganizationId, ct);
+        if (plan is not (PlanTier.Pro or PlanTier.Territory))
+            return ApiErrors.Forbidden("CSV export requires the Pro or Territory plan");
+
+        var marketIds = await entitlements.GetEntitledMarketIdsAsync(user.OrganizationId, ct);
+        var nowUtc = DateTime.UtcNow;
+        var rows = await LeadQueries.OrderForFeed(
+                LeadQueries.ApplyFilters(LeadQueries.ForEntitledMarkets(db, marketIds), filters, nowUtc))
+            .Take(5000)   // export cap (plan gap resolution 6)
+            .Select(o => new LeadExportRow(
+                o.LeadScore, o.Permit.Address, o.Permit.City, o.Permit.PermitType, o.Category,
+                o.Permit.Description, o.Permit.FiledDate, o.Permit.EstimatedValue,
+                o.Permit.OwnerName, o.Permit.ContractorName, o.Permit.SourceUrl))
+            .ToListAsync(ct);
+
+        var csv = CsvFormatter.Write(rows);
+        return Results.File(System.Text.Encoding.UTF8.GetBytes(csv), "text/csv", "permittorch-leads.csv");
     }
 }
