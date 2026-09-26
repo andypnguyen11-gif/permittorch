@@ -1,3 +1,4 @@
+using PermitTorch.Api.Features.Leads;
 using PermitTorch.Api.Features.Markets;
 
 namespace PermitTorch.Api.Features;
@@ -17,6 +18,7 @@ public static class FeatureEndpoints
             .RequireAuthorization("User");
 
         endpoints.MapMarketsEndpoints();
+        endpoints.MapLeadsEndpoints();
 
         return endpoints;
     }
