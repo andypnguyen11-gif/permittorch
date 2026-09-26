@@ -54,7 +54,7 @@ public class MarketsEndpointTests(ApiFactory factory)
         Assert.Equal(1, byCategory.GetProperty("FIRE_SPRINKLER").GetInt32());
         Assert.Equal(1, byCategory.GetProperty("FIRE_ALARM").GetInt32());
         Assert.Equal(0, byCategory.GetProperty("KITCHEN_SUPPRESSION").GetInt32());
-        Assert.NotNull(stats.GetProperty("lastUpdatedAt").GetDateTime() as DateTime?);
+        stats.GetProperty("lastUpdatedAt").GetDateTime();   // throws if absent/invalid
     }
 
     [Fact]

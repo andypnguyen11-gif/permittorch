@@ -69,7 +69,7 @@ public class LeadsEndpointTests(ApiFactory factory) : IAsyncLifetime
         Assert.Equal(2, body.GetProperty("total").GetInt32());
         Assert.Equal(1, body.GetProperty("page").GetInt32());
         Assert.Equal(25, body.GetProperty("pageSize").GetInt32());
-        Assert.NotNull(body.GetProperty("freshness").GetProperty("lastUpdatedAt").GetDateTime() as DateTime?);
+        body.GetProperty("freshness").GetProperty("lastUpdatedAt").GetDateTime();   // throws if absent/invalid
     }
 
     [Fact]

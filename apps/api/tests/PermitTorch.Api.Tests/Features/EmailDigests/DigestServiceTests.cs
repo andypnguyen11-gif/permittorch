@@ -60,7 +60,7 @@ public class DigestServiceTests(ApiFactory factory)
 
         var resend = await RunOnceAsync();
 
-        var sent = Assert.Single(resend.Sent.Where(s => s.To == user.Email));
+        var sent = Assert.Single(resend.Sent, s => s.To == user.Email);
         Assert.Contains("New", sent.Subject);
         Assert.Contains("🔥 90", sent.Html);
         Assert.Contains("https://web.test/app/leads", sent.Html);
@@ -117,7 +117,7 @@ public class DigestServiceTests(ApiFactory factory)
 
         var resend = await RunOnceAsync();
 
-        var sent = Assert.Single(resend.Sent.Where(s => s.To == request.Email));
+        var sent = Assert.Single(resend.Sent, s => s.To == request.Email);
         Assert.Contains("Free", sent.Subject);
         Assert.Equal(5, sent.Html.Split("🔥").Length - 1);   // top 5 only
         Assert.Contains("🔥 77", sent.Html);                  // highest score included

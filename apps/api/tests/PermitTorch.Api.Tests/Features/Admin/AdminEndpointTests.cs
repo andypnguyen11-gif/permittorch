@@ -60,7 +60,7 @@ public class AdminEndpointTests(ApiFactory factory) : IAsyncLifetime
         var source = body.EnumerateArray().Single(s => s.GetProperty("id").GetString() == _source.Id.ToString());
         Assert.Equal("HEALTHY", source.GetProperty("healthStatus").GetString());
         Assert.True(source.GetProperty("active").GetBoolean());
-        Assert.NotNull(source.GetProperty("lastSuccessfulRunAt").GetDateTime() as DateTime?);
+        source.GetProperty("lastSuccessfulRunAt").GetDateTime();   // throws if absent/invalid
     }
 
     [Fact]
