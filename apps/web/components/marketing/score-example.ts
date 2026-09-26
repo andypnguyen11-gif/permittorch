@@ -1,7 +1,8 @@
 // Illustrative score breakdown for /how-it-works (PRD §16). It mirrors the real
 // scoring engine: every classified fire-protection permit starts from the
 // persisted BASE_SCORE signal (30), then adds configured signal weights and is
-// clamped to 0–100. Keep these weights in sync with the API's scoring config.
+// clamped to 0–100. Mirrors apps/api/appsettings.json Scoring:Weights exactly —
+// __tests__/marketing/score-weights-contract.test.ts fails CI on drift.
 
 export const SCORE_WEIGHTS = {
   BASE_SCORE: 30,
@@ -13,6 +14,8 @@ export const SCORE_WEIGHTS = {
   FIRE_ALARM_SCOPE: 20,
   FAILED_INSPECTION: 20,
   LARGE_SQUARE_FOOTAGE: 10,
+  OLD_PERMIT: -20,
+  CLOSED_PERMIT: -30,
 } as const;
 
 /** BASE_SCORE plus the given signals' weights, clamped to 0–100 like the engine. */
