@@ -100,3 +100,11 @@ describe("LeadsPagination", () => {
     expect(screen.getByText("No results")).toBeInTheDocument();
   });
 });
+
+describe("LeadTable compact", () => {
+  it("drops the reason column", () => {
+    render(<LeadTable leads={[lead({})]} compact />);
+    expect(screen.queryByText("Why this matters")).not.toBeInTheDocument();
+    expect(screen.queryByText("Large commercial build-out in west Houston.")).not.toBeInTheDocument();
+  });
+});

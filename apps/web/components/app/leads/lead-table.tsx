@@ -25,8 +25,10 @@ export function EmptyState({ icon: Icon = SearchX, title, description, action }:
   );
 }
 
-export function LeadTable({ leads, className, emptyState }: {
+export function LeadTable({ leads, className, emptyState, compact = false }: {
   leads: LeadSummary[];
+  /** Drops the "why this matters" column for narrow placements (e.g. Overview). */
+  compact?: boolean;
   /** Applied to the scroll container — pass a max-height to get a sticky header. */
   className?: string;
   emptyState?: React.ReactNode;
@@ -49,7 +51,7 @@ export function LeadTable({ leads, className, emptyState }: {
         className,
       )}
     >
-      <Table className="min-w-[960px]">
+      <Table className={compact ? "min-w-[640px]" : "min-w-[960px]"}>
         <TableHeader className="sticky top-0 z-10 bg-stone-50/95 backdrop-blur supports-backdrop-filter:bg-stone-50/80">
           <TableRow className="hover:bg-transparent [&>th]:h-10 [&>th]:px-4 [&>th]:text-[11px] [&>th]:font-semibold [&>th]:tracking-wider [&>th]:text-stone-500 [&>th]:uppercase">
             <TableHead>Lead</TableHead>
@@ -57,14 +59,14 @@ export function LeadTable({ leads, className, emptyState }: {
             <TableHead>Location</TableHead>
             <TableHead>Filed</TableHead>
             <TableHead className="text-right">Value</TableHead>
-            <TableHead>Why this matters</TableHead>
+            {!compact && <TableHead>Why this matters</TableHead>}
             <TableHead><span className="sr-only">Open</span></TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {leads.map((lead) => (
             <TableRow key={lead.id} className="group relative hover:bg-orange-50/40 [&>td]:px-4 [&>td]:py-3">
-              <TableCell className="min-w-72 max-w-96 whitespace-normal">
+              <TableCell className={cn("max-w-96 whitespace-normal", compact ? "min-w-52" : "min-w-72")}>
                 <div className="flex items-center gap-3">
                   <CategoryIcon category={lead.category} />
                   <div className="min-w-0">
@@ -98,9 +100,11 @@ export function LeadTable({ leads, className, emptyState }: {
               <TableCell className="text-right text-sm font-semibold tabular-nums text-stone-800">
                 {formatValueShort(lead.estimatedValue)}
               </TableCell>
-              <TableCell className="max-w-72 min-w-56 text-sm whitespace-normal text-stone-600">
-                <p className="line-clamp-2">{lead.reason}</p>
-              </TableCell>
+              {!compact && (
+                <TableCell className="max-w-72 min-w-56 text-sm whitespace-normal text-stone-600">
+                  <p className="line-clamp-2">{lead.reason}</p>
+                </TableCell>
+              )}
               <TableCell className="w-8 text-stone-300 group-hover:text-orange-500">
                 <ChevronRight className="size-4" aria-hidden />
               </TableCell>
