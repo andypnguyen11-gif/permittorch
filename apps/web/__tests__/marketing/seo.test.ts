@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { normalizeMetadataRoute } from "next/dist/lib/metadata/get-metadata-route";
 import { buildMetadata, DEFAULT_OG_IMAGE, DEFAULT_OG_IMAGE_PATH, jsonLd, SITE_URL } from "@/lib/seo";
 
 describe("buildMetadata", () => {
@@ -37,13 +36,16 @@ describe("buildMetadata", () => {
     expect((withImg.twitter as { images?: string[] }).images).toEqual([`${SITE_URL}/og/pricing.png`]);
     const without = buildMetadata(base);
     expect((without.openGraph as { images?: unknown }).images).toEqual([DEFAULT_OG_IMAGE]);
-    expect((without.twitter as { images?: string[] }).images).toEqual([`${SITE_URL}/opengraph-image-pwu6ef`]);
+    expect((without.twitter as { images?: string[] }).images).toEqual([`${SITE_URL}/og-image.png`]);
     expect(DEFAULT_OG_IMAGE).toMatchObject({ width: 1200, height: 630 });
   });
 
-  it("points at the route Next actually serves for app/(marketing)/opengraph-image.tsx", () => {
-    const route = normalizeMetadataRoute("/(marketing)/opengraph-image"); // "/(marketing)/opengraph-image-<hash>/route"
-    expect(route.replace("/(marketing)", "").replace(/\/route$/, "")).toBe(DEFAULT_OG_IMAGE_PATH);
+  it("serves the default card from a dotted path the auth middleware never intercepts", () => {
+    // Mirrors the frozen middleware matcher's page catch-all.
+    const matcher = /^\/((?!_next|favicon.ico|.*\..*).*)$/;
+    expect(DEFAULT_OG_IMAGE_PATH).toBe("/og-image.png");
+    expect(matcher.test(DEFAULT_OG_IMAGE_PATH)).toBe(false);
+    expect(matcher.test("/pricing")).toBe(true);
   });
 
   it("uses an absolute title only when asked (bypasses the root template)", () => {

@@ -26,7 +26,7 @@ describe("structured data", () => {
     for (const p of blogPosts) {
       const ld = articleJsonLd(p);
       expect(ld.dateModified).toBe(p.publishedAt);
-      expect(ld.image[0]).toBe("https://permittorch.com/opengraph-image-pwu6ef");
+      expect(ld.image[0]).toBe("https://permittorch.com/og-image.png");
     }
   });
 
@@ -58,5 +58,14 @@ describe("illustrative score example", () => {
     expect(SCORE_EXAMPLE.total).toBe(sum);
     expect(sum).toBeGreaterThanOrEqual(90);
     expect(sum).toBeLessThanOrEqual(95);
+  });
+});
+
+describe("/og-image.png route", () => {
+  it("renders the social card as a PNG", async () => {
+    const { GET, dynamic } = await import("@/app/(marketing)/og-image.png/route");
+    expect(dynamic).toBe("force-static");
+    const res = GET();
+    expect(res.headers.get("content-type")).toBe("image/png");
   });
 });

@@ -5,12 +5,11 @@ export const SITE_NAME = "PermitTorch";
 export const SITE_TAGLINE = "Fire protection leads from public permit data";
 
 /**
- * Public path of app/(marketing)/opengraph-image.tsx. Next suffixes metadata
- * image routes inside route groups with a deterministic hash of the group path
- * ("/(marketing)" -> "pwu6ef"); a unit test recomputes it so a move fails loudly.
- * Pages set openGraph explicitly, so the file convention alone would only cover "/".
+ * Public URL of the default social card (app/(marketing)/og-image.png/route.ts,
+ * which renders app/(marketing)/opengraph-image.tsx). A dotted path bypasses the
+ * auth middleware matcher; the convention route "/opengraph-image-<hash>" does not.
  */
-export const DEFAULT_OG_IMAGE_PATH = "/opengraph-image-pwu6ef";
+export const DEFAULT_OG_IMAGE_PATH = "/og-image.png";
 
 /** Default social card for every marketing page. */
 export const DEFAULT_OG_IMAGE = {
