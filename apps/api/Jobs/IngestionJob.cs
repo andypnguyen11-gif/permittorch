@@ -63,6 +63,10 @@ public sealed class IngestionJob : BackgroundService
         }
     }
 
+    // Detach tracked entities after this many records so change detection stays bounded on
+    // multi-thousand-record runs (each record is already saved individually).
+    private const int TrackerClearBatchSize = 100;
+
     public async Task<ScraperRun?> RunOnceAsync(CancellationToken ct)
     {
         using var scope = _scopeFactory.CreateScope();
@@ -72,10 +76,45 @@ public sealed class IngestionJob : BackgroundService
         var run = await provider.FetchNextRunAsync(ct);
         if (run is null) return null;
 
+        var ingestStart = DateTime.UtcNow;
+        try
+        {
+            return await IngestRunAsync(db, run, ingestStart, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Escape hatch: always record the run so FetchNextRunAsync (which skips any ApifyRunId
+            // already in scraper_runs) moves on instead of retrying this run forever.
+            _logger.LogError(ex,
+                "Ingestion of Apify run {RunId} failed at the run level; recording it as {Status} so newer runs are not blocked",
+                run.RunId, FailedRunStatus);
+            db.ChangeTracker.Clear();
+            var failedRun = BuildScraperRun(run, FailedRunStatus, ingestStart,
+                new RunCounts { Failures = 1 }, coverageJson: null);
+            db.Add(failedRun);
+            await db.SaveChangesAsync(ct);
+            return failedRun;
+        }
+    }
+
+    public const string FailedRunStatus = "FAILED";
+
+    private sealed class RunCounts
+    {
+        public int Imported;
+        public int Duplicates;
+        public int Classified;
+        public int Failures;
+    }
+
+    private async Task<ScraperRun> IngestRunAsync(AppDbContext db, ProviderRunResult run,
+        DateTime ingestStart, CancellationToken ct)
+    {
         // Source.Jurisdiction stores the scraper sourceId (master §3); records carry it as
         // source.sourceId (surfaced by the normalizer as NormalizedPermit.Jurisdiction) and
-        // COVERAGE_REPORT as sourceStats[].sourceId.
-        var sources = await db.Set<Source>().Where(s => s.Active).ToListAsync(ct);
+        // COVERAGE_REPORT as sourceStats[].sourceId. Loaded untracked: the change tracker is
+        // cleared during the loop, so source updates are applied to a fresh load at the end.
+        var sources = await db.Set<Source>().AsNoTracking().Where(s => s.Active).ToListAsync(ct);
         var bySourceId = new Dictionary<string, Source>(StringComparer.OrdinalIgnoreCase);
         foreach (var source in sources)
         {
@@ -83,11 +122,18 @@ public sealed class IngestionJob : BackgroundService
                 bySourceId[source.Jurisdiction] = source;
         }
 
-        var imported = 0;
-        var duplicates = 0;
-        var classified = 0;
-        var failures = 0;
-        var ingestStart = DateTime.UtcNow;
+        var counts = new RunCounts();
+        if (!string.Equals(run.Status, "SUCCEEDED", StringComparison.OrdinalIgnoreCase)
+            && run.Records.Count == 0)
+        {
+            // The provider could not deliver this run's output (e.g. dataset fetch failed).
+            _logger.LogWarning("Apify run {RunId} reported status {Status} with no records; recording it as a failed run",
+                run.RunId, run.Status);
+            counts.Failures++;
+        }
+
+        var lastRecordSeen = new Dictionary<Guid, DateTime>();
+        var processed = 0;
 
         foreach (var raw in run.Records)
         {
@@ -100,142 +146,193 @@ public sealed class IngestionJob : BackgroundService
                     _logger.LogWarning(
                         "Skipping record {ExternalId}: unknown sourceId '{SourceId}'",
                         normalized.ExternalId, normalized.Jurisdiction);
-                    failures++;
+                    counts.Failures++;
                     continue;
                 }
 
                 var now = DateTime.UtcNow;
-                var permit = await db.Set<Permit>().Include(p => p.Opportunity)
-                        .FirstOrDefaultAsync(p => p.SourceId == source.Id
-                            && p.ExternalId == normalized.ExternalId, ct)
-                    ?? await db.Set<Permit>().Include(p => p.Opportunity)
-                        .FirstOrDefaultAsync(p => p.SourceId == source.Id
-                            && p.Fingerprint == normalized.Fingerprint, ct);
-
-                if (permit is null)
-                {
-                    permit = new Permit
-                    {
-                        Id = Guid.NewGuid(),
-                        SourceId = source.Id,
-                        ExternalId = normalized.ExternalId,
-                        PermitNumber = normalized.PermitNumber,
-                        PermitType = normalized.PermitType,
-                        Description = normalized.Description,
-                        Status = normalized.Status,
-                        RawStatus = normalized.RawStatus,
-                        Address = normalized.Address,
-                        City = normalized.City,
-                        State = normalized.State,
-                        Zip = normalized.Zip,
-                        Latitude = normalized.Latitude,
-                        Longitude = normalized.Longitude,
-                        FiledDate = normalized.FiledDate,
-                        IssuedDate = normalized.IssuedDate,
-                        EstimatedValue = normalized.EstimatedValue,
-                        SquareFootage = normalized.SquareFootage,
-                        OwnerName = normalized.OwnerName,
-                        ContractorName = normalized.ContractorName,
-                        SourceUrl = normalized.SourceUrl,
-                        Fingerprint = normalized.Fingerprint,
-                        FirstSeenAt = now,
-                        LastSeenAt = now,
-                        CreatedAt = now,
-                        UpdatedAt = now,
-                    };
-                    db.Add(permit);
-                    imported++;
-                }
-                else
-                {
-                    MergeNonNullFields(permit, normalized);
-                    permit.LastSeenAt = now;
-                    permit.UpdatedAt = now;
-                    duplicates++;
-                }
-
-                source.LastRecordSeenAt = now;
-
-                var classification = FireClassifier.Classify(normalized);
-                if (classification is not null)
-                {
-                    var scoreResult = _scoringEngine.Score(normalized, classification, now);
-                    var opportunity = permit.Opportunity;
-                    if (opportunity is null)
-                    {
-                        opportunity = new FireOpportunity
-                        {
-                            Id = Guid.NewGuid(),
-                            PermitId = permit.Id,
-                            FirstDetectedAt = now,
-                        };
-                        permit.Opportunity = opportunity;
-                        db.Add(opportunity);
-                    }
-                    else
-                    {
-                        var oldSignals = await db.Set<LeadSignal>()
-                            .Where(s => s.FireOpportunityId == opportunity.Id)
-                            .ToListAsync(ct);
-                        db.RemoveRange(oldSignals);
-                    }
-
-                    opportunity.Category = classification.Category;
-                    opportunity.Confidence = classification.Confidence;
-                    opportunity.LeadScore = scoreResult.Score;
-                    opportunity.Reason = scoreResult.Reason;
-                    opportunity.LastUpdatedAt = now;
-
-                    foreach (var signal in scoreResult.Signals)
-                    {
-                        db.Add(new LeadSignal
-                        {
-                            Id = Guid.NewGuid(),
-                            FireOpportunityId = opportunity.Id,
-                            SignalType = signal.SignalType,
-                            Description = signal.Description,
-                            Weight = signal.Weight,
-                        });
-                    }
-
-                    classified++;
-                }
-
+                var (isNew, isClassified) = await UpsertRecordAsync(db, source, normalized, now, ct);
                 await db.SaveChangesAsync(ct);
+                // Counted only after the save succeeds so a failed record is never also "imported".
+                if (isNew) counts.Imported++; else counts.Duplicates++;
+                if (isClassified) counts.Classified++;
+                lastRecordSeen[source.Id] = now;
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 _logger.LogError(ex, "Failed to ingest record {RecordId}", raw.RecordId);
-                failures++;
+                counts.Failures++;
+                // Detach the failed graph; otherwise every later SaveChanges (including the
+                // ScraperRun insert) re-attempts the same invalid rows and throws.
+                db.ChangeTracker.Clear();
             }
+
+            if (++processed % TrackerClearBatchSize == 0)
+                db.ChangeTracker.Clear();
         }
 
-        ApplySourceHealth(run.Coverage, bySourceId);
+        db.ChangeTracker.Clear();
+        await ApplySourceUpdatesAsync(db, run.Coverage, lastRecordSeen, ct);
 
-        var scraperRun = new ScraperRun
-        {
-            Id = Guid.NewGuid(),
-            SourceId = null,
-            ApifyRunId = run.RunId,
-            Status = run.Status,
-            StartedAt = run.StartedAt,
-            FinishedAt = run.FinishedAt,
-            RecordsImported = imported,
-            DuplicatesSkipped = duplicates,
-            Classified = classified,
-            Failures = failures,
-            DurationSeconds = run.FinishedAt.HasValue
-                ? (run.FinishedAt.Value - run.StartedAt).TotalSeconds
-                : (DateTime.UtcNow - ingestStart).TotalSeconds,
-            CoverageReportJson = run.Coverage is null ? null : JsonSerializer.Serialize(run.Coverage),
-        };
+        var scraperRun = BuildScraperRun(run, run.Status, ingestStart, counts,
+            run.Coverage is null ? null : JsonSerializer.Serialize(run.Coverage));
         db.Add(scraperRun);
         await db.SaveChangesAsync(ct);
 
         _logger.LogInformation(
             "Ingested Apify run {RunId}: {Imported} imported, {Duplicates} duplicates, {Classified} classified, {Failures} failures",
-            run.RunId, imported, duplicates, classified, failures);
+            run.RunId, counts.Imported, counts.Duplicates, counts.Classified, counts.Failures);
         return scraperRun;
+    }
+
+    private static ScraperRun BuildScraperRun(ProviderRunResult run, string status,
+        DateTime ingestStart, RunCounts counts, string? coverageJson)
+        => new()
+        {
+            Id = Guid.NewGuid(),
+            SourceId = null,
+            ApifyRunId = run.RunId,
+            Status = status,
+            StartedAt = run.StartedAt,
+            FinishedAt = run.FinishedAt,
+            RecordsImported = counts.Imported,
+            DuplicatesSkipped = counts.Duplicates,
+            Classified = counts.Classified,
+            Failures = counts.Failures,
+            DurationSeconds = run.FinishedAt.HasValue
+                ? (run.FinishedAt.Value - run.StartedAt).TotalSeconds
+                : (DateTime.UtcNow - ingestStart).TotalSeconds,
+            CoverageReportJson = coverageJson,
+        };
+
+    private async Task<(bool IsNew, bool IsClassified)> UpsertRecordAsync(AppDbContext db, Source source,
+        NormalizedPermit normalized, DateTime now, CancellationToken ct)
+    {
+        var permit = await db.Set<Permit>().Include(p => p.Opportunity)
+                .FirstOrDefaultAsync(p => p.SourceId == source.Id
+                    && p.ExternalId == normalized.ExternalId, ct)
+            ?? await db.Set<Permit>().Include(p => p.Opportunity)
+                .FirstOrDefaultAsync(p => p.SourceId == source.Id
+                    && p.Fingerprint == normalized.Fingerprint, ct);
+
+        var isNew = permit is null;
+        if (permit is null)
+        {
+            permit = new Permit
+            {
+                Id = Guid.NewGuid(),
+                SourceId = source.Id,
+                ExternalId = normalized.ExternalId,
+                PermitNumber = normalized.PermitNumber,
+                PermitType = normalized.PermitType,
+                Description = normalized.Description,
+                Status = normalized.Status,
+                RawStatus = normalized.RawStatus,
+                Address = normalized.Address,
+                City = normalized.City,
+                State = normalized.State,
+                Zip = normalized.Zip,
+                Latitude = normalized.Latitude,
+                Longitude = normalized.Longitude,
+                FiledDate = normalized.FiledDate,
+                IssuedDate = normalized.IssuedDate,
+                EstimatedValue = normalized.EstimatedValue,
+                SquareFootage = normalized.SquareFootage,
+                OwnerName = normalized.OwnerName,
+                ContractorName = normalized.ContractorName,
+                SourceUrl = normalized.SourceUrl,
+                Fingerprint = normalized.Fingerprint,
+                FirstSeenAt = now,
+                LastSeenAt = now,
+                CreatedAt = now,
+                UpdatedAt = now,
+            };
+            db.Add(permit);
+        }
+        else
+        {
+            MergeNonNullFields(permit, normalized);
+            permit.LastSeenAt = now;
+            permit.UpdatedAt = now;
+        }
+
+        var classification = FireClassifier.Classify(normalized);
+        if (classification is null) return (isNew, false);
+
+        var scoreResult = _scoringEngine.Score(normalized, classification, now);
+        var opportunity = permit.Opportunity;
+        if (opportunity is null)
+        {
+            opportunity = new FireOpportunity
+            {
+                Id = Guid.NewGuid(),
+                PermitId = permit.Id,
+                FirstDetectedAt = now,
+            };
+            permit.Opportunity = opportunity;
+            db.Add(opportunity);
+        }
+        else
+        {
+            var oldSignals = await db.Set<LeadSignal>()
+                .Where(s => s.FireOpportunityId == opportunity.Id)
+                .ToListAsync(ct);
+            db.RemoveRange(oldSignals);
+        }
+
+        opportunity.Category = classification.Category;
+        opportunity.Confidence = classification.Confidence;
+        opportunity.LeadScore = scoreResult.Score;
+        opportunity.Reason = scoreResult.Reason;
+        opportunity.LastUpdatedAt = now;
+
+        foreach (var signal in scoreResult.Signals)
+        {
+            db.Add(new LeadSignal
+            {
+                Id = Guid.NewGuid(),
+                FireOpportunityId = opportunity.Id,
+                SignalType = signal.SignalType,
+                Description = signal.Description,
+                Weight = signal.Weight,
+            });
+        }
+
+        return (isNew, true);
+    }
+
+    // Loads the affected sources fresh (the loop clears the change tracker) and applies
+    // LastRecordSeenAt plus coverage-driven health in one save alongside nothing else.
+    private async Task ApplySourceUpdatesAsync(AppDbContext db, CoverageReport? coverage,
+        Dictionary<Guid, DateTime> lastRecordSeen, CancellationToken ct)
+    {
+        var statSourceIds = (coverage?.SourceStats ?? [])
+            .Select(s => s.SourceId)
+            .Where(id => !string.IsNullOrEmpty(id))
+            .ToList();
+        var recordSourceIds = lastRecordSeen.Keys.ToList();
+        if (statSourceIds.Count == 0 && recordSourceIds.Count == 0) return;
+
+        var tracked = await db.Set<Source>()
+            .Where(s => s.Active
+                && (recordSourceIds.Contains(s.Id) || statSourceIds.Contains(s.Jurisdiction)))
+            .ToListAsync(ct);
+
+        foreach (var source in tracked)
+        {
+            if (lastRecordSeen.TryGetValue(source.Id, out var seenAt))
+                source.LastRecordSeenAt = seenAt;
+        }
+
+        var bySourceId = new Dictionary<string, Source>(StringComparer.OrdinalIgnoreCase);
+        foreach (var source in tracked)
+        {
+            if (!string.IsNullOrEmpty(source.Jurisdiction))
+                bySourceId[source.Jurisdiction] = source;
+        }
+        ApplySourceHealth(coverage, bySourceId);
+
+        await db.SaveChangesAsync(ct);
     }
 
     // PRD §62: preserve source records historically — never blindly overwrite non-null with null.
@@ -268,8 +365,9 @@ public sealed class IngestionJob : BackgroundService
         if (coverage is null) return;
         var now = DateTime.UtcNow;
 
-        foreach (var stat in coverage.SourceStats)
+        foreach (var stat in coverage.SourceStats ?? [])
         {
+            if (stat is null || string.IsNullOrEmpty(stat.SourceId)) continue;
             if (!bySourceId.TryGetValue(stat.SourceId, out var source)) continue;
             if (source.HealthStatus == HealthStatus.Disabled) continue;
 
@@ -301,5 +399,5 @@ public sealed class IngestionJob : BackgroundService
     // "max-records" outcome when the result cap cut delivery short (scraper-sample.json).
     private static bool IsTruncated(SourceCoverage? coverage)
         => coverage is not null
-           && (coverage.TruncatedBy.Length > 0 || coverage.Outcome == "max-records");
+           && ((coverage.TruncatedBy ?? []).Length > 0 || coverage.Outcome == "max-records");
 }

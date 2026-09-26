@@ -22,6 +22,8 @@ public sealed class ApifyPermitProvider : IPermitSourceProvider
         _logger = logger;
     }
 
+    public const string FetchFailedStatus = "FAILED";
+
     public async Task<ProviderRunResult?> FetchNextRunAsync(CancellationToken ct)
     {
         var runs = await _client.GetTaskRunsAsync(ct);
@@ -51,8 +53,22 @@ public sealed class ApifyPermitProvider : IPermitSourceProvider
             return null;
         }
 
-        var records = await _client.GetDatasetItemsAsync(run.DefaultDatasetId, ct);
-        var coverage = await _client.GetCoverageReportAsync(run.DefaultKeyValueStoreId, ct);
-        return new ProviderRunResult(run.Id, run.Status, run.StartedAt, run.FinishedAt, records, coverage);
+        try
+        {
+            var records = await _client.GetDatasetItemsAsync(run.DefaultDatasetId, ct);
+            var coverage = await _client.GetCoverageReportAsync(run.DefaultKeyValueStoreId, ct);
+            return new ProviderRunResult(run.Id, run.Status, run.StartedAt, run.FinishedAt, records, coverage);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // A run whose output cannot be fetched or parsed is surfaced as FAILED with no records
+            // so the ingestion job records it and later passes move on to newer runs instead of
+            // retrying (and blocking on) this one forever.
+            _logger.LogError(ex,
+                "Could not fetch output of Apify run {RunId} (dataset {DatasetId}, store {StoreId}); reporting it as {Status}",
+                run.Id, run.DefaultDatasetId, run.DefaultKeyValueStoreId, FetchFailedStatus);
+            return new ProviderRunResult(run.Id, FetchFailedStatus, run.StartedAt, run.FinishedAt,
+                Array.Empty<RawPermitRecord>(), null);
+        }
     }
 }

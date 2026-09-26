@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -342,4 +345,197 @@ public class IngestionJobTests
         await using var after = _fixture.CreateContext();
         Assert.Equal(runsBefore, await after.Set<ScraperRun>().CountAsync());
     }
+
+    // ---- Failure isolation (one bad record must never wedge ingestion) ----
+
+    private async Task AssertRunRecordedAsync(string runId)
+    {
+        await using var db = _fixture.CreateContext();
+        Assert.True(await db.Set<ScraperRun>().AnyAsync(r => r.ApifyRunId == runId));
+    }
+
+    [Fact]
+    public async Task RunOnce_RecordViolatingNotNull_IsCountedAsFailure_AndOthersStillImport()
+    {
+        var sourceId = $"src-{Guid.NewGuid():N}";
+        await SeedSourceAsync(sourceId);
+        var first = Record($"ext-{Guid.NewGuid():N}", sourceId, description: "Fire alarm panel A",
+            street: "1 First St");
+        var bad = Record(null!, sourceId, description: "Fire alarm panel B", street: "2 Second St");
+        var third = Record($"ext-{Guid.NewGuid():N}", sourceId, description: "Fire alarm panel C",
+            street: "3 Third St");
+        var runId = $"run-{Guid.NewGuid():N}";
+        var (job, sp) = BuildJob(new FakePermitSourceProvider(
+            Run(runId, new[] { first, bad, third }, Stat(sourceId))));
+        await using var _ = sp;
+
+        var scraperRun = await job.RunOnceAsync(CancellationToken.None);
+
+        Assert.NotNull(scraperRun);
+        Assert.Equal(2, scraperRun!.RecordsImported);
+        Assert.Equal(1, scraperRun.Failures);
+        await AssertRunRecordedAsync(runId);
+        await using var db = _fixture.CreateContext();
+        Assert.True(await db.Set<Permit>().AnyAsync(p => p.ExternalId == first.RecordId));
+        Assert.True(await db.Set<Permit>().AnyAsync(p => p.ExternalId == third.RecordId));
+    }
+
+    [Fact]
+    public async Task RunOnce_RecordWithNulCharacter_IsCountedAsFailure_AndOthersStillImport()
+    {
+        var sourceId = $"src-{Guid.NewGuid():N}";
+        await SeedSourceAsync(sourceId);
+        var first = Record($"ext-{Guid.NewGuid():N}", sourceId, description: "Sprinkler riser 1",
+            street: "10 First St");
+        var bad = Record($"ext-{Guid.NewGuid():N}", sourceId, description: "Sprinkler\0 riser 2",
+            street: "20 Second St");
+        var third = Record($"ext-{Guid.NewGuid():N}", sourceId, description: "Sprinkler riser 3",
+            street: "30 Third St");
+        var runId = $"run-{Guid.NewGuid():N}";
+        var (job, sp) = BuildJob(new FakePermitSourceProvider(
+            Run(runId, new[] { first, bad, third }, Stat(sourceId))));
+        await using var _ = sp;
+
+        var scraperRun = await job.RunOnceAsync(CancellationToken.None);
+
+        Assert.NotNull(scraperRun);
+        Assert.Equal(2, scraperRun!.RecordsImported);
+        Assert.Equal(1, scraperRun.Failures);
+        await AssertRunRecordedAsync(runId);
+        await using var db = _fixture.CreateContext();
+        Assert.False(await db.Set<Permit>().AnyAsync(p => p.ExternalId == bad.RecordId));
+        Assert.True(await db.Set<Permit>().AnyAsync(p => p.ExternalId == third.RecordId));
+    }
+
+    [Theory]
+    [InlineData("\"sourceStats\": null")]
+    [InlineData("\"sourceStats\": [ { \"sourceId\": \"SOURCE\", \"jurisdictionKey\": \"ok/tulsa\", \"ok\": true, \"rawCount\": 1, \"emittedCount\": 1, \"requestCount\": 1, \"durationMs\": 1, \"error\": null, \"addressShortfall\": null, \"coverage\": { \"held\": 1, \"heldUnknownTypes\": 0, \"delivered\": 1, \"outcome\": \"complete\", \"truncatedBy\": null, \"typesSearched\": 1, \"typesTotal\": 1 } } ]")]
+    public async Task RunOnce_CoverageReportWithNullArrays_DoesNotThrow_AndPersistsRun(string sourceStatsJson)
+    {
+        var sourceId = $"src-{Guid.NewGuid():N}";
+        var source = await SeedSourceAsync(sourceId, HealthStatus.Stale);
+        // Deserialized exactly as ApifyClient does: absent/null arrays stay null on the records.
+        var coverage = JsonSerializer.Deserialize<CoverageReport>(
+            "{ \"recordsFound\": 1, \"unsupportedDetails\": null, \"failedDetails\": null, \"skippedDetails\": null, "
+            + sourceStatsJson.Replace("SOURCE", sourceId) + " }",
+            new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        var record = Record($"ext-{Guid.NewGuid():N}", sourceId, description: "Fire alarm install");
+        var runId = $"run-{Guid.NewGuid():N}";
+        var (job, sp) = BuildJob(new FakePermitSourceProvider(new ProviderRunResult(runId, "SUCCEEDED",
+            DateTime.UtcNow.AddMinutes(-10), DateTime.UtcNow.AddMinutes(-5), new[] { record }, coverage)));
+        await using var _ = sp;
+
+        var scraperRun = await job.RunOnceAsync(CancellationToken.None);
+
+        Assert.NotNull(scraperRun);
+        Assert.Equal("SUCCEEDED", scraperRun!.Status);
+        Assert.Equal(1, scraperRun.RecordsImported);
+        Assert.Equal(0, scraperRun.Failures);
+        await AssertRunRecordedAsync(runId);
+        if (sourceStatsJson.Contains("truncatedBy"))
+        {
+            await using var db = _fixture.CreateContext();
+            Assert.Equal(HealthStatus.Healthy,
+                (await db.Set<Source>().SingleAsync(s => s.Id == source.Id)).HealthStatus);
+        }
+    }
+
+    [Fact]
+    public async Task RunOnce_DatasetFetchFailure_RecordsFailedRun_AndProviderMovesOnToNextRun()
+    {
+        var failing = $"run-{Guid.NewGuid():N}";
+        var next = $"run-{Guid.NewGuid():N}";
+        var handler = new FakeHttpMessageHandler(req =>
+        {
+            var path = req.RequestUri!.AbsolutePath;
+            if (path == "/v2/actor-tasks/pt-task-1/runs")
+                return JsonResponse("{ \"data\": { \"items\": ["
+                    + RunItem(next, "2026-08-20T10:00:00.000Z", "ds-ok") + ","
+                    + RunItem(failing, "2026-08-19T10:00:00.000Z", "ds-broken") + "] } }");
+            if (path == "/v2/datasets/ds-broken/items")
+                return new HttpResponseMessage(HttpStatusCode.InternalServerError);
+            if (path == "/v2/datasets/ds-ok/items") return JsonResponse("[]");
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["APIFY_TOKEN"] = "test-token",
+            ["APIFY_TASK_ID"] = "pt-task-1",
+        }).Build();
+
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddDbContext<AppDbContext>(o => o.UseNpgsql(_fixture.ConnectionString));
+        services.AddScoped(_ => new ApifyClient(
+            new HttpClient(handler) { BaseAddress = new Uri("https://api.apify.com") }, config));
+        services.AddScoped<IPermitSourceProvider, ApifyPermitProvider>();
+        await using var sp = services.BuildServiceProvider();
+        var job = new IngestionJob(sp.GetRequiredService<IServiceScopeFactory>(),
+            new ScoringEngine(new ScoringOptions()), new ConfigurationBuilder().Build(),
+            NullLogger<IngestionJob>.Instance);
+
+        var failedRun = await job.RunOnceAsync(CancellationToken.None);
+
+        Assert.NotNull(failedRun);
+        Assert.Equal(failing, failedRun!.ApifyRunId);
+        Assert.Equal("FAILED", failedRun.Status);
+        Assert.True(failedRun.Failures >= 1);
+        await AssertRunRecordedAsync(failing);
+
+        using var scope = sp.CreateScope();
+        var provider = scope.ServiceProvider.GetRequiredService<IPermitSourceProvider>();
+        var following = await provider.FetchNextRunAsync(CancellationToken.None);
+        Assert.NotNull(following);
+        Assert.Equal(next, following!.RunId);
+    }
+
+    [Fact]
+    public async Task RunOnce_RunLevelException_StillPersistsFailedScraperRun()
+    {
+        var runId = $"run-{Guid.NewGuid():N}";
+        // Records == null makes enumeration throw outside the per-record try/catch.
+        var (job, sp) = BuildJob(new FakePermitSourceProvider(new ProviderRunResult(runId, "SUCCEEDED",
+            DateTime.UtcNow.AddMinutes(-10), DateTime.UtcNow.AddMinutes(-5), null!, null)));
+        await using var _ = sp;
+
+        var scraperRun = await job.RunOnceAsync(CancellationToken.None);
+
+        Assert.NotNull(scraperRun);
+        Assert.Equal("FAILED", scraperRun!.Status);
+        Assert.Equal(1, scraperRun.Failures);
+        await AssertRunRecordedAsync(runId);
+    }
+
+    [Fact]
+    public async Task RunOnce_ManyRecordsAcrossTrackerBatches_AllImport_AndSourceIsUpdated()
+    {
+        var sourceId = $"src-{Guid.NewGuid():N}";
+        var source = await SeedSourceAsync(sourceId, HealthStatus.Stale);
+        var records = Enumerable.Range(0, 230)
+            .Select(i => Record($"ext-{Guid.NewGuid():N}", sourceId,
+                description: $"Fire sprinkler job {i}", street: $"{i} Batch Ave"))
+            .ToArray();
+        var (job, sp) = BuildJob(new FakePermitSourceProvider(
+            Run($"run-{Guid.NewGuid():N}", records, Stat(sourceId, emitted: 230))));
+        await using var _ = sp;
+
+        var scraperRun = await job.RunOnceAsync(CancellationToken.None);
+
+        Assert.Equal(230, scraperRun!.RecordsImported);
+        Assert.Equal(0, scraperRun.Failures);
+        await using var db = _fixture.CreateContext();
+        var updated = await db.Set<Source>().SingleAsync(s => s.Id == source.Id);
+        Assert.NotNull(updated.LastRecordSeenAt);
+        Assert.Equal(HealthStatus.Healthy, updated.HealthStatus);
+        Assert.Equal(230, updated.RecordsLastRun);
+    }
+
+    private static HttpResponseMessage JsonResponse(string body) => new(HttpStatusCode.OK)
+    {
+        Content = new StringContent(body, Encoding.UTF8, "application/json")
+    };
+
+    private static string RunItem(string runId, string startedAt, string datasetId) =>
+        $"{{ \"id\": \"{runId}\", \"status\": \"SUCCEEDED\", \"startedAt\": \"{startedAt}\", "
+        + $"\"finishedAt\": \"{startedAt}\", \"defaultDatasetId\": \"{datasetId}\", \"defaultKeyValueStoreId\": \"kv-{datasetId}\" }}";
 }
