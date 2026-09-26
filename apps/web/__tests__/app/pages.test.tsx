@@ -14,6 +14,7 @@ vi.mock("@/components/app/get-token", () => ({ getApiToken: async () => "mock-to
 vi.mock("sonner", () => ({ toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }) }));
 
 import SavedPage from "@/app/app/saved/page";
+import AlertsPage from "@/app/app/alerts/page";
 
 beforeAll(() => vi.stubEnv("NEXT_PUBLIC_API_MOCK", "1"));
 
@@ -26,5 +27,14 @@ describe("/app/saved", () => {
     expect(screen.getByText("Mixed-Use Tower Fire Alarm")).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "Mark contacted" })).toHaveLength(2);
     expect(screen.getAllByRole("button", { name: "Mark saved" })).toHaveLength(1);
+  });
+});
+
+describe("/app/alerts", () => {
+  it("shows the account's digest frequency", async () => {
+    render(await AlertsPage());
+    expect(screen.getByRole("heading", { name: "Alerts" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /Daily/ })).toBeChecked();
+    expect(screen.getByText("john@davisfireprotection.com")).toBeInTheDocument();
   });
 });
