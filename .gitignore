@@ -1,1 +1,29 @@
+# Node / Next.js
+node_modules/
+.next/
+out/
+dist/
+coverage/
+next-env.d.ts
+*.tsbuildinfo
+
+# .NET
+bin/
+obj/
+*.user
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+
+# OS / editor / agent scratch
 .DS_Store
+.idea/
+.vscode/
+.claude/*.lock

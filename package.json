@@ -1,0 +1,12 @@
+{
+  "name": "permittorch",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test"
+  }
+}
