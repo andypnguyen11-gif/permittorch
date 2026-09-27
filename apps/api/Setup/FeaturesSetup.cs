@@ -160,9 +160,10 @@ public static class FeaturesSetup
         // the entry the edge proxy appends; anything a client prepends is ignored, so a
         // client cannot pick its own rate-limit partition. Authenticated traffic is
         // partitioned by the verified `sub` claim regardless.
-        // Verify on deploy: send `X-Forwarded-For: 1.2.3.4` through the edge and confirm the
-        // logged client IP is NOT 1.2.3.4; if Railway appends without stripping, keep 1; if
-        // the CDN adds a second trusted hop, set ForwardedHeaders:ForwardLimit=2.
+        // Observed on Railway (2026-09-27, header echo behind the edge): the edge DISCARDS any
+        // client-sent X-Forwarded-For and sends "<client ip>, <edge node ip>", so production
+        // sets ForwardedHeaders:ForwardLimit=2 (with 1, every anonymous caller would share
+        // the edge node's bucket). Re-check with a header echo if the hosting edge changes.
         var forwardLimit = app.Configuration.GetValue("ForwardedHeaders:ForwardLimit", 1);
         if (forwardLimit < 1)
             throw new InvalidOperationException("ForwardedHeaders:ForwardLimit must be at least 1");
