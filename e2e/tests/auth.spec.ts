@@ -47,7 +47,7 @@ test.describe("sign-in", () => {
     await page.getByLabel("Email", { exact: true }).fill(USERS.entitled.email);
     await page.getByLabel("Password", { exact: true }).fill(`${USERS.entitled.password}-wrong`);
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
-    await expect(page.getByRole("alert")).toHaveText("Incorrect email or password.");
+    await expect(page.locator("form").getByRole("alert")).toHaveText("Incorrect email or password.");
     expect(new URL(page.url()).pathname).toBe("/login");
   });
 

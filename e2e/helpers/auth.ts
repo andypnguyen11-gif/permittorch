@@ -25,6 +25,15 @@ export async function signIn(page: Page, user: TestUser): Promise<void> {
   // exact: the show/hide toggle is labelled "Show password".
   await page.getByLabel("Password", { exact: true }).fill(user.password);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await page.waitForURL("**/app/leads", { timeout: 30_000 });
+  // Fail fast with the form's own error (wrong password, provider disabled…) instead of a
+  // 30-second navigation timeout.
+  const formError = page.locator("form").getByRole("alert");
+  const outcome = await Promise.race([
+    page.waitForURL("**/app/leads", { timeout: 30_000 }).then(() => "ok" as const),
+    formError.waitFor({ state: "visible", timeout: 30_000 }).then(() => "error" as const),
+  ]);
+  if (outcome === "error") {
+    throw new Error(`Sign-in as ${user.email} failed on /login: "${await formError.textContent()}"`);
+  }
   await expect(page.getByRole("heading", { level: 1, name: "Leads" })).toBeVisible();
 }
