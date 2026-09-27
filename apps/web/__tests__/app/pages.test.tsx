@@ -98,6 +98,16 @@ describe("/app/account", () => {
     catalog.mockRestore();
   });
 
+  it("ends confirming on ?checkout=success when a live subscription has no plan (billing portal)", async () => {
+    const me = vi.spyOn(api, "getAccountMe").mockResolvedValue({ ...NO_PLAN, hasLiveSubscription: true });
+    await page({ checkout: "success" });
+    expect(screen.queryByText("Confirming your subscription…")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Manage billing" })).toBeInTheDocument();
+    expect(screen.getByText(/needs attention/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Subscribe/ })).not.toBeInTheDocument();
+    me.mockRestore();
+  });
+
   it("shows the normal plan view on ?checkout=success once the plan exists", async () => {
     await page({ checkout: "success" });
     expect(screen.getByText("Pro plan")).toBeInTheDocument();

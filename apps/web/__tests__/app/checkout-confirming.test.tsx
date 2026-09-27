@@ -9,6 +9,9 @@ vi.mock("next/navigation", () => ({ useRouter: () => router }));
 vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()), getAccountMe: vi.fn() }));
 vi.mock("@/components/app/use-api-token", () => ({ useApiToken: () => async () => "mock-token" }));
+vi.mock("@/components/app/account/billing-buttons", () => ({
+  BillingButtons: ({ plan }: { plan: unknown }) => <button>Manage billing{plan === null ? "" : " (plan)"}</button>,
+}));
 vi.mock("sonner", () => ({ toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }) }));
 
 import { getAccountMe } from "@/lib/api";
@@ -67,6 +70,21 @@ describe("CheckoutConfirming", () => {
     fireEvent.click(screen.getByRole("button", { name: "Check again" }));
     await advance(1_000);
     expect(router.replace).toHaveBeenCalledWith("/app/account");
+  });
+
+  it("ends on a live subscription without a plan and offers the billing portal", async () => {
+    vi.mocked(getAccountMe)
+      .mockResolvedValueOnce(me(null))
+      .mockResolvedValue({ ...me(null), hasLiveSubscription: true });
+    render(<CheckoutConfirming />);
+    await advance(2_500);
+    expect(screen.getByText("Your subscription needs attention — manage billing.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Manage billing" })).toBeInTheDocument();
+    expect(screen.queryByText("Confirming your subscription…")).not.toBeInTheDocument();
+    const calls = vi.mocked(getAccountMe).mock.calls.length;
+    await advance(10_000);
+    expect(getAccountMe).toHaveBeenCalledTimes(calls);   // polling stopped
+    expect(router.replace).not.toHaveBeenCalled();
   });
 
   it("keeps polling through transient API errors", async () => {

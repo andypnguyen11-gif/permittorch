@@ -52,7 +52,7 @@ export default async function AccountPage({ searchParams }: {
   const requestedPlan = parsePlanTier(params?.plan);
   const checkoutResult = params?.checkout === "success" || params?.checkout === "cancelled" ? params.checkout : null;
   // Back from a paid Checkout but the webhook has not attached the plan yet: confirm, never re-offer checkout.
-  const confirming = checkoutResult === "success" && me.plan === null;
+  const confirming = checkoutResult === "success" && me.plan === null && !me.hasLiveSubscription;
   // Any live Stripe subscription (even unpaid/paused/incomplete) is managed in the portal.
   const showPicker = !confirming && me.plan === null && !me.hasLiveSubscription;
   const checkoutMarkets = showPicker ? await pickerMarkets(markets) : [];

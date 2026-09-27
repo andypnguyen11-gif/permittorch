@@ -54,11 +54,19 @@ public sealed class FakeStripeGateway(IOptions<BillingOptions> options) : Stripe
                 .OrderByDescending(s => s.CreatedAt).ToList());
     }
 
-    public override Task ExpireCheckoutSessionAsync(string sessionId, CancellationToken ct)
+    /// <summary>Test hook: sessions that get paid just before the API tries to expire them.</summary>
+    public readonly ConcurrentDictionary<string, bool> PaidBeforeExpire = new();
+
+    public override Task<bool> ExpireCheckoutSessionAsync(string sessionId, CancellationToken ct)
     {
+        if (PaidBeforeExpire.ContainsKey(sessionId))
+        {
+            Update(sessionId, s => s with { Status = "complete", Url = null });
+            return Task.FromResult(false);
+        }
         ExpiredSessions.Enqueue(sessionId);
         Update(sessionId, s => s with { Status = "expired" });
-        return Task.CompletedTask;
+        return Task.FromResult(true);
     }
 
     /// <summary>Test hook: rewrite a recorded session (age it, complete it, ...).</summary>
@@ -222,16 +230,66 @@ public sealed class CheckoutEndpointTests(FakeStripeApiFixture fixture) : IClass
     }
 
     [Fact]
-    public async Task Open_session_for_a_different_selection_is_refused_with_409()
+    public async Task Open_session_for_a_different_selection_is_expired_and_replaced()
     {
         var market = TestSeed.Market("Switch");
         var (org, _, client) = await SeedUserAsync(market);
 
-        await CheckoutUrlAsync(await client.PostAsync("/api/billing/checkout",
+        var first = await CheckoutUrlAsync(await client.PostAsync("/api/billing/checkout",
             Json($"{{\"plan\":\"PRO\",\"marketSlugs\":[\"{market.Slug}\"]}}")));
-        await AssertPortalConflictAsync(await client.PostAsync("/api/billing/checkout",
+        var second = await CheckoutUrlAsync(await client.PostAsync("/api/billing/checkout",
             Json($"{{\"plan\":\"STARTER\",\"marketSlugs\":[\"{market.Slug}\"]}}")));
 
+        Assert.NotEqual(first, second);
+        Assert.Contains(FakeStripeGateway.SessionIdFromUrl(first), Stripe.ExpiredSessions);
+        var calls = Stripe.CallsFor(org.Id);
+        Assert.Equal(2, calls.Count);
+        Assert.Equal("STARTER", calls[1].Metadata["plan"]);
+    }
+
+    [Fact]
+    public async Task Open_session_paid_while_being_replaced_is_refused_with_409()
+    {
+        var market = TestSeed.Market("Race");
+        var (org, _, client) = await SeedUserAsync(market);
+
+        var first = await CheckoutUrlAsync(await client.PostAsync("/api/billing/checkout",
+            Json($"{{\"plan\":\"PRO\",\"marketSlugs\":[\"{market.Slug}\"]}}")));
+        Stripe.PaidBeforeExpire[FakeStripeGateway.SessionIdFromUrl(first)] = true;
+        await AssertPortalConflictAsync(await client.PostAsync("/api/billing/checkout",
+            Json($"{{\"plan\":\"TERRITORY\",\"marketSlugs\":[\"{market.Slug}\"]}}")));
+
+        Assert.Single(Stripe.CallsFor(org.Id));
+    }
+
+    [Fact]
+    public async Task Market_with_any_fresh_source_is_accepted_and_all_stale_sources_are_refused()
+    {
+        var mixed = TestSeed.Market("Mixed");
+        var (org, _, client) = await SeedUserAsync(mixed);   // one fresh source (yesterday)
+        var allStale = TestSeed.Market("Allstale");
+        await Factory.SeedAsync(db =>
+        {
+            db.Add(allStale);
+            var staleSibling = TestSeed.Source(mixed, DateTime.UtcNow.AddDays(-30));
+            staleSibling.Jurisdiction += "-stale";
+            db.Add(staleSibling);
+        });
+        await Factory.SeedAsync(db =>
+        {
+            var a = TestSeed.Source(allStale, DateTime.UtcNow.AddDays(-20));
+            var b = TestSeed.Source(allStale, DateTime.UtcNow.AddDays(-15));
+            b.Jurisdiction += "-b";
+            db.AddRange(a, b);
+        });
+
+        await CheckoutUrlAsync(await client.PostAsync("/api/billing/checkout",
+            Json($"{{\"plan\":\"PRO\",\"marketSlugs\":[\"{mixed.Slug}\"]}}")));
+
+        var refused = await client.PostAsync("/api/billing/checkout",
+            Json($"{{\"plan\":\"TERRITORY\",\"marketSlugs\":[\"{allStale.Slug}\"]}}"));
+        await AssertBadRequestAsync(refused);
+        Assert.Contains(allStale.Name, await refused.Content.ReadAsStringAsync());
         Assert.Single(Stripe.CallsFor(org.Id));
     }
 

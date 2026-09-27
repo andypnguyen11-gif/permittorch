@@ -113,21 +113,24 @@ public static class BillingEndpoints
         {
             // Double-checkout guard: the org already has a Stripe customer, so a Checkout Session
             // may be in flight (another tab, a back-button retry, or a payment whose webhook has
-            // not landed yet). Resume an identical open session; refuse anything else.
+            // not landed yet). A recently completed session means a subscription is (about to be)
+            // live → 409. An open session for the same selection is resumed. Every other open
+            // session (a changed selection, or an abandoned tab) is expired before a new one is
+            // created, so at most one payable session exists; if one turns out to have been paid
+            // in the meantime, the org is subscribed → 409.
             var sessions = await stripe.ListCheckoutSessionsAsync(customerId, ct);
             var recent = sessions.Where(s => s.CreatedAt >= DateTime.UtcNow - CheckoutGuardWindow).ToList();
             if (recent.Any(s => s.Status == "complete"))
                 return ApiErrors.Conflict(PortalConflictMessage);
-            var open = recent.FirstOrDefault(s => s.Status == "open");
-            if (open is not null)
+            var resumable = recent.FirstOrDefault(s =>
+                s.Status == "open" && SameSelection(s.Metadata, plan, slugs) && !string.IsNullOrEmpty(s.Url));
+            if (resumable is not null)
+                return Results.Ok(new CheckoutResponse(resumable.Url!));
+            foreach (var open in sessions.Where(s => s.Status == "open"))
             {
-                return SameSelection(open.Metadata, plan, slugs) && !string.IsNullOrEmpty(open.Url)
-                    ? Results.Ok(new CheckoutResponse(open.Url))
-                    : ApiErrors.Conflict(PortalConflictMessage);
+                if (!await stripe.ExpireCheckoutSessionAsync(open.Id, ct))
+                    return ApiErrors.Conflict(PortalConflictMessage);
             }
-            // Older sessions are abandoned: close them so a stale tab cannot be paid after the new one.
-            foreach (var stale in sessions.Where(s => s.Status == "open"))
-                await stripe.ExpireCheckoutSessionAsync(stale.Id, ct);
         }
         else
         {

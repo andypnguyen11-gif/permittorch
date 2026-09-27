@@ -57,16 +57,22 @@ public class StripeGateway(IOptions<BillingOptions> options)
             .ToList();
     }
 
-    /// <summary>Expires an open Checkout Session so a stale tab can no longer be paid.</summary>
-    public virtual async Task ExpireCheckoutSessionAsync(string sessionId, CancellationToken ct)
+    /// <summary>Expires an open Checkout Session so it can no longer be paid. Returns true when the
+    /// session is closed unpaid (expired now or already), false when it was completed in the
+    /// meantime — the caller must then treat the org as subscribed.</summary>
+    public virtual async Task<bool> ExpireCheckoutSessionAsync(string sessionId, CancellationToken ct)
     {
+        var service = new SessionService(Client);
         try
         {
-            await new SessionService(Client).ExpireAsync(sessionId, cancellationToken: ct);
+            await service.ExpireAsync(sessionId, cancellationToken: ct);
+            return true;
         }
         catch (StripeException exception) when (exception.HttpStatusCode == System.Net.HttpStatusCode.BadRequest)
         {
-            // Already completed or expired between list and expire — nothing left to close.
+            // Only open sessions can be expired: find out whether it was paid or already expired.
+            var session = await service.GetAsync(sessionId, cancellationToken: ct);
+            return session.Status != "complete";
         }
     }
 
