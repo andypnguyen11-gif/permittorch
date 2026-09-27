@@ -30,6 +30,10 @@ pnpm e2e                                  # whole suite
 pnpm e2e tests/marketing.spec.ts          # one file
 ```
 
+Global setup also checks the seed before any spec runs (default for a `localhost` API; `E2E_SEED_CHECK=0`
+skips it, `=1` forces it): `GET /api/markets/austin-tx/stats` must report leads in the last 30 days. If
+it does not, the run aborts and prints the `seed` / `seed --refresh-samples` commands to fix it.
+
 `playwright.config.ts` loads the repo-root `.env` itself (values already exported in the shell win),
 so the gates below see the same values as the API. Overrides: `E2E_BASE_URL` (default
 `http://localhost:3000`), `E2E_API_URL` (default `NEXT_PUBLIC_API_URL`, then `http://localhost:5050`).
@@ -63,6 +67,35 @@ Specs that cannot run skip themselves with the missing variable names in the rea
    This needs `SEED_E2E_IDENTITIES=true` in `.env`; without it the uids are ignored:
    `set -a; source .env; set +a; dotnet run --project apps/api/PermitTorch.Api.csproj --no-launch-profile -- seed`
 5. Billing only: set `STRIPE_SECRET_KEY` to a real **test-mode** restricted key (`rk_test_…`) and restart the API.
+
+## E2E data residue and reset
+
+The specs write to the shared local database and leave some rows behind:
+
+| Residue | From | Effect |
+| --- | --- | --- |
+| `app_users` + `organizations` for `e2e-signup-…@permittorch.dev` | `auth.spec.ts` sign-ups (the Firebase accounts are deleted; the API rows are not) | none; they have no subscription |
+| An `incomplete` subscription with no Stripe subscription id (a checkout placeholder) and a Stripe test customer | `billing.spec.ts` (the NoPlan org) | none; a placeholder grants nothing. A re-run within 30 minutes resumes the same open Checkout Session |
+| `sample_lead_requests` for `delivered+e2e-…@resend.dev` | `public-boundary.spec.ts` | none |
+| Sample permit dates | the seed itself | samples age out of the 30-day window; refresh with `seed --refresh-samples` |
+
+Targeted cleanup (keeps the seed):
+
+```bash
+docker exec permittorch-postgres psql -U permittorch -d permittorch -c "
+  delete from sample_lead_requests where email like 'delivered+e2e-%@resend.dev';
+  delete from organizations where id in
+    (select organization_id from app_users where email like 'e2e-signup-%@permittorch.dev');
+  delete from subscriptions where status = 'incomplete' and stripe_subscription_id is null;"
+```
+
+Full reset (drops the local database volume, then re-seeds):
+
+```bash
+docker compose down -v && docker compose up -d
+set -a; source .env; set +a
+dotnet run --project apps/api/PermitTorch.Api.csproj --no-launch-profile -- seed
+```
 
 ## Stripe webhook (manual companion check)
 

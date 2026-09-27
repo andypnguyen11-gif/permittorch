@@ -19,9 +19,10 @@ const PUBLIC_PATH_PATTERNS: RegExp[] = [
   /^\/api(\/.*)?$/,
   // Next.js metadata convention routes (social cards and icons) must be
   // fetchable by crawlers without a session.
-  /^\/opengraph-image(.*)$/,
-  /^\/icon(.*)$/,
-  /^\/apple-icon(.*)$/,
+  // Anchored: `/icon`, `/icon0`, `/icon.png`, `/icon-abc123.png` — never a page such as
+  // `/icon-library` that merely shares the prefix (a hyphenated suffix needs a file extension).
+  /^\/(icon|apple-icon)(\d*(\.\w+)?|-[\w-]+\.\w+)$/,
+  /^\/opengraph-image(-[\w-]+)?(\.\w+)?$/,
   /^\/og-image\.png$/,
 ];
 

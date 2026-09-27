@@ -106,9 +106,9 @@ public static class AdminEndpoints
         opportunity.Reason = result.Reason;
         opportunity.LastUpdatedAt = now;
 
-        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        // One SaveChangesAsync is already atomic (EF wraps it in a transaction): signal
+        // replacement and the new score commit together or not at all.
         await db.SaveChangesAsync(ct);
-        await transaction.CommitAsync(ct);
         return Results.Ok();
     }
 }
