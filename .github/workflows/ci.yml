@@ -40,3 +40,60 @@ jobs:
         env:
           NEXT_PUBLIC_API_MOCK: "1"
           NEXT_PUBLIC_FIREBASE_API_KEY: "ci-placeholder"
+
+  # E2E (Playwright) is not wired into CI yet: it needs a running API + web app, a seeded
+  # Postgres service, and the secrets below. Enable once they exist as repository secrets.
+  # Local instructions: e2e/README.md.
+  #
+  # e2e:
+  #   name: E2E (Playwright)
+  #   runs-on: ubuntu-latest
+  #   needs: [api, web]
+  #   services:
+  #     postgres:
+  #       image: postgres:17-alpine
+  #       env: { POSTGRES_USER: permittorch, POSTGRES_PASSWORD: permittorch, POSTGRES_DB: permittorch }
+  #       ports: ["5432:5432"]
+  #       options: --health-cmd "pg_isready -U permittorch" --health-interval 5s --health-retries 10
+  #   env:
+  #     DATABASE_URL: postgres://permittorch:permittorch@localhost:5432/permittorch
+  #     ASPNETCORE_URLS: http://localhost:5050
+  #     NEXT_PUBLIC_API_URL: http://localhost:5050
+  #     WEB_ORIGIN: http://localhost:3000
+  #     Pipeline__Enabled: "false"
+  #     # Required secrets:
+  #     FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+  #     FIREBASE_CLIENT_EMAIL: ${{ secrets.FIREBASE_CLIENT_EMAIL }}
+  #     FIREBASE_PRIVATE_KEY: ${{ secrets.FIREBASE_PRIVATE_KEY }}
+  #     NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.NEXT_PUBLIC_FIREBASE_API_KEY }}
+  #     NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN }}
+  #     NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_PROJECT_ID }}
+  #     NEXT_PUBLIC_FIREBASE_APP_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_APP_ID }}
+  #     AUTH_COOKIE_SIGNATURE_KEY_CURRENT: ${{ secrets.AUTH_COOKIE_SIGNATURE_KEY_CURRENT }}
+  #     AUTH_COOKIE_SIGNATURE_KEY_PREVIOUS: ${{ secrets.AUTH_COOKIE_SIGNATURE_KEY_PREVIOUS }}
+  #     EMAIL_UNSUBSCRIBE_SECRET: ${{ secrets.EMAIL_UNSUBSCRIBE_SECRET }}
+  #     SUPERADMIN_FIREBASE_UID: ${{ secrets.SUPERADMIN_FIREBASE_UID }}
+  #     E2E_ENTITLED_FIREBASE_UID: ${{ secrets.E2E_ENTITLED_FIREBASE_UID }}
+  #     E2E_UNENTITLED_FIREBASE_UID: ${{ secrets.E2E_UNENTITLED_FIREBASE_UID }}
+  #     E2E_USER_PASSWORD: ${{ secrets.E2E_USER_PASSWORD }}
+  #     STRIPE_SECRET_KEY: ${{ secrets.STRIPE_TEST_SECRET_KEY }}   # rk_test_… (billing spec only)
+  #     STRIPE_PRICE_STARTER: ${{ secrets.STRIPE_PRICE_STARTER }}
+  #     STRIPE_PRICE_PRO: ${{ secrets.STRIPE_PRICE_PRO }}
+  #     STRIPE_PRICE_TERRITORY: ${{ secrets.STRIPE_PRICE_TERRITORY }}
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: actions/setup-dotnet@v4
+  #       with: { dotnet-version: "10.0.x" }
+  #     - uses: pnpm/action-setup@v4
+  #     - uses: actions/setup-node@v4
+  #       with: { node-version: 22, cache: pnpm }
+  #     - run: pnpm install --frozen-lockfile
+  #     - run: pnpm --dir e2e exec playwright install --with-deps chromium
+  #     - run: dotnet run --project apps/api/PermitTorch.Api.csproj --no-launch-profile -- seed
+  #     - run: dotnet run --project apps/api/PermitTorch.Api.csproj --no-launch-profile --urls http://localhost:5050 &
+  #     - run: pnpm --filter web build && (pnpm --filter web start -p 3000 &)
+  #     - run: npx --yes wait-on http://localhost:5050/api/health http://localhost:3000/login
+  #     - run: pnpm e2e
+  #     - uses: actions/upload-artifact@v4
+  #       if: failure()
+  #       with: { name: playwright-results, path: e2e/test-results }
