@@ -14,6 +14,7 @@ import type {
   SavedLeadStatus,
   ScraperRunSummary,
 } from "@permittorch/types";
+import { resolveApiBaseUrl } from "@/lib/api-base-url";
 
 export class ApiError extends Error {
   constructor(message: string, public readonly status: number) {
@@ -52,7 +53,11 @@ export async function apiFetch<T>(
   init: RequestInit = {},
   token?: string,
 ): Promise<T> {
-  const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000";
+  // Literal process.env references so Next inlines them into the client bundle.
+  const base = resolveApiBaseUrl({
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
+    NODE_ENV: process.env.NODE_ENV,
+  });
   const headers = new Headers(init.headers);
   if (token) headers.set("Authorization", `Bearer ${token}`);
   if (init.body !== undefined) headers.set("Content-Type", "application/json");
