@@ -187,7 +187,7 @@ WS5-specific rules:
   ```bash
   # --- API (apps/api) ---
   DATABASE_URL=postgresql://permittorch:permittorch@localhost:5432/permittorch
-  APIFY_TOKEN=                                   # leave empty locally -> seeder inserts sample permits
+  APIFY_TOKEN=                                   # ingestion only; no longer affects the seeder
   APIFY_TASK_ID=xatpyth2FgbUydjLd                # scrapelabmax/permittorch-daily (master §10)
   FIREBASE_PROJECT_ID=permittorch-dev
   STRIPE_SECRET_KEY=sk_test_replace
@@ -201,7 +201,12 @@ WS5-specific rules:
   WEB_ORIGIN=http://localhost:3000               # CORS allow-origin + Stripe redirect base
   RUN_MIGRATIONS_ON_STARTUP=true
   ASPNETCORE_URLS=http://localhost:5000  # matches apps/api/Properties/launchSettings.json (WS0); see the macOS AirPlay note in Task 9 if port 5000 is unavailable
-  # --- Seeder / E2E identities (Firebase Auth uids) ---
+  # --- Seeder opt-ins (ignored in Production; see docs/deploy.md) ---
+  SEED_SAMPLE_DATA=                              # true locally -> 10 sample leads (only while no real permits)
+  SEED_E2E_IDENTITIES=                           # true locally/CI -> E2E identities below
+  SEED_SUPERADMIN_FIREBASE_UID=                  # operator SuperAdmin; the only identity allowed in production
+  SEED_SUPERADMIN_EMAIL=
+  # --- E2E identities (Firebase Auth uids; used only with SEED_E2E_IDENTITIES=true) ---
   SUPERADMIN_FIREBASE_UID=
   SUPERADMIN_EMAIL=e2e-admin@permittorch.dev
   E2E_ENTITLED_FIREBASE_UID=
@@ -1306,9 +1311,9 @@ Decision: an EF-based C# seeder (not raw SQL) is the cleanest — it reuses the 
 - [ ] Commit: `git add apps/web/Dockerfile apps/web/.dockerignore apps/web/next.config.ts && git commit -m "Add standalone Next.js Dockerfile for monorepo web deployment"`.
 - [ ] **HUMAN:** Push the repo to GitHub (create a private repo, `git remote add origin …`, `git push -u origin main`) — Railway deploys from GitHub.
 - [ ] **HUMAN:** Create the Railway project. At https://railway.app → **New Project** → name `permittorch` → **Add PostgreSQL** (provisions the `Postgres` service with private networking). Then, on the `Postgres` service → **Settings → Backups**, enable automated backups (data lives only on this Postgres instance — Firebase is authentication only, so this is the system's one durability net).
-- [ ] **HUMAN:** Add the API service: **New → GitHub Repo** → select the repo → open the service **Settings**: set **Service name** `api`; under Build set **Dockerfile Path** `apps/api/Dockerfile` (Root Directory stays `/` — the Dockerfile needs repo-root context); under **Networking** click **Generate Domain** (note it: `https://api-….up.railway.app`); under **Healthcheck** set path `/api/health`. In **Variables** add: `DATABASE_URL=${{Postgres.DATABASE_URL}}` (reference — resolves to the private-network URL), `RUN_MIGRATIONS_ON_STARTUP=true`, `FIREBASE_PROJECT_ID`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (production value arrives in Task 17), `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_TERRITORY`, `RESEND_API_KEY`, `EMAIL_FROM`, `SENTRY_DSN`, `APIFY_TOKEN`, `APIFY_TASK_ID`, `SUPERADMIN_FIREBASE_UID`, `SUPERADMIN_EMAIL`, and `WEB_ORIGIN=<web public URL from the next step, come back to fill it>`. Deploy → expect healthcheck green.
+- [ ] **HUMAN:** Add the API service: **New → GitHub Repo** → select the repo → open the service **Settings**: set **Service name** `api`; under Build set **Dockerfile Path** `apps/api/Dockerfile` (Root Directory stays `/` — the Dockerfile needs repo-root context); under **Networking** click **Generate Domain** (note it: `https://api-….up.railway.app`); under **Healthcheck** set path `/api/health`. In **Variables** add: `DATABASE_URL=${{Postgres.DATABASE_URL}}` (reference — resolves to the private-network URL), `RUN_MIGRATIONS_ON_STARTUP=true`, `FIREBASE_PROJECT_ID`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (production value arrives in Task 17), `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_TERRITORY`, `RESEND_API_KEY`, `EMAIL_FROM`, `SENTRY_DSN`, `APIFY_TOKEN`, `APIFY_TASK_ID`, and `WEB_ORIGIN=<web public URL from the next step, come back to fill it>`. Never add `SEED_SAMPLE_DATA`, `SEED_E2E_IDENTITIES`, `SUPERADMIN_FIREBASE_UID` or `E2E_*` to the api service. Deploy → expect healthcheck green.
 - [ ] **HUMAN:** Add the web service: **New → GitHub Repo** (same repo) → **Service name** `web`; **Dockerfile Path** `apps/web/Dockerfile`; **Generate Domain** (`https://web-….up.railway.app`); Healthcheck path `/`. Variables: `NEXT_PUBLIC_API_URL=https://<api public domain>` (PUBLIC domain — the browser calls it; do not use `api.railway.internal`), `NEXT_PUBLIC_FIREBASE_API_KEY`, `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`, `NEXT_PUBLIC_FIREBASE_PROJECT_ID`, `NEXT_PUBLIC_FIREBASE_APP_ID`, `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`, `AUTH_COOKIE_SIGNATURE_KEY_CURRENT`, `AUTH_COOKIE_SIGNATURE_KEY_PREVIOUS`, `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_SENTRY_DSN`. (The four `NEXT_PUBLIC_FIREBASE_*` vars are consumed at build time via the Dockerfile ARGs — Railway passes them automatically; the rest are read at runtime by `lib/auth/config.ts`.) Deploy → expect `/` returns the homepage. Now go back and set the API service's `WEB_ORIGIN` to this web URL and redeploy the API (CORS + Stripe redirect base).
-- [ ] **HUMAN:** Seed production data (one-time): install Railway CLI (`brew install railway`), `railway login`, `railway link` (pick the `permittorch` project + `api` service environment), then run the seeder against the prod DB from your machine: `railway run --service api bash -c 'dotnet run --project apps/api -- seed'` — OR simpler and dependency-free: temporarily set a variable `SEED_ON_BOOT` is NOT provided; instead run locally with the prod DB URL: copy `DATABASE_URL` from the Postgres service's **Connect** tab (PUBLIC URL variant), then locally `DATABASE_URL="<prod public url>" SUPERADMIN_FIREBASE_UID=... dotnet run --project apps/api -- seed` → expect the Task 8 seed-complete line. Remove the URL from your shell history afterward.
+- [ ] **HUMAN:** Seed production data (one-time): run the registry seed **inside the Railway api service only** — `railway ssh --service api -- sh -c 'cd /app && dotnet PermitTorch.Api.dll seed'` → expect `Seed complete. markets=31 sources=40 …` and no `WARN: SEED_…` line. Never run the seeder from a local shell against the production `DATABASE_URL` (that shell is Development, where the local `SEED_SAMPLE_DATA`/`SEED_E2E_IDENTITIES` opt-ins apply). In Production the seeder only upserts the registry; sample data and E2E identities are refused even if their flags are set. To make the operator a SuperAdmin, set `SEED_SUPERADMIN_FIREBASE_UID` + `SEED_SUPERADMIN_EMAIL` on the api service, re-run the same command, then delete both variables (see `docs/deploy.md`).
 
 ### Vercel alternative (web only — documented, not the primary path)
 
@@ -1324,7 +1329,7 @@ If web hosting ever moves to Vercel: import the GitHub repo at https://vercel.co
 
   | Var | Railway service |
   | --- | --- |
-  | `DATABASE_URL`, `APIFY_TOKEN`, `APIFY_TASK_ID`, `FIREBASE_PROJECT_ID`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_TERRITORY`, `RESEND_API_KEY`, `EMAIL_FROM`, `SENTRY_DSN`, `WEB_ORIGIN`, `RUN_MIGRATIONS_ON_STARTUP`, `SUPERADMIN_FIREBASE_UID`, `SUPERADMIN_EMAIL` | api |
+  | `DATABASE_URL`, `APIFY_TOKEN`, `APIFY_TASK_ID`, `FIREBASE_PROJECT_ID`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_TERRITORY`, `RESEND_API_KEY`, `EMAIL_FROM`, `SENTRY_DSN`, `WEB_ORIGIN`, `RUN_MIGRATIONS_ON_STARTUP`; `SEED_SUPERADMIN_FIREBASE_UID`, `SEED_SUPERADMIN_EMAIL` only while running the operator seed | api |
   | `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_FIREBASE_API_KEY`, `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`, `NEXT_PUBLIC_FIREBASE_PROJECT_ID`, `NEXT_PUBLIC_FIREBASE_APP_ID`, `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`, `AUTH_COOKIE_SIGNATURE_KEY_CURRENT`, `AUTH_COOKIE_SIGNATURE_KEY_PREVIOUS`, `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_SENTRY_DSN` | web |
 
   (`NEXT_PUBLIC_API_MOCK` is deliberately absent everywhere in production.)

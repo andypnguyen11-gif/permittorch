@@ -5,7 +5,8 @@
 //
 // Creates (or finds, and re-syncs the password of) the three accounts the seeder and the
 // specs expect, then prints their UIDs for .env: SUPERADMIN_FIREBASE_UID,
-// E2E_ENTITLED_FIREBASE_UID, E2E_UNENTITLED_FIREBASE_UID. Re-run the API seeder afterwards
+// E2E_ENTITLED_FIREBASE_UID, E2E_UNENTITLED_FIREBASE_UID. Re-run the API seeder afterwards with
+// SEED_E2E_IDENTITIES=true in .env
 // (`dotnet run --project apps/api/PermitTorch.Api.csproj --no-launch-profile -- seed`).
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";

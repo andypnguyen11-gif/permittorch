@@ -6,10 +6,14 @@ The suite does **not** start servers; it expects them running and fails fast (gl
 ## Run locally
 
 ```bash
-# 1. Postgres (docker, :5432) + migrations + seed (31 markets, 40 sources, 10 sample leads)
+# 1. Postgres (docker, :5432) + migrations + seed (31 markets, 40 sources, 10 sample leads).
+#    Samples and E2E identities are opt-in: .env needs SEED_SAMPLE_DATA=true and
+#    SEED_E2E_IDENTITIES=true (both are ignored when ASPNETCORE_ENVIRONMENT=Production).
 docker compose up -d
 set -a; source .env; set +a
 dotnet run --project apps/api/PermitTorch.Api.csproj --no-launch-profile -- seed
+#    Seeded weeks ago? Re-date the samples so they are back inside the 30-day window:
+dotnet run --project apps/api/PermitTorch.Api.csproj --no-launch-profile -- seed --refresh-samples
 
 # 2. API on :5050 (macOS AirPlay holds :5000)
 dotnet run --project apps/api/PermitTorch.Api.csproj --no-launch-profile --urls http://localhost:5050
@@ -55,7 +59,8 @@ Specs that cannot run skip themselves with the missing variable names in the rea
 3. `pnpm e2e:create-users` — idempotent; prints three lines. Copy them into `.env`:
    `SUPERADMIN_FIREBASE_UID=…`, `E2E_ENTITLED_FIREBASE_UID=…`, `E2E_UNENTITLED_FIREBASE_UID=…`.
    (It stops with "Enable Email/Password in the Firebase console first" until step 1 is done.)
-4. Re-seed so the API knows those users (SuperAdmin; Acme = Pro on austin-tx; NoPlan = no subscription):
+4. Re-seed so the API knows those users (SuperAdmin; Acme = Pro on austin-tx; NoPlan = no subscription).
+   This needs `SEED_E2E_IDENTITIES=true` in `.env`; without it the uids are ignored:
    `set -a; source .env; set +a; dotnet run --project apps/api/PermitTorch.Api.csproj --no-launch-profile -- seed`
 5. Billing only: set `STRIPE_SECRET_KEY` to a real **test-mode** restricted key (`rk_test_…`) and restart the API.
 

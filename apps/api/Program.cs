@@ -30,12 +30,15 @@ builder.Services.AddFeatureServices(builder.Configuration);
 
 var app = builder.Build();
 
-// `dotnet run -- seed`: idempotent dev/staging seed (migrates first), then exit without serving.
+// `dotnet run -- seed [--refresh-samples]`: idempotent seed (migrates first), then exit without
+// serving. Registry always; samples/E2E identities only behind explicit non-production flags.
 if (args.Contains("seed"))
 {
     using var seedScope = app.Services.CreateScope();
-    await DevSeeder.SeedAsync(
-        seedScope.ServiceProvider.GetRequiredService<AppDbContext>(), app.Configuration);
+    var seedDb = seedScope.ServiceProvider.GetRequiredService<AppDbContext>();
+    await DevSeeder.SeedAsync(seedDb, app.Configuration, app.Environment.EnvironmentName);
+    if (args.Contains(DevSeeder.RefreshSamplesArg))
+        await DevSeeder.RefreshSamplesAsync(seedDb, app.Configuration, app.Environment.EnvironmentName, DateTime.UtcNow);
     return;
 }
 

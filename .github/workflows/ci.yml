@@ -61,6 +61,9 @@ jobs:
   #     NEXT_PUBLIC_API_URL: http://localhost:5050
   #     WEB_ORIGIN: http://localhost:3000
   #     Pipeline__Enabled: "false"
+  #     ASPNETCORE_ENVIRONMENT: Development      # the seeder refuses samples/identities in Production
+  #     SEED_SAMPLE_DATA: "true"
+  #     SEED_E2E_IDENTITIES: "true"
   #     # Required secrets:
   #     FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
   #     FIREBASE_CLIENT_EMAIL: ${{ secrets.FIREBASE_CLIENT_EMAIL }}

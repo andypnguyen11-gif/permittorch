@@ -20,6 +20,7 @@ const REQUIRED = [
   "NEXT_PUBLIC_FIREBASE_API_KEY", "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN", "NEXT_PUBLIC_FIREBASE_PROJECT_ID",
   "NEXT_PUBLIC_FIREBASE_APP_ID", "FIREBASE_CLIENT_EMAIL", "FIREBASE_PRIVATE_KEY",
   "AUTH_COOKIE_SIGNATURE_KEY_CURRENT", "AUTH_COOKIE_SIGNATURE_KEY_PREVIOUS", "NEXT_PUBLIC_POSTHOG_KEY",
+  "SEED_SAMPLE_DATA", "SEED_E2E_IDENTITIES", "SEED_SUPERADMIN_FIREBASE_UID", "SEED_SUPERADMIN_EMAIL",
   "SUPERADMIN_FIREBASE_UID", "SUPERADMIN_EMAIL", "E2E_ENTITLED_FIREBASE_UID", "E2E_ENTITLED_EMAIL",
   "E2E_UNENTITLED_FIREBASE_UID", "E2E_UNENTITLED_EMAIL", "E2E_USER_PASSWORD",
 ];
@@ -32,6 +33,11 @@ describe(".env.example", () => {
   it("keeps optional overrides commented out", () => {
     for (const name of ["ForwardedHeaders__ForwardLimit", "Pipeline__Enabled", "NEXT_PUBLIC_API_MOCK", "NEXT_PUBLIC_MOCK_ROLE"])
       expect(text).toMatch(new RegExp(`^#\\s*${name}=`, "m"));
+  });
+
+  it("leaves the seeder opt-ins off so a copied .env never seeds samples or test identities", () => {
+    for (const name of ["SEED_SAMPLE_DATA", "SEED_E2E_IDENTITIES", "SEED_SUPERADMIN_FIREBASE_UID"])
+      expect(assignments.get(name)).toBe("");
   });
 
   it("contains no real secrets", () => {

@@ -7,42 +7,153 @@ using PermitTorch.Api.Domain.Scoring;
 namespace PermitTorch.Api.Data.Seed;
 
 /// <summary>
-/// Idempotent development/staging seeder, run explicitly with <c>dotnet run -- seed</c> (never on
-/// boot). Upserts the scraper's market/source registry, the SuperAdmin and E2E identities (only
-/// when their Firebase UIDs are configured), and — only when no Apify token is configured and the
-/// database holds no permits — a small set of sample leads scored by the real ScoringEngine.
+/// Idempotent seeder, run explicitly with <c>dotnet run -- seed</c> (never on boot). It has four
+/// independent parts, each behind its own gate so production can only ever receive the registry
+/// and an explicitly named operator account:
+/// <list type="number">
+/// <item>Registry upsert (31 markets, 40 sources) — always runs; safe in every environment.</item>
+/// <item>Sample permits — only with <c>SEED_SAMPLE_DATA=true</c>, outside Production, and while
+/// the database holds no permits other than the samples themselves.</item>
+/// <item>E2E identities (E2E SuperAdmin from <c>SUPERADMIN_FIREBASE_UID</c>, entitled and
+/// unentitled orgs, the seeded subscription) — only with <c>SEED_E2E_IDENTITIES=true</c> outside
+/// Production.</item>
+/// <item>Operator SuperAdmin from <c>SEED_SUPERADMIN_FIREBASE_UID</c> (+ <c>SEED_SUPERADMIN_EMAIL</c>)
+/// — any environment; this is the only identity production may seed.</item>
+/// </list>
+/// In Production, parts 2 and 3 refuse loudly even when their flags are set.
+/// <c>seed --refresh-samples</c> (non-production only) re-dates and rescores existing samples.
 /// </summary>
 public static class DevSeeder
 {
+    public const string SampleDataFlag = "SEED_SAMPLE_DATA";
+    public const string E2EIdentitiesFlag = "SEED_E2E_IDENTITIES";
+    public const string OperatorSuperAdminUidKey = "SEED_SUPERADMIN_FIREBASE_UID";
+    public const string OperatorSuperAdminEmailKey = "SEED_SUPERADMIN_EMAIL";
+    public const string RefreshSamplesArg = "--refresh-samples";
+
     public static Guid G(int n) => Guid.Parse($"00000000-0000-4000-8000-{n:D12}");
 
-    public static async Task<SeedCounts> SeedAsync(AppDbContext db, IConfiguration config, CancellationToken ct = default)
+    public static async Task<SeedCounts> SeedAsync(
+        AppDbContext db, IConfiguration config, string environmentName,
+        TextWriter? output = null, CancellationToken ct = default)
     {
+        var log = output ?? Console.Out;
+        var production = IsProduction(environmentName);
         await db.Database.MigrateAsync(ct);
 
+        // (a) Registry — always.
         var markets = await UpsertMarketsAsync(db, ct);
         var sources = await UpsertSourcesAsync(db, markets, ct);
-        await UpsertSuperAdminAsync(db, config, ct);
-        await UpsertE2EOrgsAsync(db, markets, config, ct);
         await db.SaveChangesAsync(ct);
 
-        if (string.IsNullOrWhiteSpace(config["APIFY_TOKEN"]) && !await db.Permits.AnyAsync(ct))
+        // (d) Operator SuperAdmin — the one identity allowed in production.
+        await UpsertOperatorSuperAdminAsync(db, config, log, ct);
+
+        // (c) E2E identities — explicit opt-in, never in production.
+        if (IsTrue(config[E2EIdentitiesFlag]))
         {
-            var options = config.GetSection("Scoring").Get<ScoringOptions>() ?? new ScoringOptions();
-            SeedSamplePermits(db, sources, new ScoringEngine(options), DateTime.UtcNow);
-            await db.SaveChangesAsync(ct);
+            if (production)
+                log.WriteLine($"WARN: {E2EIdentitiesFlag}=true is ignored in Production - no E2E identities or subscriptions seeded.");
+            else
+            {
+                await UpsertE2ESuperAdminAsync(db, config, log, ct);
+                await UpsertE2EOrgsAsync(db, markets, config, ct);
+            }
+        }
+        else if (AnyE2EUidConfigured(config))
+            log.WriteLine($"INFO: E2E Firebase UIDs are configured but {E2EIdentitiesFlag} is not true - skipping E2E identities.");
+        await db.SaveChangesAsync(ct);
+
+        // (b) Sample permits — explicit opt-in, never in production, never beside real data.
+        if (IsTrue(config[SampleDataFlag]))
+        {
+            if (production)
+                log.WriteLine($"WARN: {SampleDataFlag}=true is ignored in Production - no sample permits seeded.");
+            else if (await db.Permits.AnyAsync(p => !SamplePermitIds.Contains(p.Id), ct))
+                log.WriteLine($"INFO: {SampleDataFlag}=true but the database already holds real permits - skipping samples.");
+            else
+            {
+                var existing = await db.Permits.Where(p => SamplePermitIds.Contains(p.Id)).Select(p => p.Id).ToListAsync(ct);
+                SeedSamplePermits(db, sources, Engine(config), DateTime.UtcNow, existing.ToHashSet());
+                await db.SaveChangesAsync(ct);
+            }
         }
 
         var counts = new SeedCounts(
             await db.Markets.CountAsync(ct), await db.Sources.CountAsync(ct),
             await db.Permits.CountAsync(ct), await db.FireOpportunities.CountAsync(ct));
-        Console.WriteLine(
+        log.WriteLine(
             $"Seed complete. markets={counts.Markets} sources={counts.Sources} " +
             $"permits={counts.Permits} opportunities={counts.Opportunities}");
         return counts;
     }
 
+    /// <summary>
+    /// <c>seed --refresh-samples</c>: moves every existing sample permit/opportunity back to its
+    /// original offset from <paramref name="nowUtc"/> and rescores it with the real engine, so a
+    /// local database seeded weeks ago still has leads inside the 30-day window. Returns the number
+    /// of samples refreshed; refuses (returns 0) in Production.
+    /// </summary>
+    public static async Task<int> RefreshSamplesAsync(
+        AppDbContext db, IConfiguration config, string environmentName, DateTime nowUtc,
+        TextWriter? output = null, CancellationToken ct = default)
+    {
+        var log = output ?? Console.Out;
+        if (IsProduction(environmentName))
+        {
+            log.WriteLine($"WARN: seed {RefreshSamplesArg} is ignored in Production.");
+            return 0;
+        }
+
+        var engine = Engine(config);
+        var byId = SampleLeads.ToDictionary(l => G(1000 + l.N));
+        var permits = await db.Permits.Include(p => p.Source).Include(p => p.Opportunity!).ThenInclude(o => o.Signals)
+            .Where(p => SamplePermitIds.Contains(p.Id)).ToListAsync(ct);
+        foreach (var permit in permits)
+        {
+            var def = byId[permit.Id];
+            var filed = nowUtc.AddHours(-def.FiledHoursAgo);
+            permit.FiledDate = filed;
+            permit.IssuedDate = def.Status == PermitStatusKind.New ? null : filed.AddHours(12);
+            permit.Fingerprint = Fingerprint(def, filed);
+            permit.FirstSeenAt = filed;
+            permit.LastSeenAt = nowUtc;
+            permit.CreatedAt = filed;
+            permit.UpdatedAt = nowUtc;
+            permit.Source.LastSuccessfulRunAt = nowUtc;
+            permit.Source.LastRecordSeenAt = nowUtc;
+
+            var opp = permit.Opportunity;
+            if (opp is null) continue;
+            var score = engine.Score(StoredPermit.ToNormalized(permit),
+                new ClassificationResult(opp.Category, opp.Confidence, "seed"), nowUtc);
+            db.LeadSignals.RemoveRange(opp.Signals);
+            opp.Signals.Clear();
+            AddSignals(db, opp, score);
+            opp.LeadScore = score.Score;
+            opp.Reason = score.Reason;
+            opp.FirstDetectedAt = filed;
+            opp.LastUpdatedAt = nowUtc;
+        }
+        await db.SaveChangesAsync(ct);
+        log.WriteLine($"Refreshed {permits.Count} sample permits relative to {nowUtc:O}.");
+        return permits.Count;
+    }
+
     public sealed record SeedCounts(int Markets, int Sources, int Permits, int Opportunities);
+
+    private static bool IsProduction(string environmentName) =>
+        string.Equals(environmentName, "Production", StringComparison.OrdinalIgnoreCase);
+
+    internal static bool IsTrue(string? value) =>
+        value is not null && (value.Trim().Equals("true", StringComparison.OrdinalIgnoreCase) || value.Trim() == "1");
+
+    private static bool AnyE2EUidConfigured(IConfiguration config) =>
+        new[] { "SUPERADMIN_FIREBASE_UID", "E2E_ENTITLED_FIREBASE_UID", "E2E_UNENTITLED_FIREBASE_UID" }
+            .Any(k => !string.IsNullOrWhiteSpace(config[k]));
+
+    private static ScoringEngine Engine(IConfiguration config) =>
+        new(config.GetSection("Scoring").Get<ScoringOptions>() ?? new ScoringOptions());
 
     // Registry captured from scraper task run cH1rI8svA59YgyW58 (2026-09-26) — mirrors
     // docs/superpowers/plans/2026-08-19-permittorch-mvp/scraper-source-registry.json (31 markets,
@@ -178,21 +289,54 @@ public static class DevSeeder
         return result;
     }
 
-    private static async Task UpsertSuperAdminAsync(AppDbContext db, IConfiguration config, CancellationToken ct)
+    // Operator SuperAdmin (production-safe): creates the account, or promotes an existing user
+    // who signed up first. Never creates a subscription.
+    private static async Task UpsertOperatorSuperAdminAsync(
+        AppDbContext db, IConfiguration config, TextWriter log, CancellationToken ct)
+    {
+        var firebaseUid = config[OperatorSuperAdminUidKey];
+        if (string.IsNullOrWhiteSpace(firebaseUid)) return;
+        var existing = await db.AppUsers.SingleOrDefaultAsync(u => u.FirebaseUid == firebaseUid, ct);
+        if (existing is not null)
+        {
+            if (existing.Role != UserRole.SuperAdmin)
+            {
+                existing.Role = UserRole.SuperAdmin;
+                log.WriteLine($"Promoted the {OperatorSuperAdminUidKey} user to SuperAdmin.");
+            }
+        }
+        else
+        {
+            var email = config[OperatorSuperAdminEmailKey];
+            if (string.IsNullOrWhiteSpace(email))
+                log.WriteLine($"WARN: {OperatorSuperAdminEmailKey} not set - using a placeholder address for the operator SuperAdmin.");
+            AddSuperAdmin(db, firebaseUid, NonEmpty(email, "admin@permittorch.dev"));
+            log.WriteLine($"Created the {OperatorSuperAdminUidKey} SuperAdmin.");
+        }
+        await db.SaveChangesAsync(ct);
+    }
+
+    // E2E SuperAdmin (SUPERADMIN_FIREBASE_UID): only reached under SEED_E2E_IDENTITIES outside Production.
+    private static async Task UpsertE2ESuperAdminAsync(
+        AppDbContext db, IConfiguration config, TextWriter log, CancellationToken ct)
     {
         var firebaseUid = config["SUPERADMIN_FIREBASE_UID"];
         if (string.IsNullOrWhiteSpace(firebaseUid))
         {
-            Console.WriteLine("WARN: SUPERADMIN_FIREBASE_UID not set - skipping SuperAdmin seed.");
+            log.WriteLine("WARN: SUPERADMIN_FIREBASE_UID not set - skipping the E2E SuperAdmin.");
             return;
         }
         if (await db.AppUsers.AnyAsync(u => u.FirebaseUid == firebaseUid, ct)) return;
+        AddSuperAdmin(db, firebaseUid, NonEmpty(config["SUPERADMIN_EMAIL"], "admin@permittorch.dev"));
+    }
+
+    private static void AddSuperAdmin(AppDbContext db, string firebaseUid, string email)
+    {
         var org = new Organization { Id = Guid.NewGuid(), Name = "PermitTorch (Internal)" };
         db.Organizations.Add(org);
         db.AppUsers.Add(new AppUser
         {
-            Id = Guid.NewGuid(), FirebaseUid = firebaseUid,
-            Email = NonEmpty(config["SUPERADMIN_EMAIL"], "admin@permittorch.dev"),
+            Id = Guid.NewGuid(), FirebaseUid = firebaseUid, Email = email,
             OrganizationId = org.Id, Role = UserRole.SuperAdmin,
         });
     }
@@ -284,15 +428,31 @@ public static class DevSeeder
             PermitStatusKind.Active, 60, 1_900_000m, 45_000, "Trinity Fire Protection"),
     };
 
+    private static readonly Guid[] SamplePermitIds = SampleLeads.Select(l => G(1000 + l.N)).ToArray();
+
+    private static string Fingerprint(SeedLead l, DateTime filed) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+            $"{l.Address}|{l.PermitType}|{filed:yyyy-MM-dd}|{l.Title}"))).ToLowerInvariant();
+
+    private static void AddSignals(AppDbContext db, FireOpportunity opp, ScoreResult score)
+    {
+        foreach (var s in score.Signals)
+            db.LeadSignals.Add(new LeadSignal
+            {
+                Id = Guid.NewGuid(), FireOpportunityId = opp.Id,
+                SignalType = s.SignalType, Description = s.Description, Weight = s.Weight,
+            });
+    }
+
     private static void SeedSamplePermits(
-        AppDbContext db, Dictionary<string, Source> sources, ScoringEngine engine, DateTime nowUtc)
+        AppDbContext db, Dictionary<string, Source> sources, ScoringEngine engine, DateTime nowUtc,
+        HashSet<Guid> alreadySeeded)
     {
         foreach (var l in SampleLeads)
         {
+            if (alreadySeeded.Contains(G(1000 + l.N))) continue;
             var source = sources[l.Jurisdiction];
             var filed = nowUtc.AddHours(-l.FiledHoursAgo);
-            var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
-                $"{l.Address}|{l.PermitType}|{filed:yyyy-MM-dd}|{l.Title}"))).ToLowerInvariant();
             var permit = new Permit
             {
                 Id = G(1000 + l.N), SourceId = source.Id,
@@ -304,7 +464,7 @@ public static class DevSeeder
                 EstimatedValue = l.Value, SquareFootage = l.Sqft,
                 OwnerName = null, ContractorName = l.Contractor,
                 SourceUrl = $"{source.SourceUrl}/records/seed-{l.N}",
-                Fingerprint = fingerprint,
+                Fingerprint = Fingerprint(l, filed),
                 FirstSeenAt = filed, LastSeenAt = nowUtc, CreatedAt = filed, UpdatedAt = nowUtc,
             };
             db.Permits.Add(permit);
@@ -318,12 +478,7 @@ public static class DevSeeder
                 FirstDetectedAt = filed, LastUpdatedAt = nowUtc,
             };
             db.FireOpportunities.Add(opp);
-            foreach (var s in score.Signals)
-                db.LeadSignals.Add(new LeadSignal
-                {
-                    Id = Guid.NewGuid(), FireOpportunityId = opp.Id,
-                    SignalType = s.SignalType, Description = s.Description, Weight = s.Weight,
-                });
+            AddSignals(db, opp, score);
 
             source.LastSuccessfulRunAt = nowUtc;
             source.LastRecordSeenAt = nowUtc;

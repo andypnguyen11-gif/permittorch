@@ -46,7 +46,8 @@ Service settings are applied through the Railway API or the dashboard. They are 
 - **Deliberately unset:**
   - `RESEND_API_KEY`: digests are skipped until it is set.
   - `SENTRY_DSN`: Sentry stays off until it is set.
-  - `SUPERADMIN_FIREBASE_UID`, `E2E_*`: identities must never be seeded in production.
+  - `SEED_SAMPLE_DATA`, `SEED_E2E_IDENTITIES`, `SUPERADMIN_FIREBASE_UID`, `E2E_*`: sample data and test identities never belong in production. The seeder ignores the two flags in Production anyway and logs a `WARN` naming them.
+  - `SEED_SUPERADMIN_FIREBASE_UID`, `SEED_SUPERADMIN_EMAIL`: set only while running the one-time operator seed below, then remove.
 
 **web:**
 - `NODE_ENV=production`
@@ -98,24 +99,26 @@ railway logs --service api --lines 200           # runtime logs (add --build for
 
 Rollback: in the dashboard, open the service's **Deployments**, pick the previous successful deployment and choose **Redeploy**. Migrations are forward-only, so rolling back across a schema change needs a compensating migration.
 
-## Running the seeder (markets and sources only)
+## Running the seeder (registry, plus an optional operator SuperAdmin)
 
-The seeder is idempotent. It upserts the 31 registry markets and their 40 sources. It has **no environment guard yet**:
+The seeder is idempotent and gated per part:
 
-- If `APIFY_TOKEN` is empty, it inserts sample permits.
-- If any `*_FIREBASE_UID` variable is set, it creates test identities, including a SuperAdmin and a free Pro subscription.
+- **Registry** (31 markets, 40 sources): always upserted.
+- **Sample permits**: only with `SEED_SAMPLE_DATA=true`, outside Production, and while the database holds no real permits.
+- **E2E identities** (E2E SuperAdmin from `SUPERADMIN_FIREBASE_UID`, the entitled/unentitled orgs and the seeded Pro subscription): only with `SEED_E2E_IDENTITIES=true` outside Production.
+- **Operator SuperAdmin**: `SEED_SUPERADMIN_FIREBASE_UID` (+ `SEED_SUPERADMIN_EMAIL`), in any environment. It creates that one user (or promotes them if they already signed up) and nothing else: no subscription.
 
-So, in production:
+With `ASPNETCORE_ENVIRONMENT=Production` the sample and identity parts refuse even when their flags are set, and log `WARN: SEED_… =true is ignored in Production`. `APIFY_TOKEN` no longer affects seeding. `seed --refresh-samples` is refused in Production.
 
-1. Confirm the `api` service has `APIFY_TOKEN` set and has **no** `SUPERADMIN_FIREBASE_UID`, `E2E_ENTITLED_FIREBASE_UID` or `E2E_UNENTITLED_FIREBASE_UID` variables. Check names only:
-   ```bash
-   railway variable list --service api --json | python3 -c 'import json,sys; d=json.load(sys.stdin); print(bool(d.get("APIFY_TOKEN")), [k for k in d if "FIREBASE_UID" in k or k.startswith("E2E_")])'
-   ```
-2. Run it **inside the api container**, so it only sees the service's own variables. Never run it from a local shell with a sourced `.env`:
+In production:
+
+1. Run the registry seed **inside the Railway api service only**, so it sees the service's own variables (`ASPNETCORE_ENVIRONMENT=Production`). Never run it from a local shell with a sourced `.env` and a production `DATABASE_URL`: that shell's environment is Development, where the local opt-ins apply.
    ```bash
    railway ssh --service api -- sh -c 'cd /app && dotnet PermitTorch.Api.dll seed'
-   # → Seed complete. markets=31 sources=40 permits=0 opportunities=0
+   # → Seed complete. markets=31 sources=40 permits=<n> opportunities=<n>
    ```
+   The output must contain no `WARN: SEED_…` line. If it does, remove that variable from the service.
+2. Optional, once the operator has signed up in the web app: make them SuperAdmin by setting `SEED_SUPERADMIN_FIREBASE_UID` (their Firebase uid) and `SEED_SUPERADMIN_EMAIL` on the api service with `--skip-deploys`, run the same command, then delete both variables.
 3. Verify: `curl -s https://api-production-bab7.up.railway.app/api/markets` returns 31 markets. Check the database with `railway ssh --service Postgres -- sh -c 'psql -U "$PGUSER" -d "$PGDATABASE" -c "select count(*) from permits where external_id like \$\$seed-%\$\$"'`, which must return 0.
 
 Seed markets and sources **before** the first boot with `Pipeline__Enabled=true`. Otherwise ingestion could consume an Apify run while the sources table is still empty.
