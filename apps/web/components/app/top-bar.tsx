@@ -40,7 +40,7 @@ export function TopBar({ markets, email, role = "MEMBER", plan }: {
         onSubmit={(e) => {
           e.preventDefault();
           const q = inputRef.current?.value.trim() ?? "";
-          if (q) track("search_performed", { query: q });
+          if (q) track("search_performed", { queryLength: q.length });
           // Keep the other leads filters (market, category, …); reset the page.
           router.push(leadsHrefWith(pathname, searchParams, { q: q || undefined }));
         }}

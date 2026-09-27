@@ -18,7 +18,8 @@ export type EventProps = {
   pricing_viewed: Record<string, never>;
   lead_opened: { leadId: string; score: number; category: string };
   lead_saved: { leadId: string };
-  search_performed: { query: string };
+  // Length only: search text can contain addresses, names or other personal data.
+  search_performed: { queryLength: number };
   filter_changed: { filter: string; value: string };
   digest_enabled: { frequency: "DAILY" | "WEEKLY" };
   checkout_started: { plan: "STARTER" | "PRO" | "TERRITORY" };
@@ -27,6 +28,68 @@ export type EventProps = {
 type PostHog = typeof import("posthog-js").default;
 
 const DEFAULT_HOST = "https://us.i.posthog.com";
+type PostHogConfig = Parameters<PostHog["init"]>[1];
+type CaptureResult = import("posthog-js").CaptureResult;
+
+/** Query parameters that may carry search text, personal data or credentials — never sent. */
+const SENSITIVE_PARAMS = new Set(["q", "email", "token", "t"]);
+const isSensitiveParam = (name: string) => SENSITIVE_PARAMS.has(name.toLowerCase()) || /token/i.test(name);
+
+/** Removes sensitive query parameters from an absolute or relative URL; other values pass through. */
+export function sanitizeUrl(value: string): string {
+  const q = value.indexOf("?");
+  if (q === -1) return value;
+  const hash = value.indexOf("#", q);
+  const base = value.slice(0, q);
+  const query = value.slice(q + 1, hash === -1 ? undefined : hash);
+  const fragment = hash === -1 ? "" : value.slice(hash);
+  const params = new URLSearchParams(query);
+  for (const name of [...params.keys()]) if (isSensitiveParam(name)) params.delete(name);
+  const rest = params.toString();
+  return `${base}${rest ? `?${rest}` : ""}${fragment}`;
+}
+
+// $current_url, $pathname, $referrer and their $initial_/$session_entry_ variants.
+const isUrlProperty = (key: string) => /url|pathname|referrer/i.test(key);
+
+function sanitizeProperties<T extends Record<string, unknown> | undefined>(props: T): T {
+  if (!props) return props;
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(props))
+    out[key] = typeof value === "string" && isUrlProperty(key) ? sanitizeUrl(value) : value;
+  return out as T;
+}
+
+/** PostHog `before_send`: scrubs URL-bearing properties on every event and person update. */
+export function sanitizeEvent(event: CaptureResult | null): CaptureResult | null {
+  if (!event) return event;
+  return {
+    ...event,
+    properties: sanitizeProperties(event.properties),
+    $set: sanitizeProperties(event.$set),
+    $set_once: sanitizeProperties(event.$set_once),
+  };
+}
+
+/**
+ * PostHog options: explicit events and page views only. Autocapture, heatmaps, dead-click
+ * capture and session recording would ship element text and screen contents (lead addresses,
+ * contractor names, emails), so they stay off; URLs are scrubbed before sending.
+ */
+export function posthogOptions(): Partial<PostHogConfig> {
+  return {
+    api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST || DEFAULT_HOST,
+    autocapture: false,
+    capture_heatmaps: false,
+    capture_dead_clicks: false,
+    disable_session_recording: true,
+    capture_pageview: true,
+    capture_pageleave: true,
+    person_profiles: "identified_only",
+    before_send: sanitizeEvent,
+  };
+}
+
 let client: PostHog | null = null;
 let loading: Promise<void> | null = null;
 let queue: Array<(ph: PostHog) => void> = [];
@@ -37,12 +100,7 @@ export function initAnalytics(): void {
   if (!key) return;
   loading = import("posthog-js")
     .then(({ default: posthog }) => {
-      posthog.init(key, {
-        api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST || DEFAULT_HOST,
-        capture_pageview: true,
-        capture_pageleave: true,
-        person_profiles: "identified_only",
-      });
+      posthog.init(key, posthogOptions());
       client = posthog;
       for (const call of queue) call(posthog);
     })

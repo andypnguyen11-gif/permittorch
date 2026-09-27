@@ -78,6 +78,49 @@ describe("analytics wrapper with a PostHog key", () => {
   });
 });
 
+describe("PostHog privacy options", () => {
+  it("disables autocapture and session recording and scrubs URLs before sending", async () => {
+    vi.stubEnv("NEXT_PUBLIC_POSTHOG_KEY", "phc_test");
+    const a = await load();
+    a.initAnalytics();
+    await settle();
+    const options = posthog.init.mock.calls[0][1];
+    expect(options).toMatchObject({
+      autocapture: false, disable_session_recording: true, capture_pageview: true,
+      capture_heatmaps: false, capture_dead_clicks: false,
+    });
+    expect(options.before_send).toBe(a.sanitizeEvent);
+  });
+
+  it.each([
+    ["https://app.test/app/leads?q=123+Main+St&market=austin-tx", "https://app.test/app/leads?market=austin-tx"],
+    ["/app/leads?q=smith&page=2#top", "/app/leads?page=2#top"],
+    ["https://app.test/x?email=a%40b.c&token=abc&idToken=z&t=sig", "https://app.test/x"],
+    ["https://app.test/pricing", "https://app.test/pricing"],
+  ])("sanitizeUrl(%s) → %s", async (input, expected) => {
+    const a = await load();
+    expect(a.sanitizeUrl(input)).toBe(expected);
+  });
+
+  it("scrubs $current_url, $pathname, $referrer and person URL properties; leaves other props", async () => {
+    const a = await load();
+    const out = a.sanitizeEvent({
+      uuid: "u", event: "$pageview",
+      properties: {
+        $current_url: "https://app.test/app/leads?q=secret", $pathname: "/app/leads?q=secret",
+        $referrer: "https://app.test/app/leads?q=secret&market=x", leadId: "keep?q=me",
+      },
+      $set_once: { $initial_current_url: "https://app.test/?email=a@b.c" },
+    });
+    expect(out!.properties).toEqual({
+      $current_url: "https://app.test/app/leads", $pathname: "/app/leads",
+      $referrer: "https://app.test/app/leads?market=x", leadId: "keep?q=me",
+    });
+    expect(out!.$set_once).toEqual({ $initial_current_url: "https://app.test/" });
+    expect(a.sanitizeEvent(null)).toBeNull();
+  });
+});
+
 describe("analytics wrapper while posthog-js is loading", () => {
   it("queues calls made before the SDK arrives and flushes them in order", async () => {
     vi.stubEnv("NEXT_PUBLIC_POSTHOG_KEY", "phc_test");

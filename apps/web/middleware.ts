@@ -19,9 +19,11 @@ export async function middleware(request: NextRequest) {
   if (authConfig.cookieSignatureKeys.length === 0) {
     if (!warnedMissingKeys) {
       warnedMissingKeys = true;
-      console.warn(
-        "[auth] AUTH_COOKIE_SIGNATURE_KEY_CURRENT/PREVIOUS are not set — treating every request as signed out.",
-      );
+      const message =
+        "[auth] AUTH_COOKIE_SIGNATURE_KEY_CURRENT/PREVIOUS are not set — treating every request as signed out.";
+      console.warn(message);
+      // A misconfigured deploy must be visible in error tracking, not just the logs (no-op without a DSN).
+      Sentry.captureMessage(message, "error");
     }
     if (isPublicPath(pathname)) return NextResponse.next();
     return redirectToLogin(request, { path: LOGIN_PATH, publicPaths: [] });

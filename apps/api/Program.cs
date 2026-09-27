@@ -16,13 +16,7 @@ builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connect
 var sentryDsn = builder.Configuration["SENTRY_DSN"];
 if (!string.IsNullOrWhiteSpace(sentryDsn))
 {
-    builder.WebHost.UseSentry(o =>
-    {
-        o.Dsn = sentryDsn;
-        o.TracesSampleRate = 0.1;
-        o.SendDefaultPii = false;   // never ship auth headers, cookies or user IPs
-        o.Environment = builder.Environment.EnvironmentName;
-    });
+    builder.WebHost.UseSentry(o => SentrySetup.Configure(o, sentryDsn, builder.Environment.EnvironmentName));
 }
 
 builder.Services.AddPipelineServices(builder.Configuration);

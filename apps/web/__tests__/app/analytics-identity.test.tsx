@@ -19,17 +19,16 @@ import { AnalyticsIdentity } from "@/components/app/analytics-identity";
 beforeEach(() => { vi.clearAllMocks(); listener = null; });
 
 describe("AnalyticsIdentity", () => {
-  it("identifies the signed-in user by uid only, never email or name", () => {
-    render(<AnalyticsIdentity />);
+  it("identifies by the internal user id, never the Firebase uid, email or name", () => {
+    render(<AnalyticsIdentity userId="0b7c5c3e-internal" />);
     expect(initAnalytics).toHaveBeenCalledTimes(1);
-    listener!({ uid: "uid-42", email: "person@example.com", displayName: "Pat Person" });
-    expect(vi.mocked(identifyUser).mock.calls).toEqual([["uid-42"]]);
+    listener!({ uid: "firebase-uid-42", email: "person@example.com", displayName: "Pat Person" });
+    expect(vi.mocked(identifyUser).mock.calls).toEqual([["0b7c5c3e-internal"]]);
   });
 
   it("resets the analytics user on sign-out", () => {
-    render(<AnalyticsIdentity />);
+    render(<AnalyticsIdentity userId="0b7c5c3e-internal" />);
     listener!(null);
     expect(resetAnalyticsUser).toHaveBeenCalledTimes(1);
-    expect(identifyUser).not.toHaveBeenCalled();
   });
 });

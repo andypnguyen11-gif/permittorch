@@ -77,13 +77,13 @@ describe("analytics call sites", () => {
     expect(track).not.toHaveBeenCalled();
   });
 
-  it("search_performed fires with the trimmed query; an empty search is not tracked", () => {
+  it("search_performed sends only the trimmed query's length, never the text; an empty search is not tracked", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true }));
     render(<TopBar markets={[]} email="a@b.test" />);
     const input = screen.getByRole("searchbox", { name: "Search leads" });
     fireEvent.change(input, { target: { value: "  warehouse  " } });
     fireEvent.submit(input.closest("form")!);
-    expect(track).toHaveBeenCalledExactlyOnceWith("search_performed", { query: "warehouse" });
+    expect(track).toHaveBeenCalledExactlyOnceWith("search_performed", { queryLength: 9 });
     fireEvent.change(input, { target: { value: "   " } });
     fireEvent.submit(input.closest("form")!);
     expect(track).toHaveBeenCalledTimes(1);

@@ -56,7 +56,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const { me, markets } = shell;
   return (
     <TooltipProvider>
-      <AnalyticsIdentity />
+      <AnalyticsIdentity userId={me.id} />
       <div className="flex h-dvh bg-stone-50 text-stone-900">
         <div className="hidden lg:flex">
           <Sidebar role={me.role} plan={me.plan} />

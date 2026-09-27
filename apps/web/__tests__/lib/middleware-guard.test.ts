@@ -5,7 +5,8 @@ const authMiddleware = vi.fn(async () => new Response("auth"));
 const redirectToLogin = vi.fn(() => new Response(null, { status: 307, headers: { location: "/login" } }));
 vi.mock("next-firebase-auth-edge", () => ({ authMiddleware, redirectToLogin }));
 const captureException = vi.fn();
-vi.mock("@sentry/nextjs", () => ({ captureException }));
+const captureMessage = vi.fn();
+vi.mock("@sentry/nextjs", () => ({ captureException, captureMessage }));
 
 const keys: string[] = [];
 vi.mock("@/lib/auth/config", async (importOriginal) => {
@@ -49,6 +50,14 @@ describe("middleware without cookie signature keys", () => {
     expect(warn).toHaveBeenCalledTimes(1);
     expect(String(warn.mock.calls[0][0])).toMatch(/AUTH_COOKIE_SIGNATURE_KEY/);
   });
+
+  it("reports the misconfiguration to Sentry once", async () => {
+    const { middleware } = await import("@/middleware");
+    await middleware(req("/"));
+    await middleware(req("/app"));
+    expect(captureMessage).toHaveBeenCalledTimes(1);
+    expect(captureMessage).toHaveBeenCalledWith(expect.stringMatching(/AUTH_COOKIE_SIGNATURE_KEY/), "error");
+  });
 });
 
 describe("middleware with cookie signature keys", () => {
@@ -58,6 +67,7 @@ describe("middleware with cookie signature keys", () => {
     await middleware(req("/app/leads"));
     expect(authMiddleware).toHaveBeenCalledTimes(1);
     expect(warn).not.toHaveBeenCalled();
+    expect(captureMessage).not.toHaveBeenCalled();
   });
 });
 
