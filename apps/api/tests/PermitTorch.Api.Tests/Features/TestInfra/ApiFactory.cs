@@ -29,11 +29,25 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     /// <summary>Per-instance configuration overrides applied after the defaults below.</summary>
     public IReadOnlyDictionary<string, string?> Settings { get; init; } = new Dictionary<string, string?>();
 
+    /// <summary>Pass DATABASE_URL in Railway's postgresql:// URL form instead of keyword form.</summary>
+    public bool UseUrlDatabaseUrl { get; init; }
+
+    /// <summary>Let the app migrate on boot (RUN_MIGRATIONS_ON_STARTUP) instead of the factory.</summary>
+    public bool RunMigrationsOnStartup { get; init; }
+
     public async Task InitializeAsync()
     {
         await _postgres.StartAsync();
         using var scope = Services.CreateScope();   // first Services access builds the host
-        await scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.MigrateAsync();
+        if (!RunMigrationsOnStartup)
+            await scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.MigrateAsync();
+    }
+
+    private string DatabaseUrlSetting()
+    {
+        if (!UseUrlDatabaseUrl) return _postgres.GetConnectionString();
+        var b = new Npgsql.NpgsqlConnectionStringBuilder(_postgres.GetConnectionString());
+        return $"postgresql://{Uri.EscapeDataString(b.Username!)}:{Uri.EscapeDataString(b.Password!)}@{b.Host}:{b.Port}/{Uri.EscapeDataString(b.Database!)}";
     }
 
     async Task IAsyncLifetime.DisposeAsync()
@@ -45,7 +59,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment(EnvironmentName);
-        builder.UseSetting("DATABASE_URL", _postgres.GetConnectionString());
+        builder.UseSetting("DATABASE_URL", DatabaseUrlSetting());
+        if (RunMigrationsOnStartup) builder.UseSetting("RUN_MIGRATIONS_ON_STARTUP", "true");
         builder.UseSetting("WEB_ORIGIN", "https://web.test.permittorch.local");
         builder.UseSetting("FIREBASE_PROJECT_ID", "permittorch-test");
         builder.UseSetting("STRIPE_SECRET_KEY", "sk_test_unused");
