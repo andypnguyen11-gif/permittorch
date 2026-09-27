@@ -63,4 +63,45 @@ public class MarketsEndpointTests(ApiFactory factory)
         var response = await factory.CreateClient().GetAsync("/api/markets/no-such-market-zz/stats");
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
+
+    [Fact]
+    public async Task Bulk_stats_match_per_market_stats_for_every_active_market()
+    {
+        var withData = TestSeed.Market("Boise");
+        var lastRun = DateTime.UtcNow.AddHours(-2);
+        var source = TestSeed.Source(withData, lastRun);
+        var sprinkler = TestSeed.Permit(source);
+        var alarm = TestSeed.Permit(source);
+        var ancient = TestSeed.Permit(source);
+        var empty = TestSeed.Market("Fargo");
+        var inactive = TestSeed.Market("Gary", active: false);
+        await factory.SeedAsync(db =>
+        {
+            db.AddRange(withData, empty, inactive, source, sprinkler, alarm, ancient);
+            db.AddRange(
+                TestSeed.Opportunity(sprinkler, 90, FireCategory.FireSprinkler),
+                TestSeed.Opportunity(alarm, 70, FireCategory.FireAlarm),
+                TestSeed.Opportunity(ancient, 95, FireCategory.FireAlarm, DateTime.UtcNow.AddDays(-45)));
+        });
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/api/markets/stats");
+
+        response.EnsureSuccessStatusCode();
+        var all = JsonSerializer.Deserialize<List<JsonElement>>(await response.Content.ReadAsStringAsync())!;
+        var bySlug = all.ToDictionary(s => s.GetProperty("slug").GetString()!);
+        Assert.DoesNotContain(inactive.Slug, bySlug.Keys);
+
+        foreach (var slug in new[] { withData.Slug, empty.Slug })
+        {
+            var single = await client.GetStringAsync($"/api/markets/{slug}/stats");
+            Assert.Equal(JsonSerializer.Deserialize<JsonElement>(single).ToString(), bySlug[slug].ToString());
+        }
+
+        var boise = bySlug[withData.Slug];
+        Assert.Equal(2, boise.GetProperty("totalLast30Days").GetInt32());
+        Assert.Equal(1, boise.GetProperty("byCategory").GetProperty("FIRE_ALARM").GetInt32());
+        Assert.Equal(JsonValueKind.Null, bySlug[empty.Slug].GetProperty("lastUpdatedAt").ValueKind);
+        Assert.Equal(0, bySlug[empty.Slug].GetProperty("totalLast30Days").GetInt32());
+    }
 }

@@ -8,6 +8,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
   ApiError: (await importOriginal<typeof import("@/lib/api")>()).ApiError,
   getMarkets: vi.fn(async () => mockMarkets),
   getMarketStats: vi.fn(async (slug: string) => mockMarketStats[slug]),
+  getAllMarketStats: vi.fn(async () => Object.values(mockMarketStats)),
   submitSampleLeadRequest: vi.fn(),
 }));
 vi.mock("next/navigation", () => ({

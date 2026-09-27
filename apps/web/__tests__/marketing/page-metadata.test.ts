@@ -5,6 +5,7 @@ import { mockMarkets, mockMarketStats } from "@/lib/fixtures/markets";
 vi.mock("@/lib/api", () => ({
   getMarkets: vi.fn(async () => mockMarkets),
   getMarketStats: vi.fn(async (slug: string) => mockMarketStats[slug]),
+  getAllMarketStats: vi.fn(async () => Object.values(mockMarketStats)),
 }));
 
 import { metadata as home } from "@/app/(marketing)/page";

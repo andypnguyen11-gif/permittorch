@@ -4,6 +4,7 @@ import { mockMarkets, mockMarketStats } from "@/lib/fixtures/markets";
 vi.mock("@/lib/api", () => ({
   getMarkets: vi.fn().mockResolvedValue(mockMarkets),
   getMarketStats: vi.fn(async (slug: string) => mockMarketStats[slug]),
+  getAllMarketStats: vi.fn(async () => Object.values(mockMarketStats)),
 }));
 
 import sitemap from "@/app/sitemap";

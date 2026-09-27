@@ -73,6 +73,27 @@ describe("lib/api", () => {
     expect(new Headers(init.headers).get("Authorization")).toBe("Bearer tok_123");
   });
 
+  it("fetches every market's stats in one bulk request", async () => {
+    vi.stubEnv("NEXT_PUBLIC_API_MOCK", "0");
+    vi.stubEnv("NEXT_PUBLIC_API_URL", "http://api.test");
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse([]));
+    vi.stubGlobal("fetch", fetchMock);
+    const api = await import("@/lib/api");
+
+    await expect(api.getAllMarketStats()).resolves.toEqual([]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect((fetchMock.mock.calls[0] as [string])[0]).toBe("http://api.test/api/markets/stats");
+  });
+
+  it("returns every fixture market's stats for the bulk call in mock mode", async () => {
+    vi.stubEnv("NEXT_PUBLIC_API_MOCK", "1");
+    const api = await import("@/lib/api");
+    const { mockMarketStats } = await import("@/lib/fixtures/markets");
+
+    expect(await api.getAllMarketStats()).toEqual(Object.values(mockMarketStats));
+  });
+
   it("sends JSON bodies for mutating calls", async () => {
     vi.stubEnv("NEXT_PUBLIC_API_MOCK", "0");
     vi.stubEnv("NEXT_PUBLIC_API_URL", "http://api.test");

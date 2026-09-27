@@ -302,6 +302,7 @@ Base URL env: web reads `NEXT_PUBLIC_API_URL`; auth = `Authorization: Bearer <Fi
 | `GET /api/leads/{id}` | user | `LeadDetail` (404 if outside entitled markets) |
 | `GET /api/leads/export.csv?<same filters>` | user, Pro+ | CSV per PRD §55 |
 | `GET /api/markets` | none | `Market[]` (active only) |
+| `GET /api/markets/stats` | none | `MarketStats[]` (every active market; bulk form used by marketing pages) |
 | `GET /api/markets/{slug}/stats` | none | `MarketStats` (SEO aggregates) |
 | `GET /api/saved-leads` | user | `SavedLeadItem[]` |
 | `POST /api/saved-leads` `{ fireOpportunityId }` | user | 201 `SavedLeadItem` |

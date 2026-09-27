@@ -29,6 +29,8 @@ vi.mock("@/lib/api", () => ({
     if (!s) throw new Error(`stats unavailable for ${slug}`);
     return s;
   }),
+  // Mesa has no stats entry (its per-market stats request fails too).
+  getAllMarketStats: vi.fn(async () => Object.values(STATS)),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -51,6 +53,16 @@ describe("getMarketsWithData", () => {
     const entries = await getMarketsWithData();
     expect(entries.map((e) => e.market.slug)).toEqual(DATA_SLUGS);
     expect(entries[0].stats).toBe(STATS["houston-tx"]);
+  });
+
+  it("makes two API calls in total, never one per market", async () => {
+    vi.mocked(api.getMarkets).mockClear();
+    vi.mocked(api.getMarketStats).mockClear();
+    vi.mocked(api.getAllMarketStats).mockClear();
+    await getMarketsWithData();
+    expect(api.getMarkets).toHaveBeenCalledTimes(1);
+    expect(api.getAllMarketStats).toHaveBeenCalledTimes(1);
+    expect(api.getMarketStats).not.toHaveBeenCalled();
   });
 
   it("hasRealData requires both a timestamp and at least one permit", () => {

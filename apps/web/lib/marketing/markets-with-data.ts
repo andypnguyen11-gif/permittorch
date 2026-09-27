@@ -1,5 +1,5 @@
 import type { Market, MarketStats } from "@permittorch/types";
-import { getMarketStats, getMarkets } from "@/lib/api";
+import { getAllMarketStats, getMarkets } from "@/lib/api";
 
 export interface MarketWithData { market: Market; stats: MarketStats }
 
@@ -10,15 +10,18 @@ export function hasRealData(stats: MarketStats): boolean {
 
 /**
  * Markets that may get public marketing surface area (pages, sitemap entries,
- * dropdown options). A market whose stats request fails is excluded rather than
- * failing the whole page — no thin pages, and no outage cascade.
+ * dropdown options). Two requests total (market list + bulk stats), never one
+ * per market: every marketing render calls this, and per-market fetches trip
+ * the API's anonymous rate limit. A market without a stats entry is excluded
+ * rather than failing the whole page — no thin pages.
  */
 export async function getMarketsWithData(): Promise<MarketWithData[]> {
-  const markets = await getMarkets();
-  const settled = await Promise.allSettled(markets.map((m) => getMarketStats(m.slug)));
+  const [markets, allStats] = await Promise.all([getMarkets(), getAllMarketStats()]);
+  const statsBySlug = new Map(allStats.map((s) => [s.slug, s]));
   const out: MarketWithData[] = [];
-  settled.forEach((r, i) => {
-    if (r.status === "fulfilled" && hasRealData(r.value)) out.push({ market: markets[i], stats: r.value });
-  });
+  for (const market of markets) {
+    const stats = statsBySlug.get(market.slug);
+    if (stats && hasRealData(stats)) out.push({ market, stats });
+  }
   return out;
 }

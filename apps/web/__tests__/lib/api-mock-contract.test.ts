@@ -28,7 +28,7 @@ describe("lib/api.ts mock branch ↔ lib/fixtures exports", () => {
 
   it("every exported api function (except markets) has a mock branch", () => {
     const exported = [...source.matchAll(/export async function (\w+)\(/g)].map((m) => m[1])
-      .filter((n) => n !== "apiFetch" && n !== "getMarkets" && n !== "getMarketStats");
+      .filter((n) => n !== "apiFetch" && n !== "getMarkets" && n !== "getMarketStats" && n !== "getAllMarketStats");
     expect(new Set(indexCalls)).toEqual(new Set(exported));
   });
 });

@@ -112,6 +112,12 @@ export async function getMarketStats(slug: string): Promise<MarketStats> {
   return apiFetch<MarketStats>(`/api/markets/${encodeURIComponent(slug)}/stats`);
 }
 
+/** Stats for every active market in one request (marketing pages need them all). */
+export async function getAllMarketStats(): Promise<MarketStats[]> {
+  if (isMock()) return Object.values((await import("@/lib/fixtures/markets")).mockMarketStats);
+  return apiFetch<MarketStats[]>("/api/markets/stats");
+}
+
 export async function getSavedLeads(token: string): Promise<SavedLeadItem[]> {
   if (isMock()) return (await fixtures()).getSavedLeads();
   return apiFetch<SavedLeadItem[]>("/api/saved-leads", {}, token);

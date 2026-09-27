@@ -9,6 +9,7 @@ public static class MarketsEndpoints
     public static IEndpointRouteBuilder MapMarketsEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapGet("/api/markets", GetMarkets);
+        endpoints.MapGet("/api/markets/stats", GetAllMarketStats);
         endpoints.MapGet("/api/markets/{slug}/stats", GetMarketStats);
         return endpoints;
     }
@@ -21,6 +22,45 @@ public static class MarketsEndpoints
             .Select(m => new MarketDto(m.Id, m.Name, m.City, m.State, m.Slug))
             .ToListAsync(ct);
         return Results.Ok(markets);
+    }
+
+    // Bulk form of /api/markets/{slug}/stats for every active market in two grouped queries.
+    // Marketing pages (home, sitemap, /locations, landers, static params) need every market's
+    // stats; fetching them one by one is N+1 requests per render and trips the anonymous
+    // per-IP rate limit once the catalog has more than a few dozen markets.
+    private static async Task<IResult> GetAllMarketStats(AppDbContext db, CancellationToken ct)
+    {
+        var markets = await db.Markets
+            .Where(m => m.Active)
+            .OrderBy(m => m.Name)
+            .Select(m => new { m.Id, m.Slug })
+            .ToListAsync(ct);
+
+        var since = DateTime.UtcNow.AddDays(-30);
+        var counts = await db.FireOpportunities
+            .Where(o => o.Permit.Source.Market.Active && o.FirstDetectedAt >= since)
+            .GroupBy(o => new { o.Permit.Source.MarketId, o.Category })
+            .Select(g => new { g.Key.MarketId, g.Key.Category, Count = g.Count() })
+            .ToListAsync(ct);
+
+        var lastUpdated = await db.Sources
+            .GroupBy(s => s.MarketId)
+            .Select(g => new { MarketId = g.Key, LastUpdatedAt = g.Max(s => s.LastSuccessfulRunAt) })
+            .ToDictionaryAsync(x => x.MarketId, x => x.LastUpdatedAt, ct);
+
+        var stats = markets.Select(m =>
+        {
+            var byCategory = Enum.GetValues<FireCategory>().ToDictionary(c => Wire.Name(c), _ => 0);
+            var total = 0;
+            foreach (var entry in counts.Where(c => c.MarketId == m.Id))
+            {
+                byCategory[Wire.Name(entry.Category)] = entry.Count;
+                total += entry.Count;
+            }
+            return new MarketStatsDto(m.Slug, total, byCategory, lastUpdated.GetValueOrDefault(m.Id));
+        }).ToList();
+
+        return Results.Ok(stats);
     }
 
     private static async Task<IResult> GetMarketStats(string slug, AppDbContext db, CancellationToken ct)
