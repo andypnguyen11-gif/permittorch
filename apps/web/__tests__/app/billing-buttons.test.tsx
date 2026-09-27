@@ -8,7 +8,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 vi.mock("@/components/app/use-api-token", () => ({ useApiToken: () => async () => "mock-token" }));
 vi.mock("sonner", () => ({ toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }) }));
 
-import { createBillingPortal, createCheckout } from "@/lib/api";
+import { ApiError, createBillingPortal, createCheckout } from "@/lib/api";
 import { toast } from "sonner";
 import { BillingButtons, CheckoutPicker, nextPlan } from "@/components/app/account/billing-buttons";
 import type { Market } from "@permittorch/types";
@@ -55,6 +55,13 @@ describe("BillingButtons", () => {
   it("hides upgrade on Territory", () => {
     vi.stubEnv("NEXT_PUBLIC_API_MOCK", "0");
     renderButtons("TERRITORY");
+    expect(screen.getByRole("button", { name: "Manage billing" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Upgrade/ })).not.toBeInTheDocument();
+  });
+
+  it("offers only the portal (no upgrade) for a live subscription without a plan", () => {
+    vi.stubEnv("NEXT_PUBLIC_API_MOCK", "0");
+    renderButtons(null);
     expect(screen.getByRole("button", { name: "Manage billing" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Upgrade/ })).not.toBeInTheDocument();
   });
@@ -108,6 +115,36 @@ describe("CheckoutPicker", () => {
     fireEvent.click(screen.getByRole("radio", { name: "Pro" }));
     fireEvent.click(screen.getByRole("button", { name: "Subscribe to Pro" }));
     await waitFor(() => expect(createCheckout).toHaveBeenCalledWith("PRO", ["houston-tx"], "mock-token"));
+  });
+
+  it("opens the billing portal on a 409 instead of showing the generic error", async () => {
+    vi.stubEnv("NEXT_PUBLIC_API_MOCK", "0");
+    vi.mocked(createCheckout).mockRejectedValue(new ApiError("Manage your plan in the billing portal", 409));
+    vi.mocked(createBillingPortal).mockResolvedValue({ url: "#" });
+    renderPicker("PRO");
+    fireEvent.click(screen.getByRole("radio", { name: "Austin" }));
+    fireEvent.click(screen.getByRole("button", { name: "Subscribe to Pro" }));
+    await waitFor(() => expect(createBillingPortal).toHaveBeenCalledWith("mock-token"));
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it("shows the API's message for a refused selection (400)", async () => {
+    vi.stubEnv("NEXT_PUBLIC_API_MOCK", "0");
+    vi.mocked(createCheckout).mockRejectedValue(new ApiError("No recent permit data yet for Austin, TX", 400));
+    renderPicker("PRO");
+    fireEvent.click(screen.getByRole("radio", { name: "Austin" }));
+    fireEvent.click(screen.getByRole("button", { name: "Subscribe to Pro" }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("No recent permit data yet for Austin, TX"));
+    expect(createBillingPortal).not.toHaveBeenCalled();
+  });
+
+  it("keeps markets without data visible but not selectable", () => {
+    vi.stubEnv("NEXT_PUBLIC_API_MOCK", "0");
+    render(<TooltipProvider><CheckoutPicker initialPlan="PRO"
+      markets={[{ ...MARKETS[0], hasData: true }, { ...MARKETS[1], hasData: false }]} /></TooltipProvider>);
+    expect(screen.getByRole("radio", { name: "Austin" })).toBeEnabled();
+    expect(screen.getByRole("radio", { name: /Dallas/ })).toBeDisabled();
+    expect(screen.getByText("No leads yet")).toBeInTheDocument();
   });
 
   it("is disabled in mock mode", () => {

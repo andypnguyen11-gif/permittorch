@@ -64,8 +64,8 @@ const stats: MarketStats = {
 const savedItem: SavedLeadItem = { id: "sl_1", status: savedStatus, createdAt: "2026-08-19T00:00:00Z", lead };
 
 const me: AccountMe = {
-  email: "owner@example.com", role: "ADMIN",
-  organizationName: "Acme Fire", plan, digestFrequency: digest,
+  id: "usr_1", email: "owner@example.com", role: "ADMIN",
+  organizationName: "Acme Fire", plan, digestFrequency: digest, hasLiveSubscription: true,
 };
 
 const adminSource: AdminSource = {

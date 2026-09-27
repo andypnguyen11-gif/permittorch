@@ -35,8 +35,43 @@ public sealed class FakeStripeGateway(IOptions<BillingOptions> options) : Stripe
         CancellationToken ct)
     {
         CheckoutCalls.Enqueue((customerId, priceId, metadata, successUrl, cancelUrl, trialPeriodDays));
-        return Task.FromResult("https://checkout.stripe.test/session");
+        var id = $"cs_fake_{Guid.NewGuid():N}";
+        var url = $"https://checkout.stripe.test/session/{id}";
+        lock (_sessions)
+            _sessions.Add((customerId, new CheckoutSessionInfo(id, "open", url, DateTime.UtcNow, new Dictionary<string, string>(metadata))));
+        return Task.FromResult(url);
     }
+
+    // Stripe-side Checkout Sessions per customer: what the double-checkout guard sees.
+    private readonly List<(string CustomerId, CheckoutSessionInfo Session)> _sessions = new();
+    public readonly ConcurrentQueue<string> ExpiredSessions = new();
+
+    public override Task<IReadOnlyList<CheckoutSessionInfo>> ListCheckoutSessionsAsync(string customerId, CancellationToken ct)
+    {
+        lock (_sessions)
+            return Task.FromResult<IReadOnlyList<CheckoutSessionInfo>>(_sessions
+                .Where(s => s.CustomerId == customerId).Select(s => s.Session)
+                .OrderByDescending(s => s.CreatedAt).ToList());
+    }
+
+    public override Task ExpireCheckoutSessionAsync(string sessionId, CancellationToken ct)
+    {
+        ExpiredSessions.Enqueue(sessionId);
+        Update(sessionId, s => s with { Status = "expired" });
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Test hook: rewrite a recorded session (age it, complete it, ...).</summary>
+    public void Update(string sessionId, Func<CheckoutSessionInfo, CheckoutSessionInfo> change)
+    {
+        lock (_sessions)
+        {
+            var i = _sessions.FindIndex(s => s.Session.Id == sessionId);
+            _sessions[i] = (_sessions[i].CustomerId, change(_sessions[i].Session));
+        }
+    }
+
+    public static string SessionIdFromUrl(string url) => url[(url.LastIndexOf('/') + 1)..];
 
     public override Task<string> CreatePortalUrlAsync(string customerId, string returnUrl, CancellationToken ct)
     {
@@ -80,8 +115,28 @@ public sealed class CheckoutEndpointTests(FakeStripeApiFixture fixture) : IClass
     {
         var sub = $"user_{Guid.NewGuid():N}";
         var (org, user, pref) = TestSeed.User(sub, $"{sub}@example.com");
-        await Factory.SeedAsync(db => { db.AddRange(markets); db.AddRange(org, user, pref); });
+        // Checkout only sells markets with fresh data: give each market a source that ran yesterday.
+        await Factory.SeedAsync(db =>
+        {
+            db.AddRange(markets);
+            db.AddRange(markets.Select(m => TestSeed.Source(m, DateTime.UtcNow.AddDays(-1))));
+            db.AddRange(org, user, pref);
+        });
         return (org, user, Factory.CreateClientFor(sub, user.Email));
+    }
+
+    private async Task<string> CheckoutUrlAsync(HttpResponseMessage response)
+    {
+        response.EnsureSuccessStatusCode();
+        return JsonSerializer.Deserialize<JsonElement>(await response.Content.ReadAsStringAsync())
+            .GetProperty("url").GetString()!;
+    }
+
+    private static async Task AssertPortalConflictAsync(HttpResponseMessage response)
+    {
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var body = JsonSerializer.Deserialize<JsonElement>(await response.Content.ReadAsStringAsync());
+        Assert.Equal("Manage your plan in the billing portal", body.GetProperty("error").GetString());
     }
 
     private static async Task AssertBadRequestAsync(HttpResponseMessage response)
@@ -102,7 +157,7 @@ public sealed class CheckoutEndpointTests(FakeStripeApiFixture fixture) : IClass
 
         response.EnsureSuccessStatusCode();
         var body = JsonSerializer.Deserialize<JsonElement>(await response.Content.ReadAsStringAsync());
-        Assert.Equal("https://checkout.stripe.test/session", body.GetProperty("url").GetString());
+        Assert.StartsWith("https://checkout.stripe.test/session/", body.GetProperty("url").GetString());
 
         var call = Assert.Single(Stripe.CallsFor(org.Id));
         Assert.Equal("price_starter_test", call.PriceId);
@@ -111,7 +166,7 @@ public sealed class CheckoutEndpointTests(FakeStripeApiFixture fixture) : IClass
         Assert.Equal(market.Slug, call.Metadata["marketSlugs"]);
         Assert.Equal(7, call.TrialPeriodDays);
         Assert.Equal("https://web.test.permittorch.local/app/account?checkout=success", call.SuccessUrl);
-        Assert.Equal("https://web.test.permittorch.local/pricing", call.CancelUrl);
+        Assert.Equal("https://web.test.permittorch.local/app/account?checkout=cancelled", call.CancelUrl);
 
         var stored = await Factory.QueryAsync(db => db.Subscriptions.SingleAsync(s => s.OrganizationId == org.Id));
         Assert.Equal(call.CustomerId, stored.StripeCustomerId);
@@ -131,20 +186,93 @@ public sealed class CheckoutEndpointTests(FakeStripeApiFixture fixture) : IClass
     }
 
     [Fact]
-    public async Task Second_abandoned_checkout_reuses_the_existing_stripe_customer()
+    public async Task Second_checkout_after_an_abandoned_session_reuses_the_customer_and_expires_the_old_session()
     {
         var market = TestSeed.Market("Austin");
         var (org, _, client) = await SeedUserAsync(market);
         var json = $"{{\"plan\":\"PRO\",\"marketSlugs\":[\"{market.Slug}\"]}}";
 
-        (await client.PostAsync("/api/billing/checkout", Json(json))).EnsureSuccessStatusCode();
-        (await client.PostAsync("/api/billing/checkout", Json(json))).EnsureSuccessStatusCode();
+        var firstUrl = await CheckoutUrlAsync(await client.PostAsync("/api/billing/checkout", Json(json)));
+        var firstId = FakeStripeGateway.SessionIdFromUrl(firstUrl);
+        Stripe.Update(firstId, s => s with { CreatedAt = DateTime.UtcNow.AddMinutes(-31) });   // abandoned
+        var secondUrl = await CheckoutUrlAsync(await client.PostAsync("/api/billing/checkout", Json(json)));
 
+        Assert.NotEqual(firstUrl, secondUrl);
         Assert.Single(Stripe.CustomersCreatedFor, id => id == org.Id);
         var calls = Stripe.CallsFor(org.Id);
         Assert.Equal(2, calls.Count);
         Assert.Equal(calls[0].CustomerId, calls[1].CustomerId);
         Assert.All(calls, c => Assert.Equal(7, c.TrialPeriodDays));   // never subscribed yet
+        Assert.Contains(firstId, Stripe.ExpiredSessions);              // the stale tab can no longer be paid
+    }
+
+    [Fact]
+    public async Task Open_session_for_the_same_selection_is_resumed_instead_of_creating_another()
+    {
+        var market = TestSeed.Market("Resume");
+        var (org, _, client) = await SeedUserAsync(market);
+        var json = $"{{\"plan\":\"PRO\",\"marketSlugs\":[\"{market.Slug}\"]}}";
+
+        var first = await CheckoutUrlAsync(await client.PostAsync("/api/billing/checkout", Json(json)));
+        var second = await CheckoutUrlAsync(await client.PostAsync("/api/billing/checkout", Json(json)));
+
+        Assert.Equal(first, second);
+        Assert.Single(Stripe.CallsFor(org.Id));
+        Assert.DoesNotContain(FakeStripeGateway.SessionIdFromUrl(first), Stripe.ExpiredSessions);
+    }
+
+    [Fact]
+    public async Task Open_session_for_a_different_selection_is_refused_with_409()
+    {
+        var market = TestSeed.Market("Switch");
+        var (org, _, client) = await SeedUserAsync(market);
+
+        await CheckoutUrlAsync(await client.PostAsync("/api/billing/checkout",
+            Json($"{{\"plan\":\"PRO\",\"marketSlugs\":[\"{market.Slug}\"]}}")));
+        await AssertPortalConflictAsync(await client.PostAsync("/api/billing/checkout",
+            Json($"{{\"plan\":\"STARTER\",\"marketSlugs\":[\"{market.Slug}\"]}}")));
+
+        Assert.Single(Stripe.CallsFor(org.Id));
+    }
+
+    [Fact]
+    public async Task Just_completed_session_awaiting_its_webhook_is_refused_with_409()
+    {
+        var market = TestSeed.Market("Paid");
+        var (org, _, client) = await SeedUserAsync(market);
+        var json = $"{{\"plan\":\"PRO\",\"marketSlugs\":[\"{market.Slug}\"]}}";
+
+        var url = await CheckoutUrlAsync(await client.PostAsync("/api/billing/checkout", Json(json)));
+        Stripe.Update(FakeStripeGateway.SessionIdFromUrl(url), s => s with { Status = "complete", Url = null });
+        await AssertPortalConflictAsync(await client.PostAsync("/api/billing/checkout", Json(json)));
+
+        Assert.Single(Stripe.CallsFor(org.Id));
+    }
+
+    [Fact]
+    public async Task Markets_without_a_recent_successful_run_are_refused_by_name()
+    {
+        var fresh = TestSeed.Market("Fresh");
+        var (org, _, client) = await SeedUserAsync(fresh);
+        var stale = TestSeed.Market("Stale");
+        var empty = TestSeed.Market("Empty");
+        await Factory.SeedAsync(db =>
+        {
+            db.AddRange(stale, empty);
+            db.Add(TestSeed.Source(stale, DateTime.UtcNow.AddDays(-15)));
+        });
+
+        foreach (var market in new[] { stale, empty })
+        {
+            var response = await client.PostAsync("/api/billing/checkout",
+                Json($"{{\"plan\":\"TERRITORY\",\"marketSlugs\":[\"{fresh.Slug}\",\"{market.Slug}\"]}}"));
+            await AssertBadRequestAsync(response);
+            var error = JsonSerializer.Deserialize<JsonElement>(await response.Content.ReadAsStringAsync())
+                .GetProperty("error").GetString();
+            Assert.Contains(market.Name, error);
+            Assert.DoesNotContain(fresh.Name, error);
+        }
+        Assert.Empty(Stripe.CallsFor(org.Id));
     }
 
     [Fact]

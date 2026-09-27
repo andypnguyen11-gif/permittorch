@@ -2,6 +2,7 @@ import * as Sentry from "@sentry/nextjs";
 import { NextResponse, type NextRequest } from "next/server";
 import { authMiddleware, redirectToLogin } from "next-firebase-auth-edge";
 import { APP_HOME, LOGIN_PATH, authConfig, isAuthPage, isPublicPath } from "@/lib/auth/config";
+import { parsePlanTier } from "@/components/app/account/plan-selection";
 
 // FINAL FORM (WS0; WS5 added the missing-key guard and Sentry reporting in handleError).
 // Public routes are locked in the master contracts doc (see lib/auth/config.ts);
@@ -32,7 +33,7 @@ export async function middleware(request: NextRequest) {
     ...authConfig,
     handleValidToken: async (_tokens, headers) => {
       if (isAuthPage(pathname)) {
-        return NextResponse.redirect(new URL(APP_HOME, request.url));
+        return NextResponse.redirect(new URL(signedInDestination(request), request.url));
       }
       return NextResponse.next({ request: { headers } });
     },
@@ -48,6 +49,15 @@ export async function middleware(request: NextRequest) {
       return redirectToLogin(request, { path: LOGIN_PATH, publicPaths: [] });
     },
   });
+}
+
+/**
+ * Where a signed-in visitor to /login or /signup goes: a valid `?plan=` (from /pricing) continues
+ * to the account page's plan picker with that plan preselected; anything else lands on the app.
+ */
+export function signedInDestination(request: NextRequest): string {
+  const plan = parsePlanTier(request.nextUrl.searchParams.get("plan"));
+  return plan ? `/app/account?plan=${plan}` : APP_HOME;
 }
 
 export const config = {

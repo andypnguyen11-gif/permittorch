@@ -28,6 +28,32 @@ public class AccountEndpointTests(ApiFactory factory)
         Assert.Equal(org.Name, body.GetProperty("organizationName").GetString());
         Assert.Equal("TERRITORY", body.GetProperty("plan").GetString());
         Assert.Equal("WEEKLY", body.GetProperty("digestFrequency").GetString());
+        Assert.Equal(user.Id, body.GetProperty("id").GetGuid());
+        Assert.True(body.GetProperty("hasLiveSubscription").GetBoolean());
+        Assert.NotEqual(sub, body.GetProperty("id").GetString());   // internal id, never the Firebase uid
+    }
+
+    [Theory]
+    [InlineData("unpaid", "sub_x", true)]
+    [InlineData("paused", "sub_x", true)]
+    [InlineData("incomplete", "sub_x", true)]      // real Stripe subscription awaiting first payment
+    [InlineData("incomplete", null, false)]        // local checkout placeholder
+    [InlineData("canceled", "sub_x", false)]
+    [InlineData("incomplete_expired", "sub_x", false)]
+    public async Task Me_reports_a_live_subscription_even_without_a_display_plan(
+        string status, string? stripeSubscriptionId, bool expected)
+    {
+        var sub = $"user_{Guid.NewGuid():N}";
+        var (org, user, pref) = TestSeed.User(sub, $"{sub}@example.com");
+        var subscription = TestSeed.Subscription(org, PlanTier.Pro, status);
+        subscription.StripeSubscriptionId = stripeSubscriptionId;
+        await factory.SeedAsync(db => db.AddRange(org, user, pref, subscription));
+
+        var body = JsonSerializer.Deserialize<JsonElement>(
+            await factory.CreateClientFor(sub, user.Email).GetStringAsync("/api/account/me"));
+
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("plan").ValueKind);
+        Assert.Equal(expected, body.GetProperty("hasLiveSubscription").GetBoolean());
     }
 
     [Fact]
@@ -38,6 +64,7 @@ public class AccountEndpointTests(ApiFactory factory)
             await factory.CreateClientFor(sub, $"{sub}@example.com").GetStringAsync("/api/account/me"));
         Assert.Equal(JsonValueKind.Null, body.GetProperty("plan").ValueKind);
         Assert.Equal("NONE", body.GetProperty("digestFrequency").GetString());
+        Assert.False(body.GetProperty("hasLiveSubscription").GetBoolean());
     }
 
     [Fact]

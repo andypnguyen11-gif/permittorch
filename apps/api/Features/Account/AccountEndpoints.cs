@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using PermitTorch.Api.Data;
 using PermitTorch.Api.Features.Auth;
+using PermitTorch.Api.Features.Billing;
 using PermitTorch.Api.Features.Shared;
 
 namespace PermitTorch.Api.Features.Account;
@@ -29,8 +30,12 @@ public static class AccountEndpoints
             .Select(p => (DigestFrequency?)p.Frequency)
             .FirstOrDefaultAsync(ct) ?? DigestFrequency.None;
 
+        var subscription = await db.Subscriptions.AsNoTracking()
+            .FirstOrDefaultAsync(s => s.OrganizationId == user.OrganizationId, ct);
+
         return Results.Ok(new AccountMeDto(
-            user.Email, user.Role, user.Organization.Name, plan, frequency));
+            user.Id, user.Email, user.Role, user.Organization.Name, plan, frequency,
+            BillingEndpoints.HasLiveSubscription(subscription)));
     }
 
     private static async Task<IResult> GetMarkets(

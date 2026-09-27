@@ -84,3 +84,34 @@ describe("middleware handleError", () => {
     expect(res.headers.get("x-middleware-next")).toBe("1");
   });
 });
+
+describe("middleware handleValidToken on /login and /signup", () => {
+  type Options = { handleValidToken: (tokens: unknown, headers: Headers) => Promise<Response> };
+  const redirectFor = async (path: string) => {
+    keys.push("k1");
+    const { middleware } = await import("@/middleware");
+    const request = req(path);
+    await middleware(request);
+    const options = (authMiddleware.mock.calls[0] as unknown as [NextRequest, Options])[1];
+    const res = await options.handleValidToken({}, new Headers());
+    return res.headers.get("location");
+  };
+
+  it.each([
+    ["/signup?plan=territory", "http://localhost:3000/app/account?plan=TERRITORY"],
+    ["/login?plan=STARTER", "http://localhost:3000/app/account?plan=STARTER"],
+    ["/signup?plan=gold", "http://localhost:3000/app/leads"],
+    ["/login", "http://localhost:3000/app/leads"],
+  ])("sends a signed-in visitor of %s to %s", async (path, location) => {
+    expect(await redirectFor(path)).toBe(location);
+  });
+
+  it("does not redirect signed-in visitors of other pages", async () => {
+    keys.push("k1");
+    const { middleware } = await import("@/middleware");
+    await middleware(req("/pricing?plan=PRO"));
+    const options = (authMiddleware.mock.calls[0] as unknown as [NextRequest, Options])[1];
+    const res = await options.handleValidToken({}, new Headers());
+    expect(res.headers.get("x-middleware-next")).toBe("1");
+  });
+});

@@ -309,10 +309,10 @@ Base URL env: web reads `NEXT_PUBLIC_API_URL`; auth = `Authorization: Bearer <Fi
 | `PATCH /api/saved-leads/{id}` `{ status: "SAVED"\|"CONTACTED" }` | user | 200 |
 | `DELETE /api/saved-leads/{id}` | user | 204 |
 | `GET /api/account/markets` | user | `Market[]` (entitled) |
-| `GET /api/account/me` | user | `{ email, role, organizationName, plan, digestFrequency }` |
+| `GET /api/account/me` | user | `{ id, email, role, organizationName, plan, digestFrequency, hasLiveSubscription }` (`id` = internal user id; `hasLiveSubscription` = a Stripe subscription still exists, incl. unpaid/paused/incomplete) |
 | `PUT /api/email-preferences` `{ frequency: "NONE"\|"DAILY"\|"WEEKLY" }` | user | 200 |
 | `POST /api/sample-leads` `{ name, email, company, marketSlug }` | none, rate-limited | 202 |
-| `POST /api/billing/checkout` `{ plan: "STARTER"\|"PRO"\|"TERRITORY", marketSlugs: string[] }` (exactly 1 slug for STARTER/PRO, 1–5 for TERRITORY; 409 when a live subscription exists) | user | `{ url }` (Stripe Checkout) |
+| `POST /api/billing/checkout` `{ plan: "STARTER"\|"PRO"\|"TERRITORY", marketSlugs: string[] }` (exactly 1 slug for STARTER/PRO, 1–5 for TERRITORY; 400 naming any market without a successful source run in the last 14 days; 409 when a live subscription exists, a Checkout Session completed in the last 30 min, or an open one exists for a different selection — an open session for the same selection is returned as-is) | user | `{ url }` (Stripe Checkout; success → `/app/account?checkout=success`, cancel → `/app/account?checkout=cancelled`) |
 | `GET` / `POST /api/email/unsubscribe?k=sub\|sample&id=&t=` | public (HMAC token, rate-limited) | GET: HTML confirmation; POST: 204 (List-Unsubscribe one-click) |
 | `POST /api/billing/portal` | user | `{ url }` (Stripe customer portal) |
 | `POST /api/webhooks/stripe` | Stripe signature | 200 |
@@ -366,8 +366,10 @@ export interface MarketStats {
 }
 export interface SavedLeadItem { id: string; status: SavedLeadStatus; createdAt: string; lead: LeadSummary; }
 export interface AccountMe {
+  id: string;
   email: string; role: "MEMBER" | "ADMIN" | "SUPER_ADMIN";
   organizationName: string; plan: PlanTier | null; digestFrequency: DigestFrequency;
+  hasLiveSubscription: boolean;
 }
 export interface AdminSource {
   id: string; name: string; city: string; state: string; active: boolean;

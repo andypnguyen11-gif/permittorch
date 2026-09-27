@@ -38,8 +38,12 @@ export interface MarketStats {
 }
 export interface SavedLeadItem { id: string; status: SavedLeadStatus; createdAt: string; lead: LeadSummary; }
 export interface AccountMe {
+  /** Internal user id (analytics-safe; never the Firebase uid). */
+  id: string;
   email: string; role: "MEMBER" | "ADMIN" | "SUPER_ADMIN";
   organizationName: string; plan: PlanTier | null; digestFrequency: DigestFrequency;
+  /** A Stripe subscription still exists (incl. unpaid/paused/incomplete): use the billing portal, not checkout. */
+  hasLiveSubscription: boolean;
 }
 export interface AdminSource {
   id: string; name: string; city: string; state: string; active: boolean;

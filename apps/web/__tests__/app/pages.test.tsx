@@ -5,7 +5,7 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
   usePathname: () => "/app",
   redirect: (p: string) => { throw new Error(`REDIRECT:${p}`); },
   notFound: () => { throw new Error("NOT_FOUND"); },
@@ -19,9 +19,21 @@ import AccountPage from "@/app/app/account/page";
 import MarketsPage from "@/app/app/markets/page";
 import { orderMarkets } from "@/components/app/order-markets";
 import * as api from "@/lib/api";
+import type { AccountMe } from "@permittorch/types";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 beforeAll(() => vi.stubEnv("NEXT_PUBLIC_API_MOCK", "1"));
+
+const NO_PLAN: AccountMe = {
+  id: "u-new", email: "new@example.com", role: "MEMBER", organizationName: "New Co", plan: null,
+  digestFrequency: "NONE", hasLiveSubscription: false,
+};
+const NO_COUNTS = {
+  FIRE_SPRINKLER: 0, FIRE_ALARM: 0, FIRE_SUPPRESSION: 0, KITCHEN_SUPPRESSION: 0,
+  FIRE_INSPECTION: 0, VIOLATION_CORRECTION: 0, GENERAL_FIRE_PROTECTION: 0,
+};
+const page = async (params: Record<string, string> = {}) =>
+  render(<TooltipProvider>{await AccountPage({ searchParams: Promise.resolve(params) })}</TooltipProvider>);
 
 describe("/app/saved", () => {
   it("lists the saved fixture leads with their tracking status", async () => {
@@ -56,9 +68,7 @@ describe("/app/account", () => {
   });
 
   it("offers the plan + market picker without a plan, preselecting ?plan= and listing the catalog", async () => {
-    const me = vi.spyOn(api, "getAccountMe").mockResolvedValue({
-      email: "new@example.com", role: "MEMBER", organizationName: "New Co", plan: null, digestFrequency: "NONE",
-    });
+    const me = vi.spyOn(api, "getAccountMe").mockResolvedValue(NO_PLAN);
     const entitled = vi.spyOn(api, "getAccountMarkets").mockResolvedValue([]);
     render(<TooltipProvider>{await AccountPage({ searchParams: Promise.resolve({ plan: "territory" }) })}</TooltipProvider>);
     expect(screen.getByText("No active plan")).toBeInTheDocument();
@@ -70,12 +80,66 @@ describe("/app/account", () => {
   });
 
   it("falls back to Pro for an invalid ?plan=", async () => {
-    const me = vi.spyOn(api, "getAccountMe").mockResolvedValue({
-      email: "new@example.com", role: "MEMBER", organizationName: "New Co", plan: null, digestFrequency: "NONE",
-    });
+    const me = vi.spyOn(api, "getAccountMe").mockResolvedValue(NO_PLAN);
     render(<TooltipProvider>{await AccountPage({ searchParams: Promise.resolve({ plan: "GOLD" }) })}</TooltipProvider>);
     expect(screen.getByRole("radio", { name: "Pro" })).toBeChecked();
     me.mockRestore();
+  });
+
+  it("confirms a just-paid checkout instead of re-offering the picker", async () => {
+    const me = vi.spyOn(api, "getAccountMe").mockResolvedValue(NO_PLAN);
+    const catalog = vi.spyOn(api, "getMarkets");
+    await page({ checkout: "success" });
+    expect(screen.getByText("Confirming your subscription…")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Subscribe/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "Pro" })).not.toBeInTheDocument();
+    expect(catalog).not.toHaveBeenCalled();
+    me.mockRestore();
+    catalog.mockRestore();
+  });
+
+  it("shows the normal plan view on ?checkout=success once the plan exists", async () => {
+    await page({ checkout: "success" });
+    expect(screen.getByText("Pro plan")).toBeInTheDocument();
+    expect(screen.queryByText("Confirming your subscription…")).not.toBeInTheDocument();
+  });
+
+  it("shows a neutral notice and the picker after a cancelled checkout", async () => {
+    const me = vi.spyOn(api, "getAccountMe").mockResolvedValue(NO_PLAN);
+    await page({ checkout: "cancelled" });
+    expect(screen.getByText(/Checkout was cancelled/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Subscribe to Pro" })).toBeInTheDocument();
+    me.mockRestore();
+  });
+
+  it("routes a live subscription without a plan (unpaid/paused/incomplete) to the billing portal", async () => {
+    const me = vi.spyOn(api, "getAccountMe").mockResolvedValue({ ...NO_PLAN, hasLiveSubscription: true });
+    await page();
+    expect(screen.getByRole("button", { name: "Manage billing" })).toBeInTheDocument();
+    expect(screen.getByText(/needs attention/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Subscribe/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Upgrade/ })).not.toBeInTheDocument();
+    me.mockRestore();
+  });
+
+  it("lists markets without leads last, disabled, as 'No leads yet'", async () => {
+    const me = vi.spyOn(api, "getAccountMe").mockResolvedValue(NO_PLAN);
+    const entitled = vi.spyOn(api, "getAccountMarkets").mockResolvedValue([]);
+    const stats = vi.spyOn(api, "getAllMarketStats").mockResolvedValue([
+      { slug: "houston-tx", totalLast30Days: 12, byCategory: NO_COUNTS, lastUpdatedAt: "2026-09-01T00:00:00Z" },
+      { slug: "dallas-tx", totalLast30Days: 0, byCategory: NO_COUNTS, lastUpdatedAt: "2026-09-01T00:00:00Z" },
+      { slug: "austin-tx", totalLast30Days: 5, byCategory: NO_COUNTS, lastUpdatedAt: null },
+    ]);
+    await page({ plan: "territory" });
+    expect(screen.getByRole("checkbox", { name: "Houston" })).toBeEnabled();
+    expect(screen.getByRole("checkbox", { name: /Dallas/ })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: /Austin/ })).toBeDisabled();
+    expect(screen.getAllByText("No leads yet")).toHaveLength(2);
+    const names = screen.getAllByRole("checkbox").map((c) => c.closest("label")?.textContent);
+    expect(names[0]).toBe("Houston");
+    me.mockRestore();
+    entitled.mockRestore();
+    stats.mockRestore();
   });
 });
 

@@ -2,10 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { MapPin, Sparkles } from "lucide-react";
 import type { AccountMe, Market } from "@permittorch/types";
-import { getAccountMarkets, getAccountMe, getMarkets } from "@/lib/api";
+import { getAccountMarkets, getAccountMe, getAllMarketStats, getMarkets } from "@/lib/api";
 import { getApiToken } from "@/components/app/get-token";
 import { handleApiError } from "@/components/app/api-errors";
-import { BillingButtons, CheckoutPicker } from "@/components/app/account/billing-buttons";
+import { BillingButtons, CheckoutPicker, type CheckoutMarket } from "@/components/app/account/billing-buttons";
+import { CheckoutConfirming } from "@/components/app/account/checkout-confirming";
 import { PLAN_LABELS, parsePlanTier } from "@/components/app/account/plan-selection";
 import { orderMarkets } from "@/components/app/order-markets";
 import { SectionCard } from "@/components/app/section-card";
@@ -26,18 +27,35 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
+/**
+ * Picker catalog: entitled markets first, then the public catalog; markets with leads come
+ * before those without, which stay listed but disabled ("No leads yet") — the API refuses
+ * checkout for a market without recent data anyway.
+ */
+async function pickerMarkets(entitled: Market[]): Promise<CheckoutMarket[]> {
+  const [catalog, stats] = await Promise.all([getMarkets(), getAllMarketStats()])
+    .catch((err) => handleApiError(err));
+  const withData = new Set(
+    stats.filter((s) => s.lastUpdatedAt !== null && s.totalLast30Days > 0).map((s) => s.slug));
+  const ordered = orderMarkets(catalog, entitled).map((m) => ({ ...m, hasData: withData.has(m.slug) }));
+  return [...ordered.filter((m) => m.hasData), ...ordered.filter((m) => !m.hasData)];
+}
+
 export default async function AccountPage({ searchParams }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 } = {}) {
   const token = await getApiToken();
   const [me, markets] = await Promise.all([getAccountMe(token), getAccountMarkets(token)])
     .catch((err) => handleApiError(err));
+  const params = await searchParams;
   // ?plan= arrives from /pricing → /signup; it only preselects the picker.
-  const requestedPlan = parsePlanTier((await searchParams)?.plan);
-  // No plan yet: the picker offers the entitled markets first, then the public catalog.
-  const checkoutMarkets: Market[] = me.plan === null
-    ? orderMarkets(await getMarkets().catch((err) => handleApiError(err)), markets)
-    : [];
+  const requestedPlan = parsePlanTier(params?.plan);
+  const checkoutResult = params?.checkout === "success" || params?.checkout === "cancelled" ? params.checkout : null;
+  // Back from a paid Checkout but the webhook has not attached the plan yet: confirm, never re-offer checkout.
+  const confirming = checkoutResult === "success" && me.plan === null;
+  // Any live Stripe subscription (even unpaid/paused/incomplete) is managed in the portal.
+  const showPicker = !confirming && me.plan === null && !me.hasLiveSubscription;
+  const checkoutMarkets = showPicker ? await pickerMarkets(markets) : [];
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -74,9 +92,20 @@ export default async function AccountPage({ searchParams }: {
               </ul>
             )}
           </div>
-          {me.plan === null
-            ? <CheckoutPicker markets={checkoutMarkets} initialPlan={requestedPlan ?? "PRO"} />
-            : <BillingButtons plan={me.plan} />}
+          {confirming ? (
+            <CheckoutConfirming />
+          ) : showPicker ? (
+            <>
+              {checkoutResult === "cancelled" && (
+                <p role="status" className="rounded-lg border border-border bg-stone-50 px-3 py-2 text-sm text-stone-600">
+                  Checkout was cancelled — you have not been charged. Pick a plan whenever you&apos;re ready.
+                </p>
+              )}
+              <CheckoutPicker markets={checkoutMarkets} initialPlan={requestedPlan ?? "PRO"} />
+            </>
+          ) : (
+            <BillingButtons plan={me.plan} />
+          )}
         </div>
       </SectionCard>
 

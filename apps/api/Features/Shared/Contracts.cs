@@ -43,8 +43,13 @@ public sealed record MarketStatsDto(
 
 public sealed record SavedLeadItemDto(Guid Id, SavedLeadStatus Status, DateTime CreatedAt, LeadSummaryDto Lead);
 
+/// <summary>`Id` is the internal user id (safe for analytics; never the Firebase uid).
+/// `HasLiveSubscription` is true while a Stripe subscription still exists for the org — including
+/// unpaid/paused/incomplete ones that grant no plan — so the UI routes to the billing portal, not a
+/// second checkout.</summary>
 public sealed record AccountMeDto(
-    string Email, UserRole Role, string OrganizationName, PlanTier? Plan, DigestFrequency DigestFrequency);
+    Guid Id, string Email, UserRole Role, string OrganizationName, PlanTier? Plan,
+    DigestFrequency DigestFrequency, bool HasLiveSubscription);
 
 public sealed record AdminSourceDto(
     Guid Id, string Name, string City, string State, bool Active,

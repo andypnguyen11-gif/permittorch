@@ -12,7 +12,8 @@ import { requireSuperAdmin } from "@/components/app/require-admin";
 import { SESSION_EXPIRED_DIGEST } from "@/components/app/session-digest";
 
 const me = (role: AccountMe["role"]): AccountMe => ({
-  email: "x@y.com", role, organizationName: "Org", plan: "PRO", digestFrequency: "DAILY",
+  id: "u1", email: "x@y.com", role, organizationName: "Org", plan: "PRO", digestFrequency: "DAILY",
+  hasLiveSubscription: true,
 });
 
 beforeEach(() => vi.clearAllMocks());

@@ -44,6 +44,32 @@ public class StripeGateway(IOptions<BillingOptions> options)
         return session.Url;
     }
 
+    /// <summary>The org's recent Checkout Sessions (newest first), used by the double-checkout
+    /// guard: an open session can be resumed, a just-completed one means the webhook is pending.</summary>
+    public virtual async Task<IReadOnlyList<CheckoutSessionInfo>> ListCheckoutSessionsAsync(
+        string customerId, CancellationToken ct)
+    {
+        var sessions = await new SessionService(Client).ListAsync(
+            new SessionListOptions { Customer = customerId, Limit = 20 }, cancellationToken: ct);
+        return sessions.Data
+            .Select(s => new CheckoutSessionInfo(s.Id, s.Status, s.Url, DateTime.SpecifyKind(s.Created, DateTimeKind.Utc),
+                s.Metadata ?? new Dictionary<string, string>()))
+            .ToList();
+    }
+
+    /// <summary>Expires an open Checkout Session so a stale tab can no longer be paid.</summary>
+    public virtual async Task ExpireCheckoutSessionAsync(string sessionId, CancellationToken ct)
+    {
+        try
+        {
+            await new SessionService(Client).ExpireAsync(sessionId, cancellationToken: ct);
+        }
+        catch (StripeException exception) when (exception.HttpStatusCode == System.Net.HttpStatusCode.BadRequest)
+        {
+            // Already completed or expired between list and expire — nothing left to close.
+        }
+    }
+
     /// <summary>Retrieves the live subscription so webhook handling syncs from Stripe's
     /// current state rather than a possibly stale/out-of-order event payload.
     /// Returns null when Stripe has no such subscription (e.g. `stripe trigger` fixtures);
@@ -72,3 +98,7 @@ public class StripeGateway(IOptions<BillingOptions> options)
         return session.Url;
     }
 }
+
+/// <summary>Provider-neutral view of a Stripe Checkout Session (status: open | complete | expired).</summary>
+public sealed record CheckoutSessionInfo(
+    string Id, string Status, string? Url, DateTime CreatedAt, IReadOnlyDictionary<string, string> Metadata);

@@ -28,6 +28,15 @@ public static class BillingEndpoints
         && (subscription.Status != "incomplete" || !string.IsNullOrEmpty(subscription.StripeSubscriptionId));
     public const int TrialPeriodDays = 7;   // PRD §27 free trial — offered once per org
 
+    /// <summary>A Checkout Session younger than this blocks a second checkout for the same org.</summary>
+    public static readonly TimeSpan CheckoutGuardWindow = TimeSpan.FromMinutes(30);
+
+    /// <summary>Checkout is only offered for markets with fresh data: some source of the market
+    /// must have completed a successful run within this window.</summary>
+    public static readonly TimeSpan MarketDataWindow = TimeSpan.FromDays(14);
+
+    public const string PortalConflictMessage = "Manage your plan in the billing portal";
+
     public static IEndpointRouteBuilder MapBillingEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/billing").RequireAuthorization("User");
@@ -73,14 +82,22 @@ public static class BillingEndpoints
             return ApiErrors.BadRequest(error);
 
         var user = await currentUser.RequireAsync(http.User, ct);
-        var knownCount = await db.Markets.CountAsync(m => slugs.Contains(m.Slug) && m.Active, ct);
-        if (knownCount != slugs.Length)
+        var dataCutoff = DateTime.UtcNow - MarketDataWindow;
+        var known = await db.Markets
+            .Where(m => slugs.Contains(m.Slug) && m.Active)
+            .Select(m => new { m.Slug, m.Name, m.State, HasData = m.Sources.Any(s => s.LastSuccessfulRunAt >= dataCutoff) })
+            .ToListAsync(ct);
+        if (known.Count != slugs.Length)
             return ApiErrors.BadRequest("Unknown market selection");
+        var withoutData = known.Where(m => !m.HasData).OrderBy(m => m.Name).ToList();
+        if (withoutData.Count > 0)
+            return ApiErrors.BadRequest(
+                $"No recent permit data yet for {string.Join(", ", withoutData.Select(m => $"{m.Name}, {m.State}"))}");
 
         var subscription = await db.Subscriptions
             .FirstOrDefaultAsync(s => s.OrganizationId == user.OrganizationId, ct);
         if (HasLiveSubscription(subscription))
-            return ApiErrors.Conflict("Manage your plan in the billing portal");
+            return ApiErrors.Conflict(PortalConflictMessage);
         // A Stripe subscription id means this org has subscribed before — the trial is one-time.
         int? trialDays = string.IsNullOrEmpty(subscription?.StripeSubscriptionId) ? TrialPeriodDays : null;
 
@@ -92,7 +109,27 @@ public static class BillingEndpoints
         };
 
         var customerId = subscription?.StripeCustomerId;
-        if (string.IsNullOrEmpty(customerId))
+        if (!string.IsNullOrEmpty(customerId))
+        {
+            // Double-checkout guard: the org already has a Stripe customer, so a Checkout Session
+            // may be in flight (another tab, a back-button retry, or a payment whose webhook has
+            // not landed yet). Resume an identical open session; refuse anything else.
+            var sessions = await stripe.ListCheckoutSessionsAsync(customerId, ct);
+            var recent = sessions.Where(s => s.CreatedAt >= DateTime.UtcNow - CheckoutGuardWindow).ToList();
+            if (recent.Any(s => s.Status == "complete"))
+                return ApiErrors.Conflict(PortalConflictMessage);
+            var open = recent.FirstOrDefault(s => s.Status == "open");
+            if (open is not null)
+            {
+                return SameSelection(open.Metadata, plan, slugs) && !string.IsNullOrEmpty(open.Url)
+                    ? Results.Ok(new CheckoutResponse(open.Url))
+                    : ApiErrors.Conflict(PortalConflictMessage);
+            }
+            // Older sessions are abandoned: close them so a stale tab cannot be paid after the new one.
+            foreach (var stale in sessions.Where(s => s.Status == "open"))
+                await stripe.ExpireCheckoutSessionAsync(stale.Id, ct);
+        }
+        else
         {
             customerId = await stripe.CreateCustomerAsync(user.Email, user.OrganizationId, ct);
             if (subscription is null)
@@ -121,9 +158,14 @@ public static class BillingEndpoints
         };
         var origin = options.Value.WebOrigin.TrimEnd('/');
         var url = await stripe.CreateCheckoutSessionAsync(customerId, priceId, metadata,
-            $"{origin}/app/account?checkout=success", $"{origin}/pricing", trialDays, ct);
+            $"{origin}/app/account?checkout=success", $"{origin}/app/account?checkout=cancelled", trialDays, ct);
         return Results.Ok(new CheckoutResponse(url));
     }
+
+    private static bool SameSelection(IReadOnlyDictionary<string, string> metadata, PlanTier plan, string[] slugs) =>
+        metadata.TryGetValue("plan", out var p) && p == Wire.Name(plan)
+        && metadata.TryGetValue("marketSlugs", out var m)
+        && m.Split(',').ToHashSet().SetEquals(slugs);
 
     private static async Task<IResult> CreatePortal(
         HttpContext http, AppDbContext db, CurrentUserService currentUser,

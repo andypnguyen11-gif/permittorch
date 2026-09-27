@@ -20,11 +20,13 @@ export function mockAccountForRole(): AccountMe {
 }
 
 export const mockAccountMe: AccountMe = {
+  id: "0b7c5c3e-2f4a-4e1d-9a61-5d2c6f1e8a10",
   email: "john@davisfireprotection.com",
   role: "SUPER_ADMIN",
   organizationName: "Davis Fire Protection",
   plan: "PRO",
   digestFrequency: "DAILY",
+  hasLiveSubscription: true,
 };
 
 // Markets this mock organization is entitled to: a subset of the single market
