@@ -23,6 +23,6 @@ ENV DOTNET_EnableDiagnostics=0 \
 USER $APP_UID
 EXPOSE 8080
 # Railway injects PORT; default 8080 for local runs. Health endpoint: GET /api/health
-# (probed by Railway via apps/api/railway.json; the runtime image has no curl for a Docker HEALTHCHECK).
+# (Railway healthcheck path, set on the service; the runtime image has no curl for a Docker HEALTHCHECK).
 # `docker run … permittorch-api seed` runs the idempotent seeder instead of serving.
 ENTRYPOINT ["tini", "--", "sh", "-c", "ASPNETCORE_URLS=http://0.0.0.0:${PORT:-8080} exec dotnet PermitTorch.Api.dll \"$@\"", "--"]
