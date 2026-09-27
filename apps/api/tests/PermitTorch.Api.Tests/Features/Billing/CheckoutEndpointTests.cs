@@ -57,8 +57,18 @@ public sealed class FakeStripeGateway(IOptions<BillingOptions> options) : Stripe
     /// <summary>Test hook: sessions that get paid just before the API tries to expire them.</summary>
     public readonly ConcurrentDictionary<string, bool> PaidBeforeExpire = new();
 
+    /// <summary>Every session the API asked Stripe to expire, paid or not.</summary>
+    public readonly ConcurrentQueue<string> ExpireAttempts = new();
+
+    /// <summary>Test hook: a session opened elsewhere (e.g. another tab) for this customer.</summary>
+    public void AddSession(string customerId, CheckoutSessionInfo session)
+    {
+        lock (_sessions) _sessions.Add((customerId, session));
+    }
+
     public override Task<bool> ExpireCheckoutSessionAsync(string sessionId, CancellationToken ct)
     {
+        ExpireAttempts.Enqueue(sessionId);
         if (PaidBeforeExpire.ContainsKey(sessionId))
         {
             Update(sessionId, s => s with { Status = "complete", Url = null });
@@ -260,6 +270,33 @@ public sealed class CheckoutEndpointTests(FakeStripeApiFixture fixture) : IClass
             Json($"{{\"plan\":\"TERRITORY\",\"marketSlugs\":[\"{market.Slug}\"]}}")));
 
         Assert.Single(Stripe.CallsFor(org.Id));
+    }
+
+    [Fact]
+    public async Task Every_open_session_is_expired_before_a_paid_one_is_refused()
+    {
+        var market = TestSeed.Market("Tabs");
+        var (org, _, client) = await SeedUserAsync(market);
+
+        var older = await CheckoutUrlAsync(await client.PostAsync("/api/billing/checkout",
+            Json($"{{\"plan\":\"PRO\",\"marketSlugs\":[\"{market.Slug}\"]}}")));
+        var olderId = FakeStripeGateway.SessionIdFromUrl(older);
+        var customerId = Assert.Single(Stripe.CallsFor(org.Id)).CustomerId;
+        // A second tab opened a newer session for another plan; it gets paid while being replaced.
+        var newerId = $"cs_fake_{Guid.NewGuid():N}";
+        Stripe.AddSession(customerId, new CheckoutSessionInfo(newerId, "open",
+            $"https://checkout.stripe.test/session/{newerId}", DateTime.UtcNow.AddSeconds(1),
+            new Dictionary<string, string> { ["plan"] = "STARTER", ["marketSlugs"] = market.Slug }));
+        Stripe.PaidBeforeExpire[newerId] = true;
+
+        await AssertPortalConflictAsync(await client.PostAsync("/api/billing/checkout",
+            Json($"{{\"plan\":\"TERRITORY\",\"marketSlugs\":[\"{market.Slug}\"]}}")));
+
+        Assert.Equal(new[] { newerId, olderId }, Stripe.ExpireAttempts.Where(id => id == newerId || id == olderId).ToArray());
+        Assert.Contains(olderId, Stripe.ExpiredSessions);   // the stale tab can no longer be paid
+        var remaining = await Stripe.ListCheckoutSessionsAsync(customerId, CancellationToken.None);
+        Assert.Equal("expired", remaining.Single(s => s.Id == olderId).Status);
+        Assert.Single(Stripe.CallsFor(org.Id));             // no new session
     }
 
     [Fact]

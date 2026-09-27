@@ -68,12 +68,8 @@ export function CheckoutConfirming({ pollMs = CONFIRM_POLL_MS, timeoutMs = CONFI
 
   if (needsAttention) {
     return (
-      <div className="space-y-3">
-        <p role="status" className="text-sm font-medium text-stone-900">
-          Your subscription needs attention — manage billing.
-        </p>
-        <BillingButtons plan={null} />
-      </div>
+      // BillingButtons(plan=null) carries the "needs attention" notice, worded as on the account page.
+      <div role="status"><BillingButtons plan={null} /></div>
     );
   }
   if (timedOut) {

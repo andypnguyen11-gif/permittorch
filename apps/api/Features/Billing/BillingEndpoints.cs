@@ -116,8 +116,9 @@ public static class BillingEndpoints
             // not landed yet). A recently completed session means a subscription is (about to be)
             // live → 409. An open session for the same selection is resumed. Every other open
             // session (a changed selection, or an abandoned tab) is expired before a new one is
-            // created, so at most one payable session exists; if one turns out to have been paid
-            // in the meantime, the org is subscribed → 409.
+            // created, so at most one payable session exists. All of them are expired even when
+            // one turns out to have been paid in the meantime (no stale tab stays payable); only
+            // then does a paid one mean the org is subscribed → 409.
             var sessions = await stripe.ListCheckoutSessionsAsync(customerId, ct);
             var recent = sessions.Where(s => s.CreatedAt >= DateTime.UtcNow - CheckoutGuardWindow).ToList();
             if (recent.Any(s => s.Status == "complete"))
@@ -126,11 +127,14 @@ public static class BillingEndpoints
                 s.Status == "open" && SameSelection(s.Metadata, plan, slugs) && !string.IsNullOrEmpty(s.Url));
             if (resumable is not null)
                 return Results.Ok(new CheckoutResponse(resumable.Url!));
+            var paidMeanwhile = false;
             foreach (var open in sessions.Where(s => s.Status == "open"))
             {
                 if (!await stripe.ExpireCheckoutSessionAsync(open.Id, ct))
-                    return ApiErrors.Conflict(PortalConflictMessage);
+                    paidMeanwhile = true;
             }
+            if (paidMeanwhile)
+                return ApiErrors.Conflict(PortalConflictMessage);
         }
         else
         {

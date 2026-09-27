@@ -9,13 +9,13 @@ vi.mock("next/navigation", () => ({ useRouter: () => router }));
 vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()), getAccountMe: vi.fn() }));
 vi.mock("@/components/app/use-api-token", () => ({ useApiToken: () => async () => "mock-token" }));
-vi.mock("@/components/app/account/billing-buttons", () => ({
-  BillingButtons: ({ plan }: { plan: unknown }) => <button>Manage billing{plan === null ? "" : " (plan)"}</button>,
-}));
 vi.mock("sonner", () => ({ toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }) }));
 
 import { getAccountMe } from "@/lib/api";
 import { CheckoutConfirming, CONFIRM_POLL_MS, CONFIRM_TIMEOUT_MS } from "@/components/app/account/checkout-confirming";
+
+const NEEDS_ATTENTION =
+  "Your subscription needs attention. Update your payment details in the billing portal to restore access.";
 
 const me = (plan: AccountMe["plan"]): AccountMe => ({
   id: "u1", email: "a@b.c", role: "MEMBER", organizationName: "Org", plan,
@@ -78,7 +78,7 @@ describe("CheckoutConfirming", () => {
       .mockResolvedValue({ ...me(null), hasLiveSubscription: true });
     render(<CheckoutConfirming />);
     await advance(2_500);
-    expect(screen.getByText("Your subscription needs attention — manage billing.")).toBeInTheDocument();
+    expect(screen.getByText(NEEDS_ATTENTION)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Manage billing" })).toBeInTheDocument();
     expect(screen.queryByText("Confirming your subscription…")).not.toBeInTheDocument();
     const calls = vi.mocked(getAccountMe).mock.calls.length;
