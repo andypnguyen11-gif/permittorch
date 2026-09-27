@@ -4,6 +4,8 @@ import { NextRequest } from "next/server";
 const authMiddleware = vi.fn(async () => new Response("auth"));
 const redirectToLogin = vi.fn(() => new Response(null, { status: 307, headers: { location: "/login" } }));
 vi.mock("next-firebase-auth-edge", () => ({ authMiddleware, redirectToLogin }));
+const captureException = vi.fn();
+vi.mock("@sentry/nextjs", () => ({ captureException }));
 
 const keys: string[] = [];
 vi.mock("@/lib/auth/config", async (importOriginal) => {
@@ -56,5 +58,29 @@ describe("middleware with cookie signature keys", () => {
     await middleware(req("/app/leads"));
     expect(authMiddleware).toHaveBeenCalledTimes(1);
     expect(warn).not.toHaveBeenCalled();
+  });
+});
+
+describe("middleware handleError", () => {
+  type Options = { handleError: (error: unknown) => Promise<Response> };
+  const handleErrorFor = async (path: string) => {
+    keys.push("k1");
+    const { middleware } = await import("@/middleware");
+    await middleware(req(path));
+    return (authMiddleware.mock.calls[0] as unknown as [NextRequest, Options])[1].handleError;
+  };
+
+  it("reports the token error to Sentry and still redirects protected routes", async () => {
+    const error = new Error("invalid token");
+    const res = await (await handleErrorFor("/app/leads"))(error);
+    expect(captureException).toHaveBeenCalledWith(error);
+    expect(res.status).toBe(307);
+  });
+
+  it("reports the token error to Sentry and still serves public pages", async () => {
+    const error = new Error("bad signature");
+    const res = await (await handleErrorFor("/pricing"))(error);
+    expect(captureException).toHaveBeenCalledWith(error);
+    expect(res.headers.get("x-middleware-next")).toBe("1");
   });
 });

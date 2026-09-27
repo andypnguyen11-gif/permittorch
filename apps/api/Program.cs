@@ -4,11 +4,24 @@ using PermitTorch.Api.Data.Seed;
 using PermitTorch.Api.Setup;
 
 // FINAL FORM (WS0; WS5 added URL-form DATABASE_URL support, opt-in startup
-// migrations, and the `seed` CLI entry). WS1 extends AddPipelineServices, WS2 AddFeatureServices/MapFeatureEndpoints.
+// migrations, the `seed` CLI entry, and opt-in Sentry). WS1 extends AddPipelineServices, WS2 AddFeatureServices/MapFeatureEndpoints.
 var builder = WebApplication.CreateBuilder(args);
 
 var connectionString = DatabaseUrl.ToNpgsqlConnectionString(builder.Configuration["DATABASE_URL"]);
 builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connectionString));
+
+// Error reporting is opt-in: without SENTRY_DSN (local dev, CI, tests) Sentry is never initialised.
+var sentryDsn = builder.Configuration["SENTRY_DSN"];
+if (!string.IsNullOrWhiteSpace(sentryDsn))
+{
+    builder.WebHost.UseSentry(o =>
+    {
+        o.Dsn = sentryDsn;
+        o.TracesSampleRate = 0.1;
+        o.SendDefaultPii = false;   // never ship auth headers, cookies or user IPs
+        o.Environment = builder.Environment.EnvironmentName;
+    });
+}
 
 builder.Services.AddPipelineServices(builder.Configuration);
 builder.Services.AddFeatureServices(builder.Configuration);

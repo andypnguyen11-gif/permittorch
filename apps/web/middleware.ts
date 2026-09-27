@@ -1,8 +1,9 @@
+import * as Sentry from "@sentry/nextjs";
 import { NextResponse, type NextRequest } from "next/server";
 import { authMiddleware, redirectToLogin } from "next-firebase-auth-edge";
 import { APP_HOME, LOGIN_PATH, authConfig, isAuthPage, isPublicPath } from "@/lib/auth/config";
 
-// FINAL FORM (WS0; WS5 added the missing-key guard).
+// FINAL FORM (WS0; WS5 added the missing-key guard and Sentry reporting in handleError).
 // Public routes are locked in the master contracts doc (see lib/auth/config.ts);
 // everything else (the /app dashboard surface) requires a valid Firebase session
 // cookie. /api/login and /api/logout are served by authMiddleware itself.
@@ -39,7 +40,10 @@ export async function middleware(request: NextRequest) {
       if (isPublicPath(pathname)) return NextResponse.next();
       return redirectToLogin(request, { path: LOGIN_PATH, publicPaths: [] });
     },
-    handleError: async () => {
+    handleError: async (error) => {
+      // Token verification failures (bad keys, wrong project, clock skew) would otherwise
+      // vanish into the redirect below. No-op while Sentry is disabled (no DSN).
+      Sentry.captureException(error);
       if (isPublicPath(pathname)) return NextResponse.next();
       return redirectToLogin(request, { path: LOGIN_PATH, publicPaths: [] });
     },
