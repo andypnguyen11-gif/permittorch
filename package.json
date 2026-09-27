@@ -8,6 +8,8 @@
   "packageManager": "pnpm@12.6.0",
   "scripts": {
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm -r test"
+    "test": "pnpm -r test",
+    "e2e": "pnpm --dir e2e exec playwright test",
+    "e2e:create-users": "pnpm --dir e2e run create-users"
   }
 }
