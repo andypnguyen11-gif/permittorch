@@ -11,6 +11,18 @@ public static class DatabaseUrl
     public const string LocalDefault =
         "Host=localhost;Port=5432;Database=permittorch;Username=postgres;Password=postgres";
 
+    /// <summary>Resolves the connection string for a host environment. Only Development may
+    /// fall back to <see cref="LocalDefault"/>; everywhere else a missing DATABASE_URL fails
+    /// startup instead of silently pointing a deploy at a nonexistent local Postgres.</summary>
+    public static string Resolve(string? value, string environmentName)
+    {
+        if (string.IsNullOrWhiteSpace(value)
+            && !string.Equals(environmentName, Environments.Development, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException(
+                $"DATABASE_URL is required outside Development (environment '{environmentName}')");
+        return ToNpgsqlConnectionString(value);
+    }
+
     public static string ToNpgsqlConnectionString(string? value)
     {
         if (string.IsNullOrWhiteSpace(value)) return LocalDefault;

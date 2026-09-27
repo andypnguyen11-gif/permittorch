@@ -7,7 +7,9 @@ using PermitTorch.Api.Setup;
 // migrations, the `seed` CLI entry, and opt-in Sentry). WS1 extends AddPipelineServices, WS2 AddFeatureServices/MapFeatureEndpoints.
 var builder = WebApplication.CreateBuilder(args);
 
-var connectionString = DatabaseUrl.ToNpgsqlConnectionString(builder.Configuration["DATABASE_URL"]);
+// Development alone may fall back to a local Postgres; any other environment refuses to start without DATABASE_URL.
+var connectionString = DatabaseUrl.Resolve(
+    builder.Configuration["DATABASE_URL"], builder.Environment.EnvironmentName);
 builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connectionString));
 
 // Error reporting is opt-in: without SENTRY_DSN (local dev, CI, tests) Sentry is never initialised.

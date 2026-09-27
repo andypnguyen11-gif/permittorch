@@ -20,6 +20,32 @@ public class DatabaseUrlTests
         Assert.Equal(DatabaseUrl.LocalDefault, DatabaseUrl.ToNpgsqlConnectionString(value));
 
     [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Development_falls_back_to_the_local_default(string? value) =>
+        Assert.Equal(DatabaseUrl.LocalDefault, DatabaseUrl.Resolve(value, "Development"));
+
+    [Theory]
+    [InlineData(null, "Production")]
+    [InlineData("", "Production")]
+    [InlineData("  ", "Staging")]
+    [InlineData(null, "Testing")]
+    public void Missing_value_outside_development_fails_fast(string? value, string environment)
+    {
+        var ex = Assert.Throws<InvalidOperationException>(() => DatabaseUrl.Resolve(value, environment));
+        Assert.Contains("DATABASE_URL is required outside Development", ex.Message);
+    }
+
+    [Fact]
+    public void Resolve_converts_urls_in_every_environment()
+    {
+        var b = new NpgsqlConnectionStringBuilder(DatabaseUrl.Resolve(
+            "postgresql://u:p@postgres.railway.internal:5432/railway", "Production"));
+        Assert.Equal("postgres.railway.internal", b.Host);
+    }
+
+    [Theory]
     [InlineData("postgresql://postgres:s3cret@postgres.railway.internal:5432/railway")]
     [InlineData("postgres://postgres:s3cret@postgres.railway.internal:5432/railway")]
     [InlineData("POSTGRESQL://postgres:s3cret@postgres.railway.internal:5432/railway")]
