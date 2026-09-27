@@ -9,7 +9,7 @@ namespace PermitTorch.Api.Data;
 public static class DatabaseUrl
 {
     public const string LocalDefault =
-        "Host=localhost;Port=5432;Database=permittorch;Username=postgres;Password=postgres";
+        "Host=localhost;Port=5432;Database=permittorch;Username=permittorch;Password=permittorch";
 
     /// <summary>Resolves the connection string for a host environment. Only Development may
     /// fall back to <see cref="LocalDefault"/>; everywhere else a missing DATABASE_URL fails
