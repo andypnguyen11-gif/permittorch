@@ -57,8 +57,12 @@ function withClient(call: (ph: PostHog) => void): void {
   else if (loading) queue.push(call);
 }
 
-export function identifyUser(firebaseUid: string, email?: string): void {
-  withClient((ph) => ph.identify(firebaseUid, email ? { email } : undefined));
+/**
+ * Ties later events to a user by their opaque internal id only. Never pass
+ * email, name or any other personal data: PostHog receives the id and nothing else.
+ */
+export function identifyUser(userId: string): void {
+  withClient((ph) => ph.identify(userId));
 }
 
 /** Forget the identified user (sign-out) so the next visitor on this browser is anonymous. */

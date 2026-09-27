@@ -20,7 +20,7 @@ describe("analytics wrapper without a PostHog key", () => {
     const a = await load();
     a.initAnalytics();
     a.track("lead_saved", { leadId: "x" });
-    a.identifyUser("uid-1", "a@b.test");
+    a.identifyUser("uid-1");
     a.resetAnalyticsUser();
     await settle();
     expect(posthog.init).not.toHaveBeenCalled();
@@ -63,16 +63,17 @@ describe("analytics wrapper with a PostHog key", () => {
     expect(posthog.init).toHaveBeenCalledWith("phc_test", expect.objectContaining({ api_host: "https://eu.i.posthog.com" }));
   });
 
-  it("identifies by Firebase uid and resets on sign-out", async () => {
+  it("identifies by internal id only (no email, name or properties) and resets on sign-out", async () => {
     vi.stubEnv("NEXT_PUBLIC_POSTHOG_KEY", "phc_test");
     const a = await load();
     a.initAnalytics();
     await settle();
-    a.identifyUser("uid-1", "a@b.test");
+    a.identifyUser("uid-1");
     a.identifyUser("uid-2");
     a.resetAnalyticsUser();
-    expect(posthog.identify).toHaveBeenNthCalledWith(1, "uid-1", { email: "a@b.test" });
-    expect(posthog.identify).toHaveBeenNthCalledWith(2, "uid-2", undefined);
+    expect(posthog.identify).toHaveBeenCalledTimes(2);
+    expect(posthog.identify.mock.calls[0]).toEqual(["uid-1"]);
+    expect(posthog.identify.mock.calls[1]).toEqual(["uid-2"]);
     expect(posthog.reset).toHaveBeenCalledTimes(1);
   });
 });
@@ -88,7 +89,7 @@ describe("analytics wrapper while posthog-js is loading", () => {
     await settle();
     expect(posthog.init).toHaveBeenCalledTimes(1);
     expect(posthog.capture).toHaveBeenCalledWith("pricing_viewed", {});
-    expect(posthog.identify).toHaveBeenCalledWith("uid-1", undefined);
+    expect(posthog.identify.mock.calls).toEqual([["uid-1"]]);
     expect(posthog.init.mock.invocationCallOrder[0]).toBeLessThan(posthog.capture.mock.invocationCallOrder[0]);
   });
 });
