@@ -3,6 +3,7 @@ import { unstable_rethrow } from "next/navigation";
 import type { AccountMe, Market } from "@permittorch/types";
 import { getAccountMarkets, getAccountMe } from "@/lib/api";
 import { getApiToken } from "@/components/app/get-token";
+import { AnalyticsIdentity } from "@/components/app/analytics-identity";
 import { BrandMark } from "@/components/app/brand";
 import { isUnauthorized } from "@/components/app/session-digest";
 import { SessionRecoveryCard, UnavailableCard } from "@/components/app/session-recovery";
@@ -55,6 +56,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const { me, markets } = shell;
   return (
     <TooltipProvider>
+      <AnalyticsIdentity />
       <div className="flex h-dvh bg-stone-50 text-stone-900">
         <div className="hidden lg:flex">
           <Sidebar role={me.role} plan={me.plan} />

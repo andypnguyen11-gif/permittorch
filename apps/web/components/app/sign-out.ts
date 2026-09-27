@@ -3,6 +3,7 @@
 import { signOut } from "firebase/auth";
 import { toast } from "sonner";
 import { ApiError } from "@/lib/api";
+import { resetAnalyticsUser } from "@/lib/analytics";
 import { firebaseAuth } from "@/lib/firebase/client";
 
 /**
@@ -15,6 +16,7 @@ export async function signOutAndRedirect(): Promise<void> {
   const res = await fetch("/api/logout");
   if (!res.ok) throw new Error(`Sign-out failed with status ${res.status}`);
   await signOut(firebaseAuth);
+  resetAnalyticsUser();
   window.location.replace("/login");
 }
 

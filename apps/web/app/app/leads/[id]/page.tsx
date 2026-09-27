@@ -9,6 +9,7 @@ import { CategoryChip } from "@/components/app/category-chip";
 import { SectionCard } from "@/components/app/section-card";
 import { SignalList } from "@/components/app/lead-detail/signal-list";
 import { SaveButton } from "@/components/app/lead-detail/save-button";
+import { TrackOnMount } from "@/components/app/track-on-mount";
 import { STATUS_LABELS } from "@/components/app/leads/query";
 import { formatDate, formatRelative, formatValueShort } from "@/components/app/format";
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +38,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
 
   return (
     <div className="space-y-6">
+      <TrackOnMount event="lead_opened" props={{ leadId: lead.id, score: lead.score, category: lead.category }} />
       <Link href="/app/leads"
         className="inline-flex items-center gap-1.5 rounded text-sm text-stone-500 outline-none hover:text-stone-900 focus-visible:ring-3 focus-visible:ring-ring/50">
         <ArrowLeft className="size-4" aria-hidden /> All leads

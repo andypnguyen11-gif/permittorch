@@ -4,7 +4,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { Loader2 } from "lucide-react";
-import { GoogleAuthProvider, createUserWithEmailAndPassword, signInWithPopup } from "firebase/auth";
+import {
+  GoogleAuthProvider, createUserWithEmailAndPassword, getAdditionalUserInfo, signInWithPopup,
+} from "firebase/auth";
+import { track } from "@/lib/analytics";
 import { firebaseAuth } from "@/lib/firebase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,8 +29,10 @@ export function SignupForm() {
     defaultValues: { email: "", password: "" },
   });
 
-  const finish = async (idToken: string) => {
+  const finish = async (idToken: string, isNewUser: boolean) => {
     await startSessionOrSignOut(idToken);
+    // Google on /signup can sign an existing account in; only count real sign-ups.
+    if (isNewUser) track("signup", {});
     setRedirecting(true);
     router.push(postSignupTarget());
   };
@@ -36,7 +41,7 @@ export function SignupForm() {
     setFormError(null);
     try {
       const credential = await createUserWithEmailAndPassword(firebaseAuth, email, password);
-      await finish(await credential.user.getIdToken());
+      await finish(await credential.user.getIdToken(), true);
     } catch (err) {
       setFormError(authErrorMessage(err));
     }
@@ -47,7 +52,7 @@ export function SignupForm() {
     setGooglePending(true);
     try {
       const credential = await signInWithPopup(firebaseAuth, new GoogleAuthProvider());
-      await finish(await credential.user.getIdToken());
+      await finish(await credential.user.getIdToken(), getAdditionalUserInfo(credential)?.isNewUser ?? false);
     } catch (err) {
       if (!isSilentAuthError(err)) setFormError(authErrorMessage(err));
     } finally {

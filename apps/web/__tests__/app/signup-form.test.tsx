@@ -11,9 +11,12 @@ vi.mock("firebase/auth", () => ({
   createUserWithEmailAndPassword: vi.fn(),
   signInWithPopup: vi.fn(),
   GoogleAuthProvider: vi.fn(),
+  getAdditionalUserInfo: vi.fn(),
 }));
+vi.mock("@/lib/analytics", () => ({ track: vi.fn() }));
 
-import { createUserWithEmailAndPassword, signInWithPopup, signOut } from "firebase/auth";
+import { createUserWithEmailAndPassword, getAdditionalUserInfo, signInWithPopup, signOut } from "firebase/auth";
+import { track } from "@/lib/analytics";
 import { SignupForm } from "@/components/app/auth/signup-form";
 
 const type = (label: string, value: string) =>
@@ -138,5 +141,52 @@ describe("SignupForm", () => {
     it("ignores an injected plan value", async () => {
       expect(await signUpWith("?plan=%2F%2Fevil.example")).toBe("/app/leads");
     });
+  });
+});
+
+describe("SignupForm analytics", () => {
+  const googleUser = { user: { getIdToken: vi.fn().mockResolvedValue("g-token") } };
+
+  it("tracks signup after an email account is created and the session starts", async () => {
+    vi.mocked(createUserWithEmailAndPassword).mockResolvedValue({
+      user: { getIdToken: vi.fn().mockResolvedValue("ok") },
+    } as never);
+    render(<SignupForm />);
+    type("Email", "new@example.com");
+    type("Password", "hunter2!!");
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+    await waitFor(() => expect(push).toHaveBeenCalled());
+    expect(track).toHaveBeenCalledExactlyOnceWith("signup", {});
+  });
+
+  it("tracks signup for a new Google account", async () => {
+    vi.mocked(signInWithPopup).mockResolvedValue(googleUser as never);
+    vi.mocked(getAdditionalUserInfo).mockReturnValue({ isNewUser: true } as never);
+    render(<SignupForm />);
+    fireEvent.click(screen.getByRole("button", { name: /Google/ }));
+    await waitFor(() => expect(push).toHaveBeenCalled());
+    expect(track).toHaveBeenCalledExactlyOnceWith("signup", {});
+  });
+
+  it("does not track signup when Google signs in an existing account", async () => {
+    vi.mocked(signInWithPopup).mockResolvedValue(googleUser as never);
+    vi.mocked(getAdditionalUserInfo).mockReturnValue({ isNewUser: false } as never);
+    render(<SignupForm />);
+    fireEvent.click(screen.getByRole("button", { name: /Google/ }));
+    await waitFor(() => expect(push).toHaveBeenCalled());
+    expect(track).not.toHaveBeenCalled();
+  });
+
+  it("does not track signup when the session cookie request fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false }));
+    vi.mocked(createUserWithEmailAndPassword).mockResolvedValue({
+      user: { getIdToken: vi.fn().mockResolvedValue("ok") },
+    } as never);
+    render(<SignupForm />);
+    type("Email", "new@example.com");
+    type("Password", "hunter2!!");
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+    await screen.findByRole("alert");
+    expect(track).not.toHaveBeenCalled();
   });
 });

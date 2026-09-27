@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { buildMetadata, jsonLd } from "@/lib/seo";
+import { TrackOnMount } from "@/components/app/track-on-mount";
 import { PricingTiers, pricingProductJsonLd } from "@/components/marketing/pricing-tiers";
 import { FaqAccordion, faqPageJsonLd } from "@/components/marketing/faq-accordion";
 import { PRICING_FAQ } from "@/components/marketing/pricing-faq";
@@ -14,6 +15,7 @@ export const metadata: Metadata = buildMetadata({
 export default function PricingPage() {
   return (
     <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
+      <TrackOnMount event="pricing_viewed" props={{}} />
       <h1 className="text-center text-4xl font-bold tracking-tight">
         Simple pricing. Real leads.
       </h1>

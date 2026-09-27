@@ -3,6 +3,7 @@ import { useState } from "react";
 import { ArrowUpRight, CreditCard, Loader2 } from "lucide-react";
 import type { Market, PlanTier } from "@permittorch/types";
 import { createBillingPortal, createCheckout } from "@/lib/api";
+import { track } from "@/lib/analytics";
 import { useApiToken } from "@/components/app/use-api-token";
 import { reportMutationError } from "@/components/app/sign-out";
 import { Button } from "@/components/ui/button";
@@ -150,7 +151,11 @@ export function CheckoutPicker({ markets, initialPlan }: { markets: Market[]; in
       </fieldset>
 
       <BillingButton variant="default" disabled={!valid}
-        onClick={async () => go((await createCheckout(plan, selected, await getToken())).url)}>
+        onClick={async () => {
+          const { url } = await createCheckout(plan, selected, await getToken());
+          track("checkout_started", { plan });
+          go(url);
+        }}>
         <ArrowUpRight aria-hidden /> Subscribe to {PLAN_LABELS[plan]}
       </BillingButton>
     </div>

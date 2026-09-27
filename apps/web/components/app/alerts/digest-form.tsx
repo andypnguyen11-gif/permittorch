@@ -4,6 +4,7 @@ import { BellOff, CalendarDays, Sunrise, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import type { DigestFrequency } from "@permittorch/types";
 import { updateEmailPreferences } from "@/lib/api";
+import { track } from "@/lib/analytics";
 import { useApiToken } from "@/components/app/use-api-token";
 import { reportMutationError } from "@/components/app/sign-out";
 import { cn } from "@/lib/utils";
@@ -31,6 +32,7 @@ export function DigestForm({ initialFrequency }: { initialFrequency: DigestFrequ
     setSaving(true);
     try {
       await updateEmailPreferences(value, await getToken());
+      if (value !== "NONE") track("digest_enabled", { frequency: value });
       toast.success(value === "NONE" ? "Email digest turned off" : `Digest set to ${value.toLowerCase()}`);
     } catch (err) {
       setFrequency(previous);

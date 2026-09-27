@@ -3,6 +3,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { MapPin } from "lucide-react";
 import type { Market } from "@permittorch/types";
 import type { LeadsQuery } from "@/lib/api";
+import { track } from "@/lib/analytics";
 import { buildLeadsSearch, parseLeadsSearchParams } from "@/components/app/leads/query";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -58,6 +59,7 @@ export function MarketSelect({ markets, className, onChanged }: {
       value={currentMarket}
       onValueChange={(slug) => {
         const market = slug && slug !== ALL_MARKETS ? String(slug) : undefined;
+        track("filter_changed", { filter: "market", value: market ?? ALL_MARKETS });
         router.push(leadsHrefWith(pathname, searchParams, { market }));
         onChanged?.();
       }}

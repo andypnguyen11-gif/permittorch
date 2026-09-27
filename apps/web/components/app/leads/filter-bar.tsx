@@ -3,6 +3,7 @@ import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import type { FireCategory, PermitStatus } from "@permittorch/types";
 import type { LeadsQuery } from "@/lib/api";
+import { track } from "@/lib/analytics";
 import { CATEGORY_LABELS } from "@/components/app/category-chip";
 import { Button } from "@/components/ui/button";
 import {
@@ -68,8 +69,10 @@ function FilterSelect({ label, value, options, onChange, width }: {
 
 export function FilterBar({ query }: { query: LeadsQuery }) {
   const router = useRouter();
-  const push = (key: FilterKey, value: string) =>
+  const push = (key: FilterKey, value: string) => {
+    track("filter_changed", { filter: key, value });
     router.push(`/app/leads${nextSearchFor(query, key, value)}`);
+  };
   const active = query.category || query.minScore != null || query.maxAgeDays != null || query.status;
 
   return (

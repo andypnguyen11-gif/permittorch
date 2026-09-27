@@ -5,6 +5,7 @@ import { Search } from "lucide-react";
 import type { AccountMe, Market, PlanTier } from "@permittorch/types";
 import { AccountMenu } from "@/components/app/account-menu";
 import { MobileNav } from "@/components/app/mobile-nav";
+import { track } from "@/lib/analytics";
 import { MarketSelect, leadsHrefWith, useLeadsLocation } from "@/components/app/market-select";
 
 export function TopBar({ markets, email, role = "MEMBER", plan }: {
@@ -39,6 +40,7 @@ export function TopBar({ markets, email, role = "MEMBER", plan }: {
         onSubmit={(e) => {
           e.preventDefault();
           const q = inputRef.current?.value.trim() ?? "";
+          if (q) track("search_performed", { query: q });
           // Keep the other leads filters (market, category, …); reset the page.
           router.push(leadsHrefWith(pathname, searchParams, { q: q || undefined }));
         }}

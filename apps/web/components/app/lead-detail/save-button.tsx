@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Bookmark, BookmarkCheck } from "lucide-react";
 import { toast } from "sonner";
 import { saveLead, unsaveLead } from "@/lib/api";
+import { track } from "@/lib/analytics";
 import { useApiToken } from "@/components/app/use-api-token";
 import { reportMutationError } from "@/components/app/sign-out";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,7 @@ export function SaveButton({ leadId, savedId }: { leadId: string; savedId: strin
       } else {
         const item = await saveLead(leadId, await getToken());
         setCurrentSavedId(item.id);
+        track("lead_saved", { leadId });
         toast.success("Lead saved");
       }
     } catch (err) {
