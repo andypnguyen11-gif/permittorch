@@ -1,9 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using PermitTorch.Api.Data;
+using PermitTorch.Api.Data.Seed;
 using PermitTorch.Api.Setup;
 
-// FINAL FORM (WS0; WS5 added URL-form DATABASE_URL support and opt-in startup
-// migrations). WS1 extends AddPipelineServices, WS2 AddFeatureServices/MapFeatureEndpoints.
+// FINAL FORM (WS0; WS5 added URL-form DATABASE_URL support, opt-in startup
+// migrations, and the `seed` CLI entry). WS1 extends AddPipelineServices, WS2 AddFeatureServices/MapFeatureEndpoints.
 var builder = WebApplication.CreateBuilder(args);
 
 var connectionString = DatabaseUrl.ToNpgsqlConnectionString(builder.Configuration["DATABASE_URL"]);
@@ -13,6 +14,15 @@ builder.Services.AddPipelineServices(builder.Configuration);
 builder.Services.AddFeatureServices(builder.Configuration);
 
 var app = builder.Build();
+
+// `dotnet run -- seed`: idempotent dev/staging seed (migrates first), then exit without serving.
+if (args.Contains("seed"))
+{
+    using var seedScope = app.Services.CreateScope();
+    await DevSeeder.SeedAsync(
+        seedScope.ServiceProvider.GetRequiredService<AppDbContext>(), app.Configuration);
+    return;
+}
 
 // Railway deploys run pending migrations on boot (RUN_MIGRATIONS_ON_STARTUP=true); off by default.
 if (app.Configuration.GetValue<bool>("RUN_MIGRATIONS_ON_STARTUP"))
