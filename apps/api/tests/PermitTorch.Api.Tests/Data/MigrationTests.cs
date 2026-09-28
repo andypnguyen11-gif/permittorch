@@ -85,6 +85,7 @@ public class MigrationTests : IAsyncLifetime
             {
                 "InitialCreate", "AddCategoryOverridden", "AddPermitDetailFields", "AddPermitRecordLink",
                 "MovePermitNamesToTheirRoles", "AddParticipantContact",
+                "RemovePlaceholderOwnersAndTestPermit",
             },
             applied.Select(m => m[(m.IndexOf('_') + 1)..]).ToArray());
     }
@@ -290,5 +291,160 @@ public class MigrationTests : IAsyncLifetime
         Assert.Contains("phone:text:YES", columns);
         Assert.Contains("email:text:YES", columns);
         Assert.Contains("license_number:text:YES", columns);
+    }
+
+    // New York's owner-business column holds placeholders such as "PR" and "Not Applicable".
+    // The scraper stopped sending them in build 0.1.17; the ones already stored are cleared.
+    [Fact]
+    public async Task Placeholder_owners_are_cleared_on_new_york_and_nowhere_else()
+    {
+        await using var db = CreateContext();
+        var migrator = db.GetInfrastructure().GetRequiredService<IMigrator>();
+        await migrator.MigrateAsync("AddParticipantContact");
+
+        var marketId = Guid.NewGuid();
+        await db.Database.ExecuteSqlAsync($"""
+            INSERT INTO markets (id, name, city, state, slug, active)
+            VALUES ({marketId}, 'Anywhere', 'Anywhere', 'NY', 'anywhere-ny', true);
+            """);
+        var sources = new Dictionary<string, Guid>();
+        foreach (var jurisdiction in new[] { "nyc-dobnow-permits", "philly-permits" })
+        {
+            sources[jurisdiction] = Guid.NewGuid();
+            await db.Database.ExecuteSqlAsync($"""
+                INSERT INTO sources (id, market_id, name, city, state, portal_type, source_url,
+                                     jurisdiction, active, records_last_run, health_status)
+                VALUES ({sources[jurisdiction]}, {marketId}, {jurisdiction}, 'Anywhere', 'NY', 'socrata',
+                        'https://example.gov', {jurisdiction}, true, 0, 0);
+                """);
+        }
+
+        var rows = new (string Key, string Source, string? Business, string? Owner)[]
+        {
+            ("pr", "nyc-dobnow-permits", "PR", "THOMAS SAGONA"),
+            ("spaced", "nyc-dobnow-permits", " not  applicable ", null),
+            ("na", "nyc-dobnow-permits", "n/a", "N/A"),                       // owner is one too
+            ("signatory", "nyc-dobnow-permits", "AUTHORIZED SIGNATORY FOR ENTITY", "HOMEOWNER"),
+            ("real", "nyc-dobnow-permits", "PR REALTY LLC", "NA HOLDINGS INC"),
+            ("private-school", "nyc-dobnow-permits", "PRIVATE SCHOOL 12", "OWNERS REP GROUP"),
+            ("elsewhere", "philly-permits", "PR", "NONE"),
+        };
+        var ids = rows.ToDictionary(r => r.Key, _ => Guid.NewGuid());
+        foreach (var row in rows)
+        {
+            var id = ids[row.Key];
+            await db.Database.ExecuteSqlAsync($"""
+                INSERT INTO permits (id, source_id, external_id, status, city, state, business_name,
+                                     owner_name, source_url, fingerprint, first_seen_at,
+                                     last_seen_at, created_at, updated_at)
+                VALUES ({id}, {sources[row.Source]}, {id.ToString()}, 1, 'Anywhere', 'NY', {row.Business},
+                        {row.Owner}, 'https://example.gov', {id.ToString()}, now(), now(), now(), now());
+                """);
+            if (row.Owner is not null)
+                await db.Database.ExecuteSqlAsync($"""
+                    INSERT INTO permit_participants (id, permit_id, role, name)
+                    VALUES ({Guid.NewGuid()}, {id}, 0, {row.Owner}),
+                           ({Guid.NewGuid()}, {id}, 2, 'NONE');
+                    """);
+        }
+
+        await migrator.MigrateAsync();
+
+        var permits = await db.Permits.AsNoTracking().ToDictionaryAsync(p => p.Id);
+        var participants = await db.PermitParticipants.AsNoTracking().ToListAsync();
+        List<(ParticipantRole, string)> Of(string key) => participants
+            .Where(p => p.PermitId == ids[key]).OrderBy(p => p.Role).Select(p => (p.Role, p.Name)).ToList();
+
+        Assert.Null(permits[ids["pr"]].BusinessName);
+        Assert.Equal("THOMAS SAGONA", permits[ids["pr"]].OwnerName);
+        Assert.Equal([(ParticipantRole.Owner, "THOMAS SAGONA"), (ParticipantRole.Contractor, "NONE")], Of("pr"));
+
+        Assert.Null(permits[ids["spaced"]].BusinessName);
+
+        Assert.Null(permits[ids["na"]].BusinessName);
+        Assert.Null(permits[ids["na"]].OwnerName);
+        // Only the owner is cleared: the contractor column is not this rule's business.
+        Assert.Equal([(ParticipantRole.Contractor, "NONE")], Of("na"));
+
+        Assert.Null(permits[ids["signatory"]].BusinessName);
+        Assert.Null(permits[ids["signatory"]].OwnerName);
+
+        // A real name that merely starts with a placeholder is kept.
+        Assert.Equal("PR REALTY LLC", permits[ids["real"]].BusinessName);
+        Assert.Equal("NA HOLDINGS INC", permits[ids["real"]].OwnerName);
+        Assert.Equal("PRIVATE SCHOOL 12", permits[ids["private-school"]].BusinessName);
+        Assert.Equal("OWNERS REP GROUP", permits[ids["private-school"]].OwnerName);
+        Assert.Contains((ParticipantRole.Owner, "OWNERS REP GROUP"), Of("private-school"));
+
+        // Other sources are not touched.
+        Assert.Equal("PR", permits[ids["elsewhere"]].BusinessName);
+        Assert.Equal("NONE", permits[ids["elsewhere"]].OwnerName);
+        Assert.Contains((ParticipantRole.Owner, "NONE"), Of("elsewhere"));
+    }
+
+    // Omaha's ALRM-26-00315 is the city's own test record, not a permit.
+    [Fact]
+    public async Task The_citys_test_permit_is_deleted_with_its_lead_and_its_neighbours_are_kept()
+    {
+        await using var db = CreateContext();
+        var migrator = db.GetInfrastructure().GetRequiredService<IMigrator>();
+        await migrator.MigrateAsync("AddParticipantContact");
+
+        var marketId = Guid.NewGuid();
+        var omaha = Guid.NewGuid();
+        var tulsa = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var orgId = Guid.NewGuid();
+        await db.Database.ExecuteSqlAsync($"""
+            INSERT INTO markets (id, name, city, state, slug, active)
+            VALUES ({marketId}, 'Omaha', 'Omaha', 'NE', 'omaha-ne', true);
+            INSERT INTO sources (id, market_id, name, city, state, portal_type, source_url,
+                                 jurisdiction, active, records_last_run, health_status)
+            VALUES ({omaha}, {marketId}, 'Omaha', 'Omaha', 'NE', 'accela', 'https://example.gov',
+                    'omaha-fire-permits', true, 0, 0),
+                   ({tulsa}, {marketId}, 'Tulsa', 'Tulsa', 'OK', 'energov', 'https://example.gov',
+                    'tulsa-fire-permits', true, 0, 0);
+            INSERT INTO organizations (id, name) VALUES ({orgId}, 'Org');
+            INSERT INTO app_users (id, firebase_uid, email, organization_id, role)
+            VALUES ({userId}, 'uid-1', 'user@example.com', {orgId}, 0);
+            """);
+
+        var rows = new (string Key, Guid Source, string ExternalId)[]
+        {
+            ("test", omaha, "omaha-fire-permits:ALRM-26-00315"),
+            ("next", omaha, "omaha-fire-permits:ALRM-26-00316"),
+            ("longer", omaha, "omaha-fire-permits:ALRM-26-003150"),
+            ("other-source", tulsa, "tulsa-fire-permits:ALRM-26-00315"),
+        };
+        var permitIds = rows.ToDictionary(r => r.Key, _ => Guid.NewGuid());
+        var leadIds = rows.ToDictionary(r => r.Key, _ => Guid.NewGuid());
+        foreach (var row in rows)
+        {
+            await db.Database.ExecuteSqlAsync($"""
+                INSERT INTO permits (id, source_id, external_id, status, city, state, source_url,
+                                     fingerprint, first_seen_at, last_seen_at, created_at, updated_at)
+                VALUES ({permitIds[row.Key]}, {row.Source}, {row.ExternalId}, 1, 'Omaha', 'NE',
+                        'https://example.gov', {row.Key}, now(), now(), now(), now());
+                INSERT INTO permit_participants (id, permit_id, role, name)
+                VALUES ({Guid.NewGuid()}, {permitIds[row.Key]}, 0, 'Owner');
+                INSERT INTO fire_opportunities (id, permit_id, category, lead_score, confidence, reason,
+                                                first_detected_at, last_updated_at)
+                VALUES ({leadIds[row.Key]}, {permitIds[row.Key]}, 1, 60, 0.9, 'Reason', now(), now());
+                INSERT INTO lead_signals (id, fire_opportunity_id, signal_type, description, weight)
+                VALUES ({Guid.NewGuid()}, {leadIds[row.Key]}, 'BASE_SCORE', 'Baseline', 30);
+                INSERT INTO saved_leads (id, user_id, fire_opportunity_id, status, created_at)
+                VALUES ({Guid.NewGuid()}, {userId}, {leadIds[row.Key]}, 0, now());
+                """);
+        }
+
+        await migrator.MigrateAsync();
+
+        var kept = rows.Where(r => r.Key != "test").Select(r => permitIds[r.Key]).OrderBy(id => id).ToList();
+        Assert.Equal(kept, (await db.Permits.AsNoTracking().Select(p => p.Id).ToListAsync()).OrderBy(id => id));
+        Assert.Equal(3, await db.FireOpportunities.CountAsync());
+        Assert.Equal(3, await db.LeadSignals.CountAsync());
+        Assert.Equal(3, await db.PermitParticipants.CountAsync());
+        Assert.Equal(3, await db.SavedLeads.CountAsync());
+        Assert.False(await db.FireOpportunities.AnyAsync(o => o.Id == leadIds["test"]));
     }
 }
