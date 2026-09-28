@@ -13,7 +13,7 @@ import { TrackOnMount } from "@/components/app/track-on-mount";
 import { STATUS_LABELS } from "@/components/app/leads/query";
 import {
   formatDate, formatRelative, formatValueShort,
-  humanizeMachineString, permitStatusDisplay,
+  humanizeMachineString, permitStatusDisplay, recordKind,
 } from "@/components/app/format";
 import { Badge } from "@/components/ui/badge";
 
@@ -37,16 +37,14 @@ const ROLE_LABELS: Record<string, string> = {
 };
 const roleLabel = (role: string): string => ROLE_LABELS[role] ?? humanizeMachineString(role) ?? role;
 
-// A record whose recordType is "inspection" or "violation" is not a permit;
-// the Permit card retitles itself and relabels the permit-number field to match.
-function recordCardTitle(recordType: string | null): string {
-  if (recordType === "inspection") return "Inspection";
-  if (recordType === "violation") return "Violation";
-  return "Permit";
-}
-function recordNumberLabel(recordType: string | null): string {
-  return recordType === "inspection" || recordType === "violation" ? "Record number" : "Permit number";
-}
+// A record whose kind is "inspection" or "violation" is not a permit; the
+// Permit card retitles itself and relabels the permit-number field to match.
+const RECORD_CARD_TITLE: Record<ReturnType<typeof recordKind>, string> = {
+  permit: "Permit", inspection: "Inspection", violation: "Violation",
+};
+const RECORD_NUMBER_LABEL: Record<ReturnType<typeof recordKind>, string> = {
+  permit: "Permit number", inspection: "Record number", violation: "Record number",
+};
 
 export default async function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -55,11 +53,16 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     .catch((err) => handleApiError(err, { notFoundOn404: true }));
   const savedItem = savedLeads.find((s) => s.lead.id === lead.id) ?? null;
 
-  const cardTitle = recordCardTitle(lead.permit.recordType);
-  const numberLabel = recordNumberLabel(lead.permit.recordType);
-  const recordTypeLabel = humanizeMachineString(lead.permit.recordType);
+  const kind = recordKind(lead.permit.recordType);
+  const cardTitle = RECORD_CARD_TITLE[kind];
+  const numberLabel = RECORD_NUMBER_LABEL[kind];
+  // Inspections and violations never carry these permit-specific facts; showing
+  // them empty would just be a wall of dashes, so they're hidden unless present.
+  // A regular permit keeps today's behavior: always shown, dash when empty.
+  const showAlways = kind === "permit";
   const workTypeLabel = humanizeMachineString(lead.permit.workType);
   const propertyTypeLabel = humanizeMachineString(lead.permit.propertyType);
+  const systemType = humanizeMachineString(lead.permitType);
 
   return (
     <div className="space-y-6">
@@ -97,7 +100,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
             <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
               <Field label="Lead score" value={lead.score} />
               <Field label="Classification confidence" value={`${Math.round(lead.confidence * 100)}%`} />
-              <Field label="Permit status"
+              <Field label="Status"
                 value={permitStatusDisplay(STATUS_LABELS[lead.status], lead.permit.rawStatus)} />
               <Field label="First discovered" value={formatRelative(lead.firstDetectedAt)} />
               <Field label="Last updated" value={formatRelative(lead.lastUpdatedAt)} />
@@ -107,17 +110,21 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
           <SectionCard title={cardTitle}>
             <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
               <Field label={numberLabel} value={lead.permit.permitNumber} />
-              <Field label="Permit type" value={lead.permitType} />
-              <Field label="Filed" value={formatDate(lead.filedDate)} />
-              <Field label="Issued" value={formatDate(lead.permit.issuedDate)} />
-              <Field label="Estimated value" value={formatValueShort(lead.estimatedValue)} />
-              <Field label="Square footage"
-                value={lead.permit.squareFootage != null
-                  ? `${lead.permit.squareFootage.toLocaleString("en-US")} sq ft` : null} />
-              <Field label="Owner" value={lead.permit.ownerName} />
-              <Field label="Contractor" value={lead.permit.contractorName} />
+              <Field label="System type" value={systemType} />
+              {(showAlways || lead.filedDate) && <Field label="Filed" value={formatDate(lead.filedDate)} />}
+              {(showAlways || lead.permit.issuedDate) &&
+                <Field label="Issued" value={formatDate(lead.permit.issuedDate)} />}
+              {(showAlways || lead.estimatedValue != null) &&
+                <Field label="Estimated value" value={formatValueShort(lead.estimatedValue)} />}
+              {(showAlways || lead.permit.squareFootage != null) && (
+                <Field label="Square footage"
+                  value={lead.permit.squareFootage != null
+                    ? `${lead.permit.squareFootage.toLocaleString("en-US")} sq ft` : null} />
+              )}
+              {(showAlways || lead.permit.ownerName) && <Field label="Owner" value={lead.permit.ownerName} />}
+              {(showAlways || lead.permit.contractorName) &&
+                <Field label="Contractor" value={lead.permit.contractorName} />}
               <Field label="Zip" value={lead.permit.zip} />
-              {recordTypeLabel && <Field label="Record type" value={recordTypeLabel} />}
               {workTypeLabel && <Field label="Work type" value={workTypeLabel} />}
               {lead.permit.expirationDate && <Field label="Expires" value={formatDate(lead.permit.expirationDate)} />}
               {lead.permit.inspectionDate &&

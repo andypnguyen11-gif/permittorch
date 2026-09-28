@@ -59,3 +59,15 @@ export function permitStatusDisplay(label: string, rawStatus: string | null): st
   if (!raw || raw.toLowerCase() === label.trim().toLowerCase()) return label;
   return `${label} · ${raw}`;
 }
+
+export type RecordKind = "permit" | "inspection" | "violation";
+
+// Classifies a permit's recordType into the three shapes the detail page cares
+// about. Comparison is case-insensitive and whitespace-tolerant; anything other
+// than "inspection" or "violation" (including null/empty) is a regular permit.
+export function recordKind(recordType: string | null): RecordKind {
+  const normalized = recordType?.trim().toLowerCase();
+  if (normalized === "inspection") return "inspection";
+  if (normalized === "violation") return "violation";
+  return "permit";
+}
