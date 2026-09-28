@@ -165,18 +165,22 @@ type DetailExtras = Omit<LeadDetail, keyof LeadSummary | "source" | "lastUpdated
   source?: LeadDetail["source"];
 };
 
+// Houston links to the city's own page for each record. Dallas publishes open data only, so
+// its records carry no link of their own and fall back to the dataset.
 const HOUSTON_SOURCE = (permitNumber: string | null): LeadDetail["source"] => ({
   name: "City of Houston ePermits",
-  url: permitNumber
+  url: "https://www.houstonpermittingcenter.org/",
+  recordUrl: permitNumber
     ? `https://www.houstonpermittingcenter.org/permits/${permitNumber}`
-    : "https://www.houstonpermittingcenter.org/",
+    : null,
+  recordUrlKind: permitNumber ? "PAGE" : null,
   lastCheckedAt: minutesAgo(6),
 });
-const DALLAS_SOURCE = (permitNumber: string | null): LeadDetail["source"] => ({
+const DALLAS_SOURCE = (): LeadDetail["source"] => ({
   name: "City of Dallas Permits",
-  url: permitNumber
-    ? `https://dallascityhall.com/departments/sustainabledevelopment/permits/${permitNumber}`
-    : "https://dallascityhall.com/departments/sustainabledevelopment/",
+  url: "https://dallascityhall.com/departments/sustainabledevelopment/",
+  recordUrl: null,
+  recordUrlKind: null,
   lastCheckedAt: hoursAgo(2),
 });
 
@@ -319,7 +323,9 @@ const extras: Record<string, DetailExtras> = {
     participants: [{ role: "OWNER", name: "Washington Ave Retail Trust" }],
     signals: signalsOf("FAILED_INSPECTION", "LARGE_SQUARE_FOOTAGE", "NO_CONTRACTOR_LISTED"),
     source: { name: "Houston Fire Marshal",
-      url: "https://houstontx.gov/fire/marshal/records/25-175772",
+      url: "https://houstontx.gov/fire/marshal/",
+      recordUrl: "https://data.houstontx.gov/resource/fire-inspections.json?record_id=25-175772",
+      recordUrlKind: "DATA",
       lastCheckedAt: hoursAgo(19) },
   },
   "lead-014": {
@@ -444,7 +450,8 @@ export const mockLeadDetails: LeadDetail[] = mockLeads.map((lead) => {
     ...lead,
     ...rest,
     lastUpdatedAt: lastUpdatedAt ?? hoursAgo(2),
-    source: source ?? (lead.city === "Houston" ? HOUSTON_SOURCE : DALLAS_SOURCE)(rest.permit.permitNumber),
+    source: source
+      ?? (lead.city === "Houston" ? HOUSTON_SOURCE(rest.permit.permitNumber) : DALLAS_SOURCE()),
   };
 });
 

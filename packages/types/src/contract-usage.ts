@@ -48,7 +48,10 @@ const detail: LeadDetail = {
   },
   participants: [{ role: "OWNER", name: "Acme Holdings" }],
   signals: [signal],
-  source: { name: "Houston", url: "https://example.com", lastCheckedAt: null },
+  source: {
+    name: "Houston", url: "https://example.com", lastCheckedAt: null,
+    recordUrl: "https://example.com/records/FP-2026-001", recordUrlKind: "PAGE",
+  },
 };
 
 const market: Market = { id: "m_1", name: "Houston", city: "Houston", state: "TX", slug: "houston-tx" };

@@ -13,7 +13,7 @@ import { TrackOnMount } from "@/components/app/track-on-mount";
 import { STATUS_LABELS } from "@/components/app/leads/query";
 import {
   formatDate, formatRelative, formatValueShort,
-  humanizeMachineString, permitStatusDisplay, recordKind, repeatsTitle,
+  humanizeMachineString, permitStatusDisplay, recordKind, recordLink, repeatsTitle,
 } from "@/components/app/format";
 import { Badge } from "@/components/ui/badge";
 
@@ -65,6 +65,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
   const systemType = humanizeMachineString(lead.permitType);
   // An inspection's system type is usually just "inspection", which the card title already says.
   const showSystemType = !repeatsTitle(systemType, cardTitle) && (showAlways || systemType !== null);
+  const sourceLink = recordLink(lead.source);
 
   return (
     <div className="space-y-6">
@@ -163,10 +164,12 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
           <SectionCard title="Source">
             <div className="space-y-2 text-sm">
               <p className="font-medium text-stone-800">{lead.source.name}</p>
-              <a href={lead.source.url} target="_blank" rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 rounded font-medium text-orange-600 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50">
-                View original record <ExternalLink className="size-3.5" aria-hidden />
-              </a>
+              {sourceLink && (
+                <a href={sourceLink.href} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 rounded font-medium text-orange-600 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50">
+                  {sourceLink.label} <ExternalLink className="size-3.5" aria-hidden />
+                </a>
+              )}
               <p className="text-xs text-stone-500">
                 Last checked {formatRelative(lead.source.lastCheckedAt)}
               </p>

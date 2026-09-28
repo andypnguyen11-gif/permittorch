@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   formatDate, formatRelative, formatValueShort, scoreBand,
-  humanizeMachineString, permitStatusDisplay, recordKind, repeatsTitle,
+  humanizeMachineString, permitStatusDisplay, recordKind, recordLink, repeatsTitle,
 } from "@/components/app/format";
 
 describe("scoreBand", () => {
@@ -115,5 +115,51 @@ describe("repeatsTitle", () => {
     expect(repeatsTitle("Fire sprinkler", "Violation")).toBe(false);
     expect(repeatsTitle("Fire code violation", "Violation")).toBe(false);
     expect(repeatsTitle(null, "Inspection")).toBe(false);
+  });
+});
+
+describe("recordLink", () => {
+  const dataset = "https://data.sf.gov/Public-Safety/Fire-Permits/893e-xam6";
+  const record = "https://data.sf.gov/resource/893e-xam6.json?permit_number=2026-0042";
+
+  it("calls the city's own page for the record the original record", () => {
+    expect(recordLink({ url: dataset, recordUrl: "https://sf.gov/permits/2026-0042", recordUrlKind: "PAGE" }))
+      .toEqual({ href: "https://sf.gov/permits/2026-0042", label: "View original record" });
+  });
+
+  it("calls a raw data row source data, never the original record", () => {
+    for (const kind of ["REST", "DATA"] as const) {
+      expect(recordLink({ url: dataset, recordUrl: record, recordUrlKind: kind }))
+        .toEqual({ href: record, label: "View source data for this record" });
+    }
+  });
+
+  it("treats a missing or unrecognized kind as raw data", () => {
+    expect(recordLink({ url: dataset, recordUrl: record, recordUrlKind: null })?.label)
+      .toBe("View source data for this record");
+    expect(recordLink({ url: dataset, recordUrl: record, recordUrlKind: "PORTAL" as never })?.label)
+      .toBe("View source data for this record");
+  });
+
+  it("links to the dataset, and says so, when the record has no link of its own", () => {
+    expect(recordLink({ url: dataset, recordUrl: null, recordUrlKind: null }))
+      .toEqual({ href: dataset, label: "View source dataset" });
+    // A kind without a link means nothing.
+    expect(recordLink({ url: dataset, recordUrl: null, recordUrlKind: "PAGE" }))
+      .toEqual({ href: dataset, label: "View source dataset" });
+    expect(recordLink({ url: dataset, recordUrl: "  ", recordUrlKind: "PAGE" }))
+      .toEqual({ href: dataset, label: "View source dataset" });
+  });
+
+  it("still works against an API response from before record links existed", () => {
+    expect(recordLink({ url: dataset } as never))
+      .toEqual({ href: dataset, label: "View source dataset" });
+  });
+
+  it("never links to anything but a web address", () => {
+    expect(recordLink({ url: dataset, recordUrl: "javascript:alert(1)", recordUrlKind: "PAGE" }))
+      .toEqual({ href: dataset, label: "View source dataset" });
+    expect(recordLink({ url: "javascript:alert(1)", recordUrl: null, recordUrlKind: null })).toBeNull();
+    expect(recordLink({ url: "", recordUrl: null, recordUrlKind: null })).toBeNull();
   });
 });

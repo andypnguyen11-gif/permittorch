@@ -31,6 +31,8 @@ describe("/app/leads/[id] page (mock API)", () => {
     expect(screen.getByTestId("signal-clamp-note")).toHaveTextContent("capped at 100");
     expect(screen.getByText("25-176389")).toBeInTheDocument();
     const source = screen.getByRole("link", { name: /View original record/ });
+    // The link opens this record, not the portal's home page.
+    expect(source).toHaveAttribute("href", "https://www.houstonpermittingcenter.org/permits/25-176389");
     expect(source).toHaveAttribute("target", "_blank");
     expect(source).toHaveAttribute("rel", "noopener noreferrer");
     // Saved in fixtures → button starts in the saved state.
@@ -87,6 +89,37 @@ describe("/app/leads/[id] page (mock API)", () => {
     expect(within(record).queryByText("Contractor")).not.toBeInTheDocument();
     expect(screen.getByText("Failed · Open/Follow-Up Needed")).toBeInTheDocument();
     expect(screen.getByText("Status")).toBeInTheDocument();
+  });
+
+  it("calls a link to the raw data row source data, not the original record", async () => {
+    await renderPage("lead-013");
+    const source = screen.getByRole("link", { name: /View source data for this record/ });
+    expect(source).toHaveAttribute("href",
+      "https://data.houstontx.gov/resource/fire-inspections.json?record_id=25-175772");
+    expect(source).toHaveAttribute("target", "_blank");
+    expect(source).toHaveAttribute("rel", "noopener noreferrer");
+    expect(screen.queryByRole("link", { name: /View original record/ })).not.toBeInTheDocument();
+  });
+
+  it("links to the dataset, and says so, when the record has no link of its own", async () => {
+    await renderPage("lead-022");
+    const source = screen.getByRole("link", { name: /View source dataset/ });
+    expect(source).toHaveAttribute("href",
+      "https://dallascityhall.com/departments/sustainabledevelopment/");
+    expect(screen.queryByRole("link", { name: /View original record/ })).not.toBeInTheDocument();
+  });
+
+  it("shows no link at all when the source has no web address", async () => {
+    const lead = await api.getLead("lead-022", "mock-token");
+    const spy = vi.spyOn(api, "getLead").mockResolvedValueOnce({
+      ...lead, source: { ...lead.source, url: "", recordUrl: null, recordUrlKind: null },
+    });
+    await renderPage("lead-022");
+    const region = screen.getByRole("region", { name: "Source" });
+    expect(within(region).queryByRole("link")).not.toBeInTheDocument();
+    expect(within(region).queryByText(/^View /)).not.toBeInTheDocument();
+    expect(within(region).getByText("City of Dallas Permits")).toBeInTheDocument();
+    spy.mockRestore();
   });
 
   it("renders a CONTRACTOR participant with the label 'Contractor'", async () => {

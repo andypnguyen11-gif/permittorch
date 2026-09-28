@@ -18,6 +18,8 @@ export interface LeadSummary {
 }
 export interface LeadsResponse extends Paged<LeadSummary> { freshness: Freshness; }
 
+/** What a record link opens: the city's own page, or the raw data row (REST, DATA). */
+export type RecordLinkKind = "PAGE" | "REST" | "DATA";
 export interface LeadSignal { signalType: string; description: string; weight: number; }
 export interface LeadDetail extends LeadSummary {
   confidence: number; firstDetectedAt: string; lastUpdatedAt: string;
@@ -31,7 +33,12 @@ export interface LeadDetail extends LeadSummary {
   };
   participants: { role: string; name: string }[];
   signals: LeadSignal[];
-  source: { name: string; url: string; lastCheckedAt: string | null };
+  /** `url` is the dataset's home page, the same for every record of a source. `recordUrl`
+   *  opens this one record and is null when the source has no such link. */
+  source: {
+    name: string; url: string; lastCheckedAt: string | null;
+    recordUrl: string | null; recordUrlKind: RecordLinkKind | null;
+  };
 }
 
 export interface Market { id: string; name: string; city: string; state: string; slug: string; }

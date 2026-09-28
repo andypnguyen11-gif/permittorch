@@ -77,3 +77,28 @@ export function recordKind(recordType: string | null): RecordKind {
   if (normalized === "violation") return "violation";
   return "permit";
 }
+
+const webAddress = (value: string | null | undefined): string | null => {
+  const trimmed = value?.trim();
+  return trimmed && /^https?:\/\//i.test(trimmed) ? trimmed : null;
+};
+
+export type RecordLink = { href: string; label: string };
+
+// Picks the link shown on a lead and the words that describe it. Only the city's
+// own page for the record is called the original record; a raw data row and the
+// dataset's home page are each named for what they are. Null when there is no
+// web address to link to.
+export function recordLink(source: {
+  url: string; recordUrl: string | null; recordUrlKind: string | null;
+}): RecordLink | null {
+  const record = webAddress(source.recordUrl);
+  if (record) {
+    return {
+      href: record,
+      label: source.recordUrlKind === "PAGE" ? "View original record" : "View source data for this record",
+    };
+  }
+  const dataset = webAddress(source.url);
+  return dataset ? { href: dataset, label: "View source dataset" } : null;
+}
