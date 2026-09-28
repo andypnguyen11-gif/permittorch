@@ -140,6 +140,31 @@ Source freshness never moves backwards during this, because it is taken from the
 
 Two things look odd while reprocessing runs and settle by themselves. Source health and records-per-run show the values of whichever run was processed last, until the newest run is reached. Public 30-day market counts rise where new kinds of leads appear, which is a true count and not an error.
 
+## Filling record links on stored permits
+
+Each lead links to its own record on the government site. The link comes from the scraper (`source.recordUrl`, build 0.1.16 and later) and is stored per permit, never per source. The lead page words the link by what it opens:
+
+| Stored kind | Link text | Opens |
+|---|---|---|
+| Page | View original record | The city's own page for the record |
+| Rest or Data | View source data for this record | The raw data row for the record |
+| No link | View source dataset | The dataset's home page |
+
+A permit stored before build 0.1.16 has no link until the scraper delivers it again. Reprocessing recorded runs does not help here: the old datasets do not hold the link, and the app cannot build it.
+
+To fill the links, scrape again over the wanted window:
+
+1. Deploy the API first, so the new fields are read. Register any new source before the run (see the seeder section): records for a source the app does not know are dropped and counted as failures.
+2. Start runs of the `permittorch-daily` task with the input override `onlyNewRecords: false`, split by state group so each run stays under the result cap. Start them from the task, not from the actor: ingestion only reads runs of the task.
+3. Let ingestion take every run that was started. A run marks the leads it delivers as seen, so a run that is never ingested hides those leads from the daily only-new feed.
+4. Check the result:
+   ```bash
+   railway ssh --service Postgres -- sh -c 'psql -U "$PGUSER" -d "$PGDATABASE" -c "select s.jurisdiction, count(*) permits, count(p.record_url) with_link from permits p join sources s on s.id = p.source_id group by 1 order by 1"'
+   ```
+   Omaha and Tulsa stay at zero: their portals have no link that can be verified. A few Atlanta and Colorado Springs records on a temporary number also have none.
+
+Permits are matched on the scraper's record id, so a second scrape updates the stored permit and never adds a second one. A stored link is kept when a later record arrives without one.
+
 ## Rescoring every lead after a scoring change
 
 The daily rescoring pass only revisits leads with a date inside the last 91 days. After a deploy that changes scoring rules or weights, set `Rescoring__FullPassOnStartup=true` on `api`. The next start rescores every lead once. Remove the variable afterwards, or every restart repeats the full pass.
