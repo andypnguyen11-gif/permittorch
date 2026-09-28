@@ -52,6 +52,12 @@ export function humanizeMachineString(value: string | null): string | null {
   return words.map((w, i) => (i === 0 ? w.charAt(0).toUpperCase() + w.slice(1) : w)).join(" ");
 }
 
+// True when a field's text would only repeat its card's title, e.g. a system type of
+// "Inspection" inside the "Inspection" card. Callers hide such a field.
+export function repeatsTitle(value: string | null, title: string): boolean {
+  return value != null && value.trim().toLowerCase() === title.trim().toLowerCase();
+}
+
 // Permit status display: the mapped status label, plus the raw source text when
 // it's present and says something different than the label (e.g. "Failed · Open/Follow-Up Needed").
 export function permitStatusDisplay(label: string, rawStatus: string | null): string {

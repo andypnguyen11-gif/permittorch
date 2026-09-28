@@ -13,7 +13,7 @@ import { TrackOnMount } from "@/components/app/track-on-mount";
 import { STATUS_LABELS } from "@/components/app/leads/query";
 import {
   formatDate, formatRelative, formatValueShort,
-  humanizeMachineString, permitStatusDisplay, recordKind,
+  humanizeMachineString, permitStatusDisplay, recordKind, repeatsTitle,
 } from "@/components/app/format";
 import { Badge } from "@/components/ui/badge";
 
@@ -63,6 +63,8 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
   const workTypeLabel = humanizeMachineString(lead.permit.workType);
   const propertyTypeLabel = humanizeMachineString(lead.permit.propertyType);
   const systemType = humanizeMachineString(lead.permitType);
+  // An inspection's system type is usually just "inspection", which the card title already says.
+  const showSystemType = !repeatsTitle(systemType, cardTitle) && (showAlways || systemType !== null);
 
   return (
     <div className="space-y-6">
@@ -110,7 +112,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
           <SectionCard title={cardTitle}>
             <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
               <Field label={numberLabel} value={lead.permit.permitNumber} />
-              <Field label="System type" value={systemType} />
+              {showSystemType && <Field label="System type" value={systemType} />}
               {(showAlways || lead.filedDate) && <Field label="Filed" value={formatDate(lead.filedDate)} />}
               {(showAlways || lead.permit.issuedDate) &&
                 <Field label="Issued" value={formatDate(lead.permit.issuedDate)} />}
