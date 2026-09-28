@@ -130,6 +130,50 @@ public class DevSeederTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Sample_leads_each_link_to_their_own_record()
+    {
+        await SeedAsync(Config(DevFlags()));
+
+        await using var db = CreateContext();
+        var permits = await db.Permits.Include(p => p.Source).ToListAsync();
+        Assert.Equal(10, permits.Count);
+        Assert.All(permits, p =>
+        {
+            Assert.Equal(p.Source.SourceUrl, p.SourceUrl);   // the shared dataset link
+            Assert.StartsWith("https://", p.RecordUrl);
+            Assert.EndsWith($"/records/{p.ExternalId}", p.RecordUrl);
+            Assert.Equal(RecordLinkKind.Page, p.RecordUrlKind);
+        });
+        Assert.Equal(10, permits.Select(p => p.RecordUrl).Distinct().Count());
+    }
+
+    [Fact]
+    public async Task Refresh_samples_gives_older_samples_their_record_link()
+    {
+        await SeedAsync(Config(DevFlags()));
+        await using (var db = CreateContext())
+        {
+            // Samples seeded before record links existed.
+            await db.Permits.ExecuteUpdateAsync(s => s
+                .SetProperty(p => p.RecordUrl, (string?)null)
+                .SetProperty(p => p.RecordUrlKind, (RecordLinkKind?)null));
+        }
+
+        await using (var db = CreateContext())
+            await DevSeeder.RefreshSamplesAsync(db, Config(DevFlags()), "Development", DateTime.UtcNow,
+                new StringWriter());
+
+        await using var check = CreateContext();
+        var permits = await check.Permits.Include(p => p.Source).ToListAsync();
+        Assert.All(permits, p =>
+        {
+            Assert.Equal(p.Source.SourceUrl, p.SourceUrl);
+            Assert.EndsWith($"/records/{p.ExternalId}", p.RecordUrl);
+            Assert.Equal(RecordLinkKind.Page, p.RecordUrlKind);
+        });
+    }
+
+    [Fact]
     public async Task Entitlement_fixture_lead_201_is_in_san_antonio_and_austin_has_seven_leads()
     {
         await SeedAsync(Config(DevFlags()));

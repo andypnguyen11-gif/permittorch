@@ -8,3 +8,6 @@ public enum PlanTier { Starter, Pro, Territory }
 public enum SavedLeadStatus { Saved, Contacted }
 public enum DigestFrequency { None, Daily, Weekly }
 public enum PermitStatusKind { New, Active, Inspection, Failed, Closed, Unknown }
+// What a permit's record link opens: the city's own page for the record, the ArcGIS attribute
+// listing for the row, or the open-data API's answer for the row.
+public enum RecordLinkKind { Page, Rest, Data }

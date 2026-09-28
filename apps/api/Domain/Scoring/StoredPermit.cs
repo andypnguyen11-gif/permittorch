@@ -16,5 +16,6 @@ public static class StoredPermit
         EstimatedValue: p.EstimatedValue, SquareFootage: p.SquareFootage, OwnerName: p.OwnerName,
         ContractorName: p.ContractorName, SourceUrl: p.SourceUrl, Fingerprint: p.Fingerprint,
         RecordType: p.RecordType, WorkType: p.WorkType, ExpirationDate: p.ExpirationDate,
-        InspectionDate: p.InspectionDate, BusinessName: p.BusinessName, PropertyType: p.PropertyType);
+        InspectionDate: p.InspectionDate, BusinessName: p.BusinessName, PropertyType: p.PropertyType,
+        RecordUrl: p.RecordUrl, RecordUrlKind: p.RecordUrlKind, ApplicantName: p.ApplicantName);
 }

@@ -29,7 +29,11 @@ public sealed record LeadPermitDto(
 
 public sealed record ParticipantDto(ParticipantRole Role, string Name);
 
-public sealed record LeadSourceDto(string Name, string Url, DateTime? LastCheckedAt);
+// Url is the dataset's home page. RecordUrl opens this one record and is null when the source
+// has no such link; RecordUrlKind says what it opens, so the link is never labelled as more
+// than it is.
+public sealed record LeadSourceDto(string Name, string Url, DateTime? LastCheckedAt,
+    string? RecordUrl, RecordLinkKind? RecordUrlKind);
 
 // LeadDetail extends LeadSummary (master §7) — flattened here, same field set
 public sealed record LeadDetailDto(

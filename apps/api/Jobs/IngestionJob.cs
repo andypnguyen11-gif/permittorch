@@ -315,6 +315,7 @@ public sealed class IngestionJob : BackgroundService
                 SquareFootage = normalized.SquareFootage,
                 OwnerName = normalized.OwnerName,
                 ContractorName = normalized.ContractorName,
+                ApplicantName = normalized.ApplicantName,
                 RecordType = normalized.RecordType,
                 WorkType = normalized.WorkType,
                 ExpirationDate = normalized.ExpirationDate,
@@ -322,6 +323,8 @@ public sealed class IngestionJob : BackgroundService
                 BusinessName = normalized.BusinessName,
                 PropertyType = normalized.PropertyType,
                 SourceUrl = normalized.SourceUrl,
+                RecordUrl = normalized.RecordUrl,
+                RecordUrlKind = normalized.RecordUrlKind,
                 Fingerprint = normalized.Fingerprint,
                 FirstSeenAt = now,
                 LastSeenAt = now,
@@ -402,7 +405,7 @@ public sealed class IngestionJob : BackgroundService
         return (isNew, true);
     }
 
-    // Owner and Contractor participants mirror the permit's merged owner and contractor names.
+    // Owner, Contractor and Applicant participants mirror the permit's merged names.
     // Other roles are left alone: they belong to providers that report them directly.
     private static async Task SyncParticipantsAsync(AppDbContext db, Permit permit, bool isNew,
         CancellationToken ct)
@@ -411,11 +414,13 @@ public sealed class IngestionJob : BackgroundService
             ? new List<PermitParticipant>()
             : await db.Set<PermitParticipant>()
                 .Where(p => p.PermitId == permit.Id
-                    && (p.Role == ParticipantRole.Owner || p.Role == ParticipantRole.Contractor))
+                    && (p.Role == ParticipantRole.Owner || p.Role == ParticipantRole.Contractor
+                        || p.Role == ParticipantRole.Applicant))
                 .ToListAsync(ct);
 
         SyncParticipant(db, permit, existing, ParticipantRole.Owner, permit.OwnerName);
         SyncParticipant(db, permit, existing, ParticipantRole.Contractor, permit.ContractorName);
+        SyncParticipant(db, permit, existing, ParticipantRole.Applicant, permit.ApplicantName);
     }
 
     private static void SyncParticipant(AppDbContext db, Permit permit,
@@ -493,6 +498,7 @@ public sealed class IngestionJob : BackgroundService
         if (n.SquareFootage.HasValue) permit.SquareFootage = n.SquareFootage;
         if (n.OwnerName is not null) permit.OwnerName = n.OwnerName;
         if (n.ContractorName is not null) permit.ContractorName = n.ContractorName;
+        if (n.ApplicantName is not null) permit.ApplicantName = n.ApplicantName;
         if (n.RecordType is not null) permit.RecordType = n.RecordType;
         if (n.WorkType is not null) permit.WorkType = n.WorkType;
         if (n.ExpirationDate.HasValue) permit.ExpirationDate = n.ExpirationDate;
@@ -500,6 +506,12 @@ public sealed class IngestionJob : BackgroundService
         if (n.BusinessName is not null) permit.BusinessName = n.BusinessName;
         if (n.PropertyType is not null) permit.PropertyType = n.PropertyType;
         if (!string.IsNullOrEmpty(n.SourceUrl)) permit.SourceUrl = n.SourceUrl;
+        // The link and its kind are one fact: a new link always brings its own kind.
+        if (n.RecordUrl is not null)
+        {
+            permit.RecordUrl = n.RecordUrl;
+            permit.RecordUrlKind = n.RecordUrlKind;
+        }
     }
 
     // Architecture §6.1/§7: health is driven by per-source COVERAGE_REPORT stats

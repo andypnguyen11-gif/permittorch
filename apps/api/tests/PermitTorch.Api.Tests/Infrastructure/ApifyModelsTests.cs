@@ -88,6 +88,60 @@ public class ApifyModelsTests
         Assert.Equal("2026-08-20T15:51:00.227Z", record.ScrapedAt);
     }
 
+    // Fields added by scraper build 0.1.16: the per-record link, its kind and the applicant.
+    [Fact]
+    public void RawPermitRecord_ReadsTheRecordLinkAndApplicant()
+    {
+        const string json = """
+        {
+          "recordId": "seattle-trade-permits:6901234-EL",
+          "permitNumber": "6901234-EL",
+          "owner": { "name": null, "company": null },
+          "applicant": { "name": "Jane Doe", "company": "Doe Design" },
+          "contractor": { "name": null, "company": "Reliable Fire Co", "licenseNumber": null },
+          "source": {
+            "sourceId": "seattle-trade-permits",
+            "jurisdiction": "Seattle, WA",
+            "provider": "socrata",
+            "url": "https://data.seattle.gov/Permitting/Trade-Permits/c87v-5hwh",
+            "recordUrl": "https://services.seattle.gov/portal/customize/LinkToRecord.aspx?altId=6901234-EL",
+            "recordUrlKind": "page"
+          }
+        }
+        """;
+
+        var record = JsonSerializer.Deserialize<RawPermitRecord>(json, Web);
+
+        Assert.NotNull(record);
+        Assert.Equal("https://data.seattle.gov/Permitting/Trade-Permits/c87v-5hwh", record!.Source!.Url);
+        Assert.Equal("https://services.seattle.gov/portal/customize/LinkToRecord.aspx?altId=6901234-EL",
+            record.Source.RecordUrl);
+        Assert.Equal("page", record.Source.RecordUrlKind);
+        Assert.Equal("Jane Doe", record.Applicant!.Name);
+        Assert.Equal("Doe Design", record.Applicant.Company);
+        Assert.Equal("Reliable Fire Co", record.Contractor!.Company);
+    }
+
+    // Datasets written before build 0.1.16 carry none of the new fields.
+    [Fact]
+    public void RawPermitRecord_ReadsAnOlderRecord_WithoutTheNewFields()
+    {
+        const string json = """
+        {
+          "recordId": "tulsa-fire-permits:FIRE-255161-2026",
+          "source": { "sourceId": "tulsa-fire-permits", "jurisdiction": "Tulsa, OK",
+            "provider": "energov", "url": "https://tulsaok-energovweb.tylerhost.net/apps/selfservice#/search" }
+        }
+        """;
+
+        var record = JsonSerializer.Deserialize<RawPermitRecord>(json, Web);
+
+        Assert.NotNull(record);
+        Assert.Null(record!.Source!.RecordUrl);
+        Assert.Null(record.Source.RecordUrlKind);
+        Assert.Null(record.Applicant);
+    }
+
     // Real COVERAGE_REPORT from the same run (scraper-sample.json), embedded verbatim.
     [Fact]
     public void CoverageReport_DeserializesFromRealScraperJson()

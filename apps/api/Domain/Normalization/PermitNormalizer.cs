@@ -18,7 +18,11 @@ public record NormalizedPermit(string ExternalId, string Jurisdiction, string? P
     // scraper's "permit" | "inspection" | "violation"; null means a permit.
     string? RecordType = null, string? WorkType = null,
     DateTime? ExpirationDate = null, DateTime? InspectionDate = null,
-    string? BusinessName = null, string? PropertyType = null)
+    string? BusinessName = null, string? PropertyType = null,
+    // SourceUrl is the dataset's home page; RecordUrl opens this one record and is null when
+    // the source has no such link.
+    string? RecordUrl = null, RecordLinkKind? RecordUrlKind = null,
+    string? ApplicantName = null)
 {
     public bool IsInspection => IsRecordType("inspection");
     public bool IsViolation => IsRecordType("violation");
@@ -45,6 +49,8 @@ public static class PermitNormalizer
             && !string.IsNullOrWhiteSpace(raw.InspectionStatus))
             statusText = raw.InspectionStatus;
 
+        var recordUrl = WebAddress(raw.Source?.RecordUrl);
+
         return new NormalizedPermit(
             ExternalId: raw.RecordId,
             Jurisdiction: raw.Source?.SourceId ?? string.Empty,
@@ -63,8 +69,8 @@ public static class PermitNormalizer
             IssuedDate: ParseUtcDate(raw.IssuedDate),
             EstimatedValue: raw.ProjectValue,     // already decimal? — no string parsing
             SquareFootage: null,                  // never emitted by this provider; field kept for future providers
-            OwnerName: raw.Owner?.Name ?? raw.Owner?.Company,
-            ContractorName: raw.Contractor?.Name ?? raw.Contractor?.Company,
+            OwnerName: FirstNonBlank(raw.Owner?.Name, raw.Owner?.Company),
+            ContractorName: FirstNonBlank(raw.Contractor?.Name, raw.Contractor?.Company),
             SourceUrl: raw.Source?.Url ?? string.Empty,
             Fingerprint: ComputeFingerprint(street, raw.FireSystemType, filedDate, raw.Description),
             RecordType: recordType,
@@ -72,8 +78,34 @@ public static class PermitNormalizer
             ExpirationDate: ParseUtcDate(raw.ExpirationDate),
             InspectionDate: ParseUtcDate(raw.InspectionDate),
             BusinessName: Clean(raw.BusinessName),
-            PropertyType: Clean(raw.PropertyType));
+            PropertyType: Clean(raw.PropertyType),
+            RecordUrl: recordUrl,
+            RecordUrlKind: recordUrl is null ? null : MapRecordLinkKind(raw.Source?.RecordUrlKind),
+            ApplicantName: FirstNonBlank(raw.Applicant?.Name, raw.Applicant?.Company));
     }
+
+    // Some sources name a person, some a company, and some leave the unused one blank.
+    private static string? FirstNonBlank(string? first, string? second)
+        => Clean(first) ?? Clean(second);
+
+    // The record link is shown to users as a clickable link, so anything that is not an
+    // absolute web address is dropped.
+    private static string? WebAddress(string? value)
+    {
+        var cleaned = Clean(value);
+        if (cleaned is null || !Uri.TryCreate(cleaned, UriKind.Absolute, out var uri)) return null;
+        return uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps ? cleaned : null;
+    }
+
+    // Only "page" is the city's own page for the record. A kind this code does not know is
+    // treated as raw data, so a link is never described as more than it is.
+    private static RecordLinkKind MapRecordLinkKind(string? kind)
+        => Clean(kind)?.ToLowerInvariant() switch
+        {
+            "page" => RecordLinkKind.Page,
+            "rest" => RecordLinkKind.Rest,
+            _ => RecordLinkKind.Data,
+        };
 
     private static string? Clean(string? value)
         => string.IsNullOrWhiteSpace(value) ? null : value.Trim();

@@ -116,6 +116,9 @@ public static class DevSeeder
             permit.FiledDate = filed;
             permit.IssuedDate = def.Status == PermitStatusKind.New ? null : filed.AddHours(12);
             permit.Fingerprint = Fingerprint(def, filed);
+            permit.SourceUrl = permit.Source.SourceUrl;
+            permit.RecordUrl = SampleRecordUrl(permit.Source, def);
+            permit.RecordUrlKind = RecordLinkKind.Page;
             permit.FirstSeenAt = filed;
             permit.LastSeenAt = nowUtc;
             permit.CreatedAt = filed;
@@ -430,6 +433,9 @@ public static class DevSeeder
 
     private static readonly Guid[] SamplePermitIds = SampleLeads.Select(l => G(1000 + l.N)).ToArray();
 
+    private static string SampleRecordUrl(Source source, SeedLead l) =>
+        $"{source.SourceUrl}/records/seed-{l.N}";
+
     private static string Fingerprint(SeedLead l, DateTime filed) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
             $"{l.Address}|{l.PermitType}|{filed:yyyy-MM-dd}|{l.Title}"))).ToLowerInvariant();
@@ -463,7 +469,9 @@ public static class DevSeeder
                 FiledDate = filed, IssuedDate = l.Status == PermitStatusKind.New ? null : filed.AddHours(12),
                 EstimatedValue = l.Value, SquareFootage = l.Sqft,
                 OwnerName = null, ContractorName = l.Contractor,
-                SourceUrl = $"{source.SourceUrl}/records/seed-{l.N}",
+                SourceUrl = source.SourceUrl,
+                RecordUrl = SampleRecordUrl(source, l),
+                RecordUrlKind = RecordLinkKind.Page,
                 Fingerprint = Fingerprint(l, filed),
                 FirstSeenAt = filed, LastSeenAt = nowUtc, CreatedAt = filed, UpdatedAt = nowUtc,
             };

@@ -75,6 +75,8 @@ public static class LeadsEndpoints
                     .Select(s => new LeadSignalDto(s.SignalType, s.Description, s.Weight)).ToList(),
                 SourceName = o.Permit.Source.Name,
                 PermitSourceUrl = o.Permit.SourceUrl,
+                PermitRecordUrl = o.Permit.RecordUrl,
+                PermitRecordUrlKind = o.Permit.RecordUrlKind,
                 SourceLastCheckedAt = o.Permit.Source.LastSuccessfulRunAt,
             })
             .FirstOrDefaultAsync(ct);
@@ -88,7 +90,8 @@ public static class LeadsEndpoints
             summary.EstimatedValue, summary.Reason, summary.IsNew,
             found.Confidence, found.Row.FirstDetectedAt, found.LastUpdatedAt,
             found.Permit, found.Participants, found.Signals,
-            new LeadSourceDto(found.SourceName, found.PermitSourceUrl, found.SourceLastCheckedAt)));
+            new LeadSourceDto(found.SourceName, found.PermitSourceUrl, found.SourceLastCheckedAt,
+                found.PermitRecordUrl, found.PermitRecordUrlKind)));
     }
 
     private static async Task<IResult> ExportCsv(
@@ -114,7 +117,9 @@ public static class LeadsEndpoints
             .Select(o => new LeadExportRow(
                 o.LeadScore, o.Permit.Address, o.Permit.City, o.Permit.PermitType, o.Category,
                 o.Permit.Description, o.Permit.FiledDate, o.Permit.EstimatedValue,
-                o.Permit.OwnerName, o.Permit.ContractorName, o.Permit.SourceUrl))
+                o.Permit.OwnerName, o.Permit.ContractorName,
+                // The record's own link where there is one, otherwise the dataset it came from.
+                o.Permit.RecordUrl ?? o.Permit.SourceUrl))
             .ToListAsync(ct);
 
         if (rows.Count > ExportCap)

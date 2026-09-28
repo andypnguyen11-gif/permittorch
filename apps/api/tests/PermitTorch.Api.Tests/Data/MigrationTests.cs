@@ -81,7 +81,10 @@ public class MigrationTests : IAsyncLifetime
         Assert.Equal("boolean:NO:false", column);
 
         var applied = await db.Database.GetAppliedMigrationsAsync();
-        Assert.Equal(new[] { "InitialCreate", "AddCategoryOverridden", "AddPermitDetailFields" },
+        Assert.Equal(new[]
+            {
+                "InitialCreate", "AddCategoryOverridden", "AddPermitDetailFields", "AddPermitRecordLink",
+            },
             applied.Select(m => m[(m.IndexOf('_') + 1)..]).ToArray());
     }
 
@@ -150,5 +153,45 @@ public class MigrationTests : IAsyncLifetime
         var stored = await db.Permits.AsNoTracking().SingleAsync(p => p.Id == both);
         Assert.Null(stored.RecordType);
         Assert.Null(stored.ExpirationDate);
+    }
+
+    [Fact]
+    public async Task Record_link_migration_adds_empty_columns_and_leaves_stored_permits_alone()
+    {
+        await using var db = CreateContext();
+        var migrator = db.GetInfrastructure().GetRequiredService<IMigrator>();
+        await migrator.MigrateAsync("AddPermitDetailFields");
+
+        var marketId = Guid.NewGuid();
+        var sourceId = Guid.NewGuid();
+        var permitId = Guid.NewGuid();
+        await db.Database.ExecuteSqlAsync($"""
+            INSERT INTO markets (id, name, city, state, slug, active)
+            VALUES ({marketId}, 'San Francisco', 'San Francisco', 'CA', 'san-francisco-ca', true);
+            INSERT INTO sources (id, market_id, name, city, state, portal_type, source_url, jurisdiction,
+                                 active, records_last_run, health_status)
+            VALUES ({sourceId}, {marketId}, 'SF Fire', 'San Francisco', 'CA', 'socrata',
+                    'https://data.sf.gov/d/wb4c-6hwj', 'sf-fire-inspections', true, 0, 0);
+            INSERT INTO permits (id, source_id, external_id, status, city, state, source_url,
+                                 fingerprint, first_seen_at, last_seen_at, created_at, updated_at)
+            VALUES ({permitId}, {sourceId}, 'sf-fire-inspections:1', 1, 'San Francisco', 'CA',
+                    'https://data.sf.gov/d/wb4c-6hwj', 'fp-1', now(), now(), now(), now());
+            """);
+
+        await migrator.MigrateAsync();
+
+        var columns = await db.Database
+            .SqlQuery<string>($"SELECT column_name || ':' || data_type || ':' || is_nullable AS \"Value\" FROM information_schema.columns WHERE table_name = 'permits'")
+            .ToListAsync();
+        Assert.Contains("record_url:text:YES", columns);
+        Assert.Contains("record_url_kind:integer:YES", columns);
+        Assert.Contains("applicant_name:text:YES", columns);
+
+        // A stored permit has no record link until it is scraped again; the dataset link stays.
+        var stored = await db.Permits.AsNoTracking().SingleAsync(p => p.Id == permitId);
+        Assert.Null(stored.RecordUrl);
+        Assert.Null(stored.RecordUrlKind);
+        Assert.Null(stored.ApplicantName);
+        Assert.Equal("https://data.sf.gov/d/wb4c-6hwj", stored.SourceUrl);
     }
 }

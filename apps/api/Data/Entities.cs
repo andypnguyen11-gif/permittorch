@@ -53,13 +53,16 @@ public class Permit
     public int? SquareFootage { get; set; }
     public string? OwnerName { get; set; }
     public string? ContractorName { get; set; }
+    public string? ApplicantName { get; set; }
     public string? RecordType { get; set; }                // scraper: "permit" | "inspection" | "violation"; null = permit
     public string? WorkType { get; set; }                  // scraper: e.g. "new_installation", "repair"
     public DateTime? ExpirationDate { get; set; }
     public DateTime? InspectionDate { get; set; }
     public string? BusinessName { get; set; }
     public string? PropertyType { get; set; }              // scraper: e.g. "school", "restaurant"
-    public string SourceUrl { get; set; } = null!;
+    public string SourceUrl { get; set; } = null!;         // the dataset or portal home page, shared by the whole source
+    public string? RecordUrl { get; set; }                 // opens this one record; null when the source has no such link
+    public RecordLinkKind? RecordUrlKind { get; set; }     // what RecordUrl opens; null exactly when RecordUrl is
     public string Fingerprint { get; set; } = null!;       // sha256 of address|permit_type|filed_date|description
     public DateTime FirstSeenAt { get; set; }
     public DateTime LastSeenAt { get; set; }
