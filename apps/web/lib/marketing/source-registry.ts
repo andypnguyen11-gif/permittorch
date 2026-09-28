@@ -1,7 +1,7 @@
-// Public, static source registry for the 31 scraper-supported markets and their
-// 40 government data sources. Copied from
+// Public, static source registry for the 32 scraper-supported markets and their
+// 44 government data sources. Copied from
 // docs/superpowers/plans/2026-08-19-permittorch-mvp/scraper-source-registry.json
-// (captured 2026-09-26, run cH1rI8svA59YgyW58). Keep in sync by hand; never import the JSON at runtime.
+// (captured 2026-09-26, run cH1rI8svA59YgyW58; Atlanta and four sources added 2026-09-28). Keep in sync by hand; never import the JSON at runtime.
 
 export type PortalType = "arcgis" | "socrata" | "ckan" | "accela" | "carto" | "energov";
 
@@ -18,6 +18,7 @@ export const PORTAL_TYPE_LABELS: Record<PortalType, string> = {
 };
 
 export const REGISTRY_MARKETS: RegistryMarket[] = [
+  { slug: "atlanta-ga", name: "Atlanta", city: "Atlanta", state: "GA", jurisdictionKey: "ga/atlanta" },
   { slug: "austin-tx", name: "Austin", city: "Austin", state: "TX", jurisdictionKey: "tx/austin" },
   { slug: "baltimore-md", name: "Baltimore", city: "Baltimore", state: "MD", jurisdictionKey: "md/baltimore" },
   { slug: "boston-ma", name: "Boston", city: "Boston", state: "MA", jurisdictionKey: "ma/boston" },
@@ -52,14 +53,18 @@ export const REGISTRY_MARKETS: RegistryMarket[] = [
 ];
 
 export const REGISTRY_SOURCES: RegistrySource[] = [
+  { sourceId: "atlanta-fire-permits", marketSlug: "atlanta-ga", name: "Atlanta Fire Protection Permits (Accela Citizen Access, Building module)", portalType: "accela" },
   { sourceId: "austin-construction-permits", marketSlug: "austin-tx", name: "Austin Issued Construction Permits", portalType: "socrata" },
   { sourceId: "baltimore-building-permits", marketSlug: "baltimore-md", name: "Open Baltimore Building Permits", portalType: "arcgis" },
   { sourceId: "boston-building-permits", marketSlug: "boston-ma", name: "Boston Approved Building Permits", portalType: "ckan" },
   { sourceId: "charlotte-building-permits", marketSlug: "charlotte-nc", name: "Mecklenburg County Building Permits", portalType: "arcgis" },
+  { sourceId: "charlotte-accela-permits", marketSlug: "charlotte-nc", name: "Mecklenburg County Accela Permits (all trades, keyword)", portalType: "arcgis" },
   { sourceId: "chicago-building-permits", marketSlug: "chicago-il", name: "Chicago Building Permits", portalType: "socrata" },
   { sourceId: "cosprings-fire-permits", marketSlug: "colorado-springs-co", name: "Colorado Springs Fire Department Records", portalType: "accela" },
   { sourceId: "columbus-building-permits", marketSlug: "columbus-oh", name: "Columbus Building Permits", portalType: "arcgis" },
   { sourceId: "detroit-bseed-permits", marketSlug: "detroit-mi", name: "Detroit BSEED Building Permits", portalType: "arcgis" },
+  { sourceId: "detroit-bseed-fire-alarm-permits", marketSlug: "detroit-mi", name: "Detroit BSEED Trades Permits (Fire Alarm permit type)", portalType: "arcgis" },
+  { sourceId: "detroit-bseed-trades-permits", marketSlug: "detroit-mi", name: "Detroit BSEED Trades Permits (sprinkler and suppression, keyword)", portalType: "arcgis" },
   { sourceId: "fortworth-permits", marketSlug: "fort-worth-tx", name: "Fort Worth Permits (CIVIC)", portalType: "arcgis" },
   { sourceId: "kcmo-issued-permits", marketSlug: "kansas-city-mo", name: "Kansas City, MO Issued Building Permits", portalType: "socrata" },
   { sourceId: "la-building-permits", marketSlug: "los-angeles-ca", name: "LA Building Permits", portalType: "socrata" },

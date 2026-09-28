@@ -17,8 +17,8 @@ test.describe("admin area", () => {
       await expect(page.getByRole("list", { name: "Health summary" })).toBeVisible();
       await expect(page.getByText(AUSTIN_SOURCE_NAME, { exact: true })).toBeVisible();
       await expect(page.getByText(SAN_ANTONIO_SOURCE_NAME, { exact: true })).toBeVisible();
-      // All 40 registry sources are listed, whatever their current health.
-      await expect(page.locator("main table tbody tr")).toHaveCount(40);
+      // All 44 registry sources are listed, whatever their current health.
+      await expect(page.locator("main table tbody tr")).toHaveCount(44);
     });
 
     test("every admin page renders", async ({ page }) => {

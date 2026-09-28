@@ -6,7 +6,7 @@ The suite does **not** start servers; it expects them running and fails fast (gl
 ## Run locally
 
 ```bash
-# 1. Postgres (docker, :5432) + migrations + seed (31 markets, 40 sources, 10 sample leads).
+# 1. Postgres (docker, :5432) + migrations + seed (32 markets, 44 sources, 10 sample leads).
 #    Samples and E2E identities are opt-in: .env needs SEED_SAMPLE_DATA=true and
 #    SEED_E2E_IDENTITIES=true (both are ignored when ASPNETCORE_ENVIRONMENT=Production).
 docker compose up -d
@@ -50,7 +50,7 @@ Stop the servers afterwards with `pkill -f "PermitTorch.Api|next dev|next start"
 | `leads.spec.ts` | Feed (7 Austin leads), category filter, search, empty state, lead detail score breakdown (score = clamp(Σ signal weights)) and source | Firebase users |
 | `saved.spec.ts` | Save → `/app/saved` → mark contacted (persisted) → remove; re-runnable | Firebase users |
 | `entitlement.spec.ts` | Unsubscribed user sees nothing; Austin-only user gets not-found for San Antonio lead `…000201` and never sees other markets | Firebase users |
-| `admin.spec.ts` | SuperAdmin sees all 40 sources + admin pages; member has no admin nav and is redirected to `/app` | Firebase users |
+| `admin.spec.ts` | SuperAdmin sees all 44 sources + admin pages; member has no admin nav and is redirected to `/app` | Firebase users |
 | `billing.spec.ts` | Checkout picker posts `{ plan, marketSlugs }` and lands on `checkout.stripe.com` (never pays) | Firebase users + Stripe test key |
 
 Specs that cannot run skip themselves with the missing variable names in the reason.

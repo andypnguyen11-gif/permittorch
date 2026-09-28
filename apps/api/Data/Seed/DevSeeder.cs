@@ -11,7 +11,7 @@ namespace PermitTorch.Api.Data.Seed;
 /// independent parts, each behind its own gate so production can only ever receive the registry
 /// and an explicitly named operator account:
 /// <list type="number">
-/// <item>Registry upsert (31 markets, 40 sources) — always runs; safe in every environment.</item>
+/// <item>Registry upsert (32 markets, 44 sources) — always runs; safe in every environment.</item>
 /// <item>Sample permits — only with <c>SEED_SAMPLE_DATA=true</c>, outside Production, and while
 /// the database holds no permits other than the samples themselves.</item>
 /// <item>E2E identities (E2E SuperAdmin from <c>SUPERADMIN_FIREBASE_UID</c>, entitled and
@@ -159,13 +159,15 @@ public static class DevSeeder
         new(config.GetSection("Scoring").Get<ScoringOptions>() ?? new ScoringOptions());
 
     // Registry captured from scraper task run cH1rI8svA59YgyW58 (2026-09-26) — mirrors
-    // docs/superpowers/plans/2026-08-19-permittorch-mvp/scraper-source-registry.json (31 markets,
-    // 40 sources; DevSeederTests fails if they drift). Source.Jurisdiction MUST equal the scraper's
+    // docs/superpowers/plans/2026-08-19-permittorch-mvp/scraper-source-registry.json (32 markets,
+    // 44 sources; DevSeederTests fails if they drift). Scraper build 0.1.16 added Atlanta and
+    // four sources on 2026-09-28. Source.Jurisdiction MUST equal the scraper's
     // source.sourceId / COVERAGE_REPORT sourceStats[].sourceId. Adding a market = a row here + JSON.
     private const string ScraperUrl = "https://apify.com/scrapelabmax/us-fire-permit-leads-scraper";
 
     private static readonly (string Slug, string Name, string City, string State)[] MarketDefs =
     {
+        ("atlanta-ga", "Atlanta", "Atlanta", "GA"),
         ("austin-tx", "Austin", "Austin", "TX"),
         ("baltimore-md", "Baltimore", "Baltimore", "MD"),
         ("boston-ma", "Boston", "Boston", "MA"),
@@ -202,14 +204,18 @@ public static class DevSeeder
     // PortalType is a best-effort label from the scraper README (records carry the authoritative provider in source.provider).
     private static readonly (string SourceId, string MarketSlug, string Name, string PortalType)[] SourceDefs =
     {
+        ("atlanta-fire-permits", "atlanta-ga", "Atlanta Fire Protection Permits (Accela Citizen Access, Building module)", "accela"),
         ("austin-construction-permits", "austin-tx", "Austin Issued Construction Permits", "socrata"),
         ("baltimore-building-permits", "baltimore-md", "Open Baltimore Building Permits", "arcgis"),
         ("boston-building-permits", "boston-ma", "Boston Approved Building Permits", "ckan"),
         ("charlotte-building-permits", "charlotte-nc", "Mecklenburg County Building Permits", "arcgis"),
+        ("charlotte-accela-permits", "charlotte-nc", "Mecklenburg County Accela Permits (all trades, keyword)", "arcgis"),
         ("chicago-building-permits", "chicago-il", "Chicago Building Permits", "socrata"),
         ("cosprings-fire-permits", "colorado-springs-co", "Colorado Springs Fire Department Records", "accela"),
         ("columbus-building-permits", "columbus-oh", "Columbus Building Permits", "arcgis"),
         ("detroit-bseed-permits", "detroit-mi", "Detroit BSEED Building Permits", "arcgis"),
+        ("detroit-bseed-fire-alarm-permits", "detroit-mi", "Detroit BSEED Trades Permits (Fire Alarm permit type)", "arcgis"),
+        ("detroit-bseed-trades-permits", "detroit-mi", "Detroit BSEED Trades Permits (sprinkler and suppression, keyword)", "arcgis"),
         ("fortworth-permits", "fort-worth-tx", "Fort Worth Permits (CIVIC)", "arcgis"),
         ("kcmo-issued-permits", "kansas-city-mo", "Kansas City, MO Issued Building Permits", "socrata"),
         ("la-building-permits", "los-angeles-ca", "LA Building Permits", "socrata"),

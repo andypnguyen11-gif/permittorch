@@ -63,7 +63,7 @@ public class DevSeederTests : IAsyncLifetime
         var first = await SeedAsync(Config(DevFlags(Identities)));
         var second = await SeedAsync(Config(DevFlags(Identities)));
 
-        Assert.Equal(new DevSeeder.SeedCounts(31, 40, 10, 10), first);
+        Assert.Equal(new DevSeeder.SeedCounts(32, 44, 10, 10), first);
         Assert.Equal(first, second);
 
         await using var db = CreateContext();
@@ -101,6 +101,27 @@ public class DevSeederTests : IAsyncLifetime
         Assert.Equal(expectedMarkets, markets);
         Assert.Equal(expectedSources, sources);
         Assert.All(await db.Markets.ToListAsync(), m => Assert.True(m.Active));
+    }
+
+    // Added by scraper build 0.1.16. Records for a source that is not registered are dropped.
+    [Theory]
+    [InlineData("atlanta-fire-permits", "atlanta-ga", "Atlanta", "GA", "accela")]
+    [InlineData("charlotte-accela-permits", "charlotte-nc", "Charlotte", "NC", "arcgis")]
+    [InlineData("detroit-bseed-fire-alarm-permits", "detroit-mi", "Detroit", "MI", "arcgis")]
+    [InlineData("detroit-bseed-trades-permits", "detroit-mi", "Detroit", "MI", "arcgis")]
+    public async Task Sources_added_by_the_scraper_are_registered_under_their_market(
+        string sourceId, string marketSlug, string city, string state, string portalType)
+    {
+        await SeedAsync(Config());
+
+        await using var db = CreateContext();
+        var source = await db.Sources.Include(s => s.Market).SingleAsync(s => s.Jurisdiction == sourceId);
+        Assert.Equal(marketSlug, source.Market.Slug);
+        Assert.Equal(city, source.City);
+        Assert.Equal(state, source.State);
+        Assert.Equal(portalType, source.PortalType);
+        Assert.True(source.Active);
+        Assert.True(source.Market.Active);
     }
 
     [Fact]
@@ -236,7 +257,7 @@ public class DevSeederTests : IAsyncLifetime
         var first = await SeedAsync(Config(Identities));
         var second = await SeedAsync(Config(Identities));
 
-        Assert.Equal(new DevSeeder.SeedCounts(31, 40, 0, 0), first);
+        Assert.Equal(new DevSeeder.SeedCounts(32, 44, 0, 0), first);
         Assert.Equal(first, second);
         await using var db = CreateContext();
         Assert.Equal(0, await db.AppUsers.CountAsync());
@@ -249,7 +270,7 @@ public class DevSeederTests : IAsyncLifetime
         var output = new StringWriter();
         var counts = await SeedAsync(Config(DevFlags(new(Identities) { ["APIFY_TOKEN"] = "" })), "Production", output);
 
-        Assert.Equal(new DevSeeder.SeedCounts(31, 40, 0, 0), counts);
+        Assert.Equal(new DevSeeder.SeedCounts(32, 44, 0, 0), counts);
         await using var db = CreateContext();
         Assert.Equal(0, await db.Permits.CountAsync());
         Assert.Equal(0, await db.FireOpportunities.CountAsync());
@@ -257,8 +278,8 @@ public class DevSeederTests : IAsyncLifetime
         Assert.Equal(0, await db.Organizations.CountAsync());
         Assert.Equal(0, await db.Subscriptions.CountAsync());
         Assert.Equal(0, await db.SubscriptionMarkets.CountAsync());
-        Assert.Equal(31, await db.Markets.CountAsync());
-        Assert.Equal(40, await db.Sources.CountAsync());
+        Assert.Equal(32, await db.Markets.CountAsync());
+        Assert.Equal(44, await db.Sources.CountAsync());
         var log = output.ToString();
         Assert.Contains($"WARN: {DevSeeder.SampleDataFlag}=true is ignored in Production", log);
         Assert.Contains($"WARN: {DevSeeder.E2EIdentitiesFlag}=true is ignored in Production", log);

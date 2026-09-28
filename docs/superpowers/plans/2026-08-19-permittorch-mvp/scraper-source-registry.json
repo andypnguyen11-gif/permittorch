@@ -2,9 +2,22 @@
   "capturedFrom": {
     "taskId": "xatpyth2FgbUydjLd",
     "runId": "cH1rI8svA59YgyW58",
-    "capturedAt": "2026-09-26"
+    "capturedAt": "2026-09-26",
+    "amended": [
+      {
+        "date": "2026-09-28",
+        "note": "Scraper build 0.1.16 added one market (Atlanta) and four sources. Names are the actor's own labels, from ~/.permittorch/scraper-new-sources-2026-09-28.md."
+      }
+    ]
   },
   "markets": [
+    {
+      "slug": "atlanta-ga",
+      "name": "Atlanta",
+      "city": "Atlanta",
+      "state": "GA",
+      "jurisdictionKey": "ga/atlanta"
+    },
     {
       "slug": "austin-tx",
       "name": "Austin",
@@ -225,6 +238,12 @@
   ],
   "sources": [
     {
+      "sourceId": "atlanta-fire-permits",
+      "marketSlug": "atlanta-ga",
+      "name": "Atlanta Fire Protection Permits (Accela Citizen Access, Building module)",
+      "portalType": "accela"
+    },
+    {
       "sourceId": "austin-construction-permits",
       "marketSlug": "austin-tx",
       "name": "Austin Issued Construction Permits",
@@ -249,6 +268,12 @@
       "portalType": "arcgis"
     },
     {
+      "sourceId": "charlotte-accela-permits",
+      "marketSlug": "charlotte-nc",
+      "name": "Mecklenburg County Accela Permits (all trades, keyword)",
+      "portalType": "arcgis"
+    },
+    {
       "sourceId": "chicago-building-permits",
       "marketSlug": "chicago-il",
       "name": "Chicago Building Permits",
@@ -270,6 +295,18 @@
       "sourceId": "detroit-bseed-permits",
       "marketSlug": "detroit-mi",
       "name": "Detroit BSEED Building Permits",
+      "portalType": "arcgis"
+    },
+    {
+      "sourceId": "detroit-bseed-fire-alarm-permits",
+      "marketSlug": "detroit-mi",
+      "name": "Detroit BSEED Trades Permits (Fire Alarm permit type)",
+      "portalType": "arcgis"
+    },
+    {
+      "sourceId": "detroit-bseed-trades-permits",
+      "marketSlug": "detroit-mi",
+      "name": "Detroit BSEED Trades Permits (sprinkler and suppression, keyword)",
       "portalType": "arcgis"
     },
     {

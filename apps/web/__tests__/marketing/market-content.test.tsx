@@ -24,11 +24,20 @@ afterEach(() => cleanup());
 const REGISTRY_JSON = join(import.meta.dirname, "../../../../docs/superpowers/plans/2026-08-19-permittorch-mvp/scraper-source-registry.json");
 
 describe("source registry", () => {
-  it("has the 31 scraper-supported markets and 40 sources", () => {
-    expect(REGISTRY_MARKETS).toHaveLength(31);
-    expect(REGISTRY_SOURCES).toHaveLength(40);
-    expect(new Set(REGISTRY_MARKETS.map((m) => m.slug)).size).toBe(31);
-    expect(new Set(REGISTRY_SOURCES.map((s) => s.sourceId)).size).toBe(40);
+  it("has the 32 scraper-supported markets and 44 sources", () => {
+    expect(REGISTRY_MARKETS).toHaveLength(32);
+    expect(REGISTRY_SOURCES).toHaveLength(44);
+    expect(new Set(REGISTRY_MARKETS.map((m) => m.slug)).size).toBe(32);
+    expect(new Set(REGISTRY_SOURCES.map((s) => s.sourceId)).size).toBe(44);
+  });
+
+  it("lists the sources the scraper added under their market", () => {
+    expect(getMarketSources("atlanta-ga")!.sources.map((s) => s.sourceId)).toEqual(["atlanta-fire-permits"]);
+    expect(getMarketSources("charlotte-nc")!.sources.map((s) => s.sourceId))
+      .toEqual(["charlotte-building-permits", "charlotte-accela-permits"]);
+    expect(getMarketSources("detroit-mi")!.sources.map((s) => s.sourceId)).toEqual([
+      "detroit-bseed-permits", "detroit-bseed-fire-alarm-permits", "detroit-bseed-trades-permits",
+    ]);
   });
 
   it("gives every market at least one source and every source a known market", () => {

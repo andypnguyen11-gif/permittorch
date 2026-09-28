@@ -103,7 +103,7 @@ Rollback: in the dashboard, open the service's **Deployments**, pick the previou
 
 The seeder is idempotent and gated per part:
 
-- **Registry** (31 markets, 40 sources): always upserted.
+- **Registry** (32 markets, 44 sources): always upserted.
 - **Sample permits**: only with `SEED_SAMPLE_DATA=true`, outside Production, and while the database holds no real permits.
 - **E2E identities** (E2E SuperAdmin from `SUPERADMIN_FIREBASE_UID`, the entitled/unentitled orgs and the seeded Pro subscription): only with `SEED_E2E_IDENTITIES=true` outside Production.
 - **Operator SuperAdmin**: `SEED_SUPERADMIN_FIREBASE_UID` (+ `SEED_SUPERADMIN_EMAIL`), in any environment. It creates that one user (or promotes them if they already signed up) and nothing else: no subscription.
@@ -115,11 +115,11 @@ In production:
 1. Run the registry seed **inside the Railway api service only**, so it sees the service's own variables (`ASPNETCORE_ENVIRONMENT=Production`). Never run it from a local shell with a sourced `.env` and a production `DATABASE_URL`: that shell's environment is Development, where the local opt-ins apply.
    ```bash
    railway ssh --service api -- sh -c 'cd /app && dotnet PermitTorch.Api.dll seed'
-   # → Seed complete. markets=31 sources=40 permits=<n> opportunities=<n>
+   # → Seed complete. markets=32 sources=44 permits=<n> opportunities=<n>
    ```
    The output must contain no `WARN: SEED_…` line. If it does, remove that variable from the service.
 2. Optional, once the operator has signed up in the web app: make them SuperAdmin by setting `SEED_SUPERADMIN_FIREBASE_UID` (their Firebase uid) and `SEED_SUPERADMIN_EMAIL` on the api service with `--skip-deploys`, run the same command, then delete both variables.
-3. Verify: `curl -s https://api.permittorch.com/api/markets` returns 31 markets. Check the database with `railway ssh --service Postgres -- sh -c 'psql -U "$PGUSER" -d "$PGDATABASE" -c "select count(*) from permits where external_id like \$\$seed-%\$\$"'`, which must return 0.
+3. Verify: `curl -s https://api.permittorch.com/api/markets` returns 32 markets. Check the database with `railway ssh --service Postgres -- sh -c 'psql -U "$PGUSER" -d "$PGDATABASE" -c "select count(*) from permits where external_id like \$\$seed-%\$\$"'`, which must return 0.
 
 Seed markets and sources **before** the first boot with `Pipeline__Enabled=true`. Otherwise ingestion could consume an Apify run while the sources table is still empty.
 
@@ -155,7 +155,12 @@ A permit stored before build 0.1.16 has no link until the scraper delivers it ag
 To fill the links, scrape again over the wanted window:
 
 1. Deploy the API first, so the new fields are read. Register any new source before the run (see the seeder section): records for a source the app does not know are dropped and counted as failures.
-2. Start runs of the `permittorch-daily` task with the input override `onlyNewRecords: false`, split by state group so each run stays under the result cap. Start them from the task, not from the actor: ingestion only reads runs of the task.
+2. Start runs of the `permittorch-daily` task, split by state group, with these input overrides. Pass them as overrides on the run and never save them to the task, or the daily run stops being only-new.
+   - `onlyNewRecords: false`.
+   - `maxResults` above the expected total for the group. When the cap binds, sources share it equally and the rest of each source is cut. A full 90-day run over all markets returns about 17,100 leads.
+   - `lookbackDays` (up to 365) only if leads older than 90 days need links.
+
+   Start the runs from the task, not from the actor: ingestion only reads runs of the task.
 3. Let ingestion take every run that was started. A run marks the leads it delivers as seen, so a run that is never ingested hides those leads from the daily only-new feed.
 4. Check the result:
    ```bash
@@ -164,6 +169,8 @@ To fill the links, scrape again over the wanted window:
    Omaha and Tulsa stay at zero: their portals have no link that can be verified. A few Atlanta and Colorado Springs records on a temporary number also have none.
 
 Permits are matched on the scraper's record id, so a second scrape updates the stored permit and never adds a second one. A stored link is kept when a later record arrives without one.
+
+Every lead a run touches is scored again as it is ingested, from the permit's merged fields. A full rescoring pass is only needed for leads the run did not reach.
 
 ## Rescoring every lead after a scoring change
 
@@ -192,7 +199,7 @@ The Railway volume backup schedules on `postgres-volume` are **DAILY** (6-day re
 ```bash
 API=https://api.permittorch.com; WEB=https://permittorch.com
 curl -s $API/api/health                                                    # {"status":"ok"}
-curl -s $API/api/markets | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))'   # 31
+curl -s $API/api/markets | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))'   # 32
 for p in / /pricing /locations /login /sitemap.xml; do curl -s -o /dev/null -w "$p %{http_code}\n" $WEB$p; done   # 200s
 curl -s $WEB/sitemap.xml | grep -m3 '<loc>'                                # absolute https://permittorch.com/... URLs
 curl -s -o /dev/null -w "%{http_code}\n" -H "Origin: $WEB" $API/api/leads  # 401 (+ Access-Control-Allow-Origin: $WEB)
