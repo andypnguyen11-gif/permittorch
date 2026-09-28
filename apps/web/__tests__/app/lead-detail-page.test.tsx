@@ -45,6 +45,40 @@ describe("/app/leads/[id] page (mock API)", () => {
     expect(screen.getByText("No participants listed on this permit.")).toBeInTheDocument();
   });
 
+  it("shows the humanized new permit fields when present, and hides them when null", async () => {
+    // lead-011: fire contractor already assigned; has workType/propertyType/expirationDate,
+    // but no recordType/inspectionDate/businessName.
+    await renderPage("lead-011");
+    const permit = screen.getByRole("region", { name: "Permit" });
+    expect(within(permit).getByText("Standpipe repair")).toBeInTheDocument();
+    expect(within(permit).getByText("Parking structure")).toBeInTheDocument();
+    expect(within(permit).queryByText("Record type")).not.toBeInTheDocument();
+    expect(within(permit).queryByText("Inspection date")).not.toBeInTheDocument();
+    expect(within(permit).queryByText("Business")).not.toBeInTheDocument();
+    // The fire-contractor-assigned signal is visible in the score breakdown.
+    expect(screen.getByText("A fire-protection contractor is already on this permit")).toBeInTheDocument();
+  });
+
+  it("titles the card 'Inspection' with a 'Record number' label, and shows raw status and inspection date", async () => {
+    // lead-013: recordType inspection, rawStatus differs from the FAILED label.
+    await renderPage("lead-013");
+    const record = screen.getByRole("region", { name: "Inspection" });
+    expect(within(record).getByText("Record number")).toBeInTheDocument();
+    expect(within(record).queryByText("Permit number")).not.toBeInTheDocument();
+    expect(within(record).getByText("Record type")).toBeInTheDocument(); // humanized recordType field label
+    expect(within(record).getAllByText("Inspection").length).toBeGreaterThanOrEqual(2); // card title + field value
+    expect(within(record).getByText("Business")).toBeInTheDocument();
+    expect(within(record).getByText("Inspection date")).toBeInTheDocument();
+    expect(screen.getByText("Failed · Open/Follow-Up Needed")).toBeInTheDocument();
+  });
+
+  it("renders a CONTRACTOR participant with the label 'Contractor'", async () => {
+    await renderPage("lead-014");
+    const participants = screen.getByRole("region", { name: "Participants" });
+    expect(within(participants).getByText("Contractor")).toBeInTheDocument();
+    expect(within(participants).getByText("Bayou Sprinkler Co.")).toBeInTheDocument();
+  });
+
   it("renders not-found for an unknown lead id in mock mode", async () => {
     await expect(renderPage("lead-does-not-exist")).rejects.toThrow("NOT_FOUND");
   });

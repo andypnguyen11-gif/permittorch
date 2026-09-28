@@ -25,6 +25,9 @@ export interface LeadDetail extends LeadSummary {
     permitNumber: string | null; description: string | null; zip: string | null;
     issuedDate: string | null; squareFootage: number | null;
     ownerName: string | null; contractorName: string | null;
+    rawStatus: string | null; recordType: string | null; workType: string | null;
+    expirationDate: string | null; inspectionDate: string | null;
+    businessName: string | null; propertyType: string | null;
   };
   participants: { role: string; name: string }[];
   signals: LeadSignal[];

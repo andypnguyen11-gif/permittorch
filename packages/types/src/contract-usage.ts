@@ -42,8 +42,11 @@ const detail: LeadDetail = {
     permitNumber: "FP-2026-001", description: "Install sprinkler system",
     zip: "77002", issuedDate: null, squareFootage: 12000,
     ownerName: "Acme Holdings", contractorName: null,
+    rawStatus: null, recordType: null, workType: "new_installation",
+    expirationDate: null, inspectionDate: null,
+    businessName: null, propertyType: "commercial",
   },
-  participants: [{ role: "Owner", name: "Acme Holdings" }],
+  participants: [{ role: "OWNER", name: "Acme Holdings" }],
   signals: [signal],
   source: { name: "Houston", url: "https://example.com", lastCheckedAt: null },
 };
