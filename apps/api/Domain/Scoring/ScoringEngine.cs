@@ -22,6 +22,7 @@ public class ScoringOptions
         ["HIGH_PROJECT_VALUE"] = 10,
         ["LARGE_SQUARE_FOOTAGE"] = 10,
         ["NO_CONTRACTOR_LISTED"] = 10,
+        ["FIRE_CONTRACTOR_ASSIGNED"] = -25,
         ["OLD_PERMIT"] = -20,
         ["CLOSED_PERMIT"] = -30,
     };
@@ -44,6 +45,18 @@ public class ScoringEngine
         new(@"\bnew\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static readonly Regex CommercialPattern =
         new(@"commercial|construction|\bbuild(ing)?\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    // Contractor names that mark the fire-protection trade, including the abbreviations city
+    // portals truncate them to ("SPRKLR", "SPR."). Whole words only, so "Bonfire" and "Spruce"
+    // do not match.
+    private static readonly Regex FireTradePattern =
+        new(@"\bfire\b|sprinkler|sprklr|\bspr\b|\balarms?\b|suppression",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    public static readonly TimeSpan RecentFiledWindow = TimeSpan.FromHours(72);
+    public static readonly TimeSpan RecentIssuedWindow = TimeSpan.FromDays(7);
+    public static readonly TimeSpan RecentInspectionWindow = TimeSpan.FromDays(7);
+    public static readonly TimeSpan OldAfter = TimeSpan.FromDays(90);
 
     private readonly ScoringOptions _options;
 
@@ -69,10 +82,8 @@ public class ScoringEngine
         if (permit.Status == PermitStatusKind.Failed)
             AddSignal(signals, "FAILED_INSPECTION", "Failed inspection or violation on record");
 
-        if (permit.FiledDate.HasValue
-            && permit.FiledDate.Value > nowUtc.AddHours(-72)
-            && permit.FiledDate.Value <= nowUtc)
-            AddSignal(signals, "PERMIT_RECENT", "Filed within the last 72 hours");
+        if (RecentActivity(permit, nowUtc) is { } recent)
+            AddSignal(signals, "PERMIT_RECENT", recent);
 
         if (permit.EstimatedValue is > 500_000m)
             AddSignal(signals, "HIGH_PROJECT_VALUE", "Project value above $500K");
@@ -80,10 +91,19 @@ public class ScoringEngine
         if (permit.SquareFootage is > 20_000)
             AddSignal(signals, "LARGE_SQUARE_FOOTAGE", "Large square footage (over 20,000 sqft)");
 
+        // Inspections and violations never carry a contractor, so its absence says nothing.
         if (string.IsNullOrWhiteSpace(permit.ContractorName))
-            AddSignal(signals, "NO_CONTRACTOR_LISTED", "No contractor listed yet");
+        {
+            if (!permit.IsInspection && !permit.IsViolation)
+                AddSignal(signals, "NO_CONTRACTOR_LISTED", "No contractor listed yet");
+        }
+        else if (FireTradePattern.IsMatch(permit.ContractorName))
+        {
+            AddSignal(signals, "FIRE_CONTRACTOR_ASSIGNED",
+                "A fire-protection contractor is already on this permit");
+        }
 
-        if (permit.FiledDate.HasValue && permit.FiledDate.Value < nowUtc.AddDays(-90))
+        if (LatestActivity(permit, nowUtc) is { } latest && latest < nowUtc - OldAfter)
             AddSignal(signals, "OLD_PERMIT", "Permit older than 90 days");
 
         if (permit.Status == PermitStatusKind.Closed)
@@ -91,6 +111,35 @@ public class ScoringEngine
 
         var score = Math.Clamp(signals.Sum(s => s.Weight), 0, 100);
         return new ScoreResult(score, signals, BuildReason(signals));
+    }
+
+    // The most specific recent event wins the wording. Dates in the future are not activity.
+    private static string? RecentActivity(NormalizedPermit permit, DateTime nowUtc)
+    {
+        if (IsWithin(permit.FiledDate, RecentFiledWindow, nowUtc))
+            return "Filed within the last 72 hours";
+        if (IsWithin(permit.IssuedDate, RecentIssuedWindow, nowUtc))
+            return "Issued within the last 7 days";
+        // An inspection visit on a permit record is not new permit activity.
+        if ((permit.IsInspection || permit.IsViolation)
+            && IsWithin(permit.InspectionDate, RecentInspectionWindow, nowUtc))
+            return "Inspected within the last 7 days";
+        return null;
+    }
+
+    private static bool IsWithin(DateTime? date, TimeSpan window, DateTime nowUtc)
+        => date.HasValue && date.Value > nowUtc - window && date.Value <= nowUtc;
+
+    // Latest of the filed, issued and inspection dates that have already happened.
+    private static DateTime? LatestActivity(NormalizedPermit permit, DateTime nowUtc)
+    {
+        DateTime? latest = null;
+        foreach (var date in new[] { permit.FiledDate, permit.IssuedDate, permit.InspectionDate })
+        {
+            if (date.HasValue && date.Value <= nowUtc && (latest is null || date.Value > latest.Value))
+                latest = date;
+        }
+        return latest;
     }
 
     private void AddSignal(List<ScoredSignal> signals, string signalType, string description)
