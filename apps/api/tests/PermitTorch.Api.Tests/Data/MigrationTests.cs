@@ -84,6 +84,7 @@ public class MigrationTests : IAsyncLifetime
         Assert.Equal(new[]
             {
                 "InitialCreate", "AddCategoryOverridden", "AddPermitDetailFields", "AddPermitRecordLink",
+                "MovePermitNamesToTheirRoles",
             },
             applied.Select(m => m[(m.IndexOf('_') + 1)..]).ToArray());
     }
@@ -193,5 +194,87 @@ public class MigrationTests : IAsyncLifetime
         Assert.Null(stored.RecordUrlKind);
         Assert.Null(stored.ApplicantName);
         Assert.Equal("https://data.sf.gov/d/wb4c-6hwj", stored.SourceUrl);
+    }
+
+    // Until scraper build 0.1.16, Chicago sent the owner and Nashville the applicant in the
+    // contractor field. The names are kept and moved to the role they belong to.
+    [Fact]
+    public async Task Misfiled_names_move_to_their_own_role_and_other_sources_are_untouched()
+    {
+        await using var db = CreateContext();
+        var migrator = db.GetInfrastructure().GetRequiredService<IMigrator>();
+        await migrator.MigrateAsync("AddPermitRecordLink");
+
+        var marketId = Guid.NewGuid();
+        await db.Database.ExecuteSqlAsync($"""
+            INSERT INTO markets (id, name, city, state, slug, active)
+            VALUES ({marketId}, 'Anywhere', 'Anywhere', 'IL', 'anywhere-il', true);
+            """);
+        var sources = new Dictionary<string, Guid>();
+        foreach (var jurisdiction in new[]
+                 {
+                     "chicago-building-permits", "nashville-building-permits", "miami-building-permits",
+                 })
+        {
+            sources[jurisdiction] = Guid.NewGuid();
+            await db.Database.ExecuteSqlAsync($"""
+                INSERT INTO sources (id, market_id, name, city, state, portal_type, source_url,
+                                     jurisdiction, active, records_last_run, health_status)
+                VALUES ({sources[jurisdiction]}, {marketId}, {jurisdiction}, 'Anywhere', 'IL', 'socrata',
+                        'https://example.gov', {jurisdiction}, true, 0, 0);
+                """);
+        }
+
+        var chicago = Guid.NewGuid();            // the "contractor" is the owner
+        var chicagoWithOwner = Guid.NewGuid();   // already has an owner: that one is kept
+        var nashville = Guid.NewGuid();          // the "contractor" is the applicant
+        var miami = Guid.NewGuid();              // a real contractor on another source
+        foreach (var (id, source, owner, contractor) in new (Guid, string, string?, string?)[]
+                 {
+                     (chicago, "chicago-building-permits", null, "2 N. RIVERSIDE OWNER, LLC"),
+                     (chicagoWithOwner, "chicago-building-permits", "Stored Owner LLC", "HANNA, JOHN C"),
+                     (nashville, "nashville-building-permits", null, "Jane Doe"),
+                     (miami, "miami-building-permits", null, "Reliable Fire Co"),
+                 })
+        {
+            await db.Database.ExecuteSqlAsync($"""
+                INSERT INTO permits (id, source_id, external_id, status, city, state, owner_name,
+                                     contractor_name, source_url, fingerprint, first_seen_at,
+                                     last_seen_at, created_at, updated_at)
+                VALUES ({id}, {sources[source]}, {id.ToString()}, 1, 'Anywhere', 'IL', {owner},
+                        {contractor}, 'https://example.gov', {id.ToString()}, now(), now(), now(), now());
+                INSERT INTO permit_participants (id, permit_id, role, name)
+                VALUES ({Guid.NewGuid()}, {id}, 2, {contractor});
+                """);
+        }
+        await db.Database.ExecuteSqlAsync($"""
+            INSERT INTO permit_participants (id, permit_id, role, name)
+            VALUES ({Guid.NewGuid()}, {chicagoWithOwner}, 0, 'Stored Owner LLC');
+            """);
+
+        await migrator.MigrateAsync();
+
+        var permits = await db.Permits.AsNoTracking().ToDictionaryAsync(p => p.Id);
+        var participants = await db.PermitParticipants.AsNoTracking().ToListAsync();
+        List<(ParticipantRole, string)> Of(Guid permitId) => participants
+            .Where(p => p.PermitId == permitId).OrderBy(p => p.Role)
+            .Select(p => (p.Role, p.Name)).ToList();
+
+        Assert.Equal("2 N. RIVERSIDE OWNER, LLC", permits[chicago].OwnerName);
+        Assert.Null(permits[chicago].ContractorName);
+        Assert.Equal([(ParticipantRole.Owner, "2 N. RIVERSIDE OWNER, LLC")], Of(chicago));
+
+        Assert.Equal("Stored Owner LLC", permits[chicagoWithOwner].OwnerName);
+        Assert.Null(permits[chicagoWithOwner].ContractorName);
+        Assert.Equal([(ParticipantRole.Owner, "Stored Owner LLC")], Of(chicagoWithOwner));
+
+        Assert.Equal("Jane Doe", permits[nashville].ApplicantName);
+        Assert.Null(permits[nashville].ContractorName);
+        Assert.Null(permits[nashville].OwnerName);
+        Assert.Equal([(ParticipantRole.Applicant, "Jane Doe")], Of(nashville));
+
+        Assert.Equal("Reliable Fire Co", permits[miami].ContractorName);
+        Assert.Null(permits[miami].ApplicantName);
+        Assert.Equal([(ParticipantRole.Contractor, "Reliable Fire Co")], Of(miami));
     }
 }
