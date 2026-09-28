@@ -27,7 +27,10 @@ public sealed record LeadPermitDto(
     string? RawStatus, string? RecordType, string? WorkType,
     DateTime? ExpirationDate, DateTime? InspectionDate, string? BusinessName, string? PropertyType);
 
-public sealed record ParticipantDto(ParticipantRole Role, string Name);
+// Phone, Email and LicenseNumber are the party's own, as the permit record publishes them.
+// Served only with a lead's detail, which needs a signed-in user entitled to its market.
+public sealed record ParticipantDto(ParticipantRole Role, string Name,
+    string? Phone, string? Email, string? LicenseNumber);
 
 // Url is the dataset's home page. RecordUrl opens this one record and is null when the source
 // has no such link; RecordUrlKind says what it opens, so the link is never labelled as more

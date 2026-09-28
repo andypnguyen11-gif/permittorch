@@ -78,6 +78,11 @@ public class PermitParticipant
     public Guid PermitId { get; set; }
     public ParticipantRole Role { get; set; }
     public string Name { get; set; } = null!;
+    // As the permit record publishes them for this party; never looked up anywhere else.
+    // They belong to the name above: when the name changes they are replaced, not kept.
+    public string? Phone { get; set; }
+    public string? Email { get; set; }
+    public string? LicenseNumber { get; set; }
 }
 
 public class FireOpportunity

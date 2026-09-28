@@ -8,6 +8,10 @@ using PermitTorch.Api.Infrastructure.Apify;
 
 namespace PermitTorch.Api.Domain.Normalization;
 
+/// <summary>What the permit record itself publishes about how to reach a party. Never looked
+/// up anywhere else. Null members mean the record has none.</summary>
+public record PartyContact(string? Phone, string? Email, string? LicenseNumber);
+
 // LOCKED shape — master plan §5.
 public record NormalizedPermit(string ExternalId, string Jurisdiction, string? PermitNumber,
     string? PermitType, string? Description, PermitStatusKind Status, string? RawStatus,
@@ -22,7 +26,10 @@ public record NormalizedPermit(string ExternalId, string Jurisdiction, string? P
     // SourceUrl is the dataset's home page; RecordUrl opens this one record and is null when
     // the source has no such link.
     string? RecordUrl = null, RecordLinkKind? RecordUrlKind = null,
-    string? ApplicantName = null)
+    string? ApplicantName = null,
+    // Null when the record publishes no contact detail for that party.
+    PartyContact? OwnerContact = null, PartyContact? ApplicantContact = null,
+    PartyContact? ContractorContact = null)
 {
     public bool IsInspection => IsRecordType("inspection");
     public bool IsViolation => IsRecordType("violation");
@@ -81,7 +88,54 @@ public static class PermitNormalizer
             PropertyType: Clean(raw.PropertyType),
             RecordUrl: recordUrl,
             RecordUrlKind: recordUrl is null ? null : MapRecordLinkKind(raw.Source?.RecordUrlKind),
-            ApplicantName: FirstNonBlank(raw.Applicant?.Name, raw.Applicant?.Company));
+            ApplicantName: FirstNonBlank(raw.Applicant?.Name, raw.Applicant?.Company),
+            OwnerContact: Contact(raw.Owner?.Phone, raw.Owner?.Email, licenseNumber: null),
+            ApplicantContact: Contact(raw.Applicant?.Phone, raw.Applicant?.Email, licenseNumber: null),
+            ContractorContact: Contact(raw.Contractor?.Phone, raw.Contractor?.Email,
+                raw.Contractor?.LicenseNumber));
+    }
+
+    private const int MaxPhoneLength = 50;
+    private const int MaxEmailLength = 254;
+    private const int MaxLicenseLength = 64;
+
+    // A phone as the portal prints it, extension and all: digits, spaces and the usual
+    // punctuation, holding at least one full ten-digit number.
+    private static readonly Regex PhonePattern = new(@"^[0-9+()\-./ xX#,extEXT]+$", RegexOptions.CultureInvariant);
+    // Exactly one plain address. The value becomes a mailto link, so nothing that could
+    // carry a second recipient, a subject or markup is accepted.
+    private static readonly Regex EmailPattern =
+        new(@"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(\.[A-Za-z0-9\-]+)+$", RegexOptions.CultureInvariant);
+
+    // Copied as published, never reformatted. A value that is not what its field says is
+    // dropped: an empty field is better than a wrong one.
+    private static PartyContact? Contact(string? phone, string? email, string? licenseNumber)
+    {
+        var contact = new PartyContact(CleanPhone(phone), CleanEmail(email), CleanLicense(licenseNumber));
+        return contact is { Phone: null, Email: null, LicenseNumber: null } ? null : contact;
+    }
+
+    private static string? CleanPhone(string? value)
+    {
+        var cleaned = Clean(value);
+        if (cleaned is null || cleaned.Length > MaxPhoneLength || !PhonePattern.IsMatch(cleaned)) return null;
+        var digits = 0;
+        foreach (var c in cleaned) if (char.IsAsciiDigit(c)) digits++;
+        return digits >= 10 ? cleaned : null;
+    }
+
+    private static string? CleanEmail(string? value)
+    {
+        var cleaned = Clean(value);
+        return cleaned is not null && cleaned.Length <= MaxEmailLength && EmailPattern.IsMatch(cleaned)
+            ? cleaned
+            : null;
+    }
+
+    private static string? CleanLicense(string? value)
+    {
+        var cleaned = Clean(value);
+        return cleaned is not null && cleaned.Length <= MaxLicenseLength ? cleaned : null;
     }
 
     // Some sources name a person, some a company, and some leave the unused one blank.

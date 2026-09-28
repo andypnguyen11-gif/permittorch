@@ -340,7 +340,7 @@ public sealed class IngestionJob : BackgroundService
             permit.UpdatedAt = now;
         }
 
-        await SyncParticipantsAsync(db, permit, isNew, ct);
+        await SyncParticipantsAsync(db, permit, normalized, isNew, ct);
 
         // Classified and scored from the stored permit, which holds the merged view: a field
         // this record omitted keeps the value an earlier record supplied. It is also the view the
@@ -407,8 +407,8 @@ public sealed class IngestionJob : BackgroundService
 
     // Owner, Contractor and Applicant participants mirror the permit's merged names.
     // Other roles are left alone: they belong to providers that report them directly.
-    private static async Task SyncParticipantsAsync(AppDbContext db, Permit permit, bool isNew,
-        CancellationToken ct)
+    private static async Task SyncParticipantsAsync(AppDbContext db, Permit permit,
+        NormalizedPermit record, bool isNew, CancellationToken ct)
     {
         var existing = isNew
             ? new List<PermitParticipant>()
@@ -418,23 +418,49 @@ public sealed class IngestionJob : BackgroundService
                         || p.Role == ParticipantRole.Applicant))
                 .ToListAsync(ct);
 
-        SyncParticipant(db, permit, existing, ParticipantRole.Owner, permit.OwnerName);
-        SyncParticipant(db, permit, existing, ParticipantRole.Contractor, permit.ContractorName);
-        SyncParticipant(db, permit, existing, ParticipantRole.Applicant, permit.ApplicantName);
+        SyncParticipant(db, permit, existing, ParticipantRole.Owner, permit.OwnerName,
+            record.OwnerName, record.OwnerContact);
+        SyncParticipant(db, permit, existing, ParticipantRole.Contractor, permit.ContractorName,
+            record.ContractorName, record.ContractorContact);
+        SyncParticipant(db, permit, existing, ParticipantRole.Applicant, permit.ApplicantName,
+            record.ApplicantName, record.ApplicantContact);
     }
 
+    // A phone, an email or a licence number belongs to the party it came with. It is kept
+    // while the permit names the same party, filled or replaced when this record names that
+    // party and publishes one, and dropped the moment the permit names somebody else. A
+    // contact on a record that names nobody says nothing about whose it is, and is ignored.
     private static void SyncParticipant(AppDbContext db, Permit permit,
-        List<PermitParticipant> existing, ParticipantRole role, string? name)
+        List<PermitParticipant> existing, ParticipantRole role, string? name,
+        string? recordName, PartyContact? recordContact)
     {
         var wanted = string.IsNullOrWhiteSpace(name) ? null : name.Trim();
         var current = existing.Where(p => p.Role == role).ToList();
-        if (wanted is not null && current.Count == 1 && current[0].Name == wanted) return;
+        if (wanted is null)
+        {
+            db.RemoveRange(current);
+            return;
+        }
+
+        var kept = current.Count == 1 && current[0].Name == wanted ? current[0] : null;
+        var fromRecord = recordName?.Trim() == wanted ? recordContact : null;
+        var phone = fromRecord?.Phone ?? kept?.Phone;
+        var email = fromRecord?.Email ?? kept?.Email;
+        var licenseNumber = fromRecord?.LicenseNumber ?? kept?.LicenseNumber;
+
+        if (kept is not null)
+        {
+            kept.Phone = phone;
+            kept.Email = email;
+            kept.LicenseNumber = licenseNumber;
+            return;
+        }
 
         db.RemoveRange(current);
-        if (wanted is null) return;
         db.Add(new PermitParticipant
         {
             Id = Guid.NewGuid(), PermitId = permit.Id, Role = role, Name = wanted,
+            Phone = phone, Email = email, LicenseNumber = licenseNumber,
         });
     }
 

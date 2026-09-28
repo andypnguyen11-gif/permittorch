@@ -32,8 +32,12 @@ public record RawPermitRecord(
 public record RawJurisdiction(string? City, string? County, string? State);
 public record RawAddress(string? Street, string? City, string? State, string? Zip,
     double? Latitude, double? Longitude);
-public record RawParty(string? Name, string? Company);
-public record RawContractor(string? Name, string? Company, string? LicenseNumber);
+// Phone and Email (scraper 0.1.17) are the party's own, as the permit record publishes them.
+// They arrive only on runs that set includeContactDetails. Trailing and optional, so the
+// locked positional shape is unchanged and older datasets still parse.
+public record RawParty(string? Name, string? Company, string? Phone = null, string? Email = null);
+public record RawContractor(string? Name, string? Company, string? LicenseNumber,
+    string? Phone = null, string? Email = null);
 // Url is the dataset or portal home page, the same for every record of a source. RecordUrl
 // (scraper 0.1.16) opens the one record and is null where the portal has no such link;
 // RecordUrlKind is "page" | "rest" | "data".

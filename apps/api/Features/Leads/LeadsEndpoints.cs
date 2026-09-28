@@ -70,7 +70,8 @@ public static class LeadsEndpoints
                     o.Permit.PropertyType),
                 Participants = o.Permit.Participants
                     .OrderBy(p => p.Role).ThenBy(p => p.Name)
-                    .Select(p => new ParticipantDto(p.Role, p.Name)).ToList(),
+                    .Select(p => new ParticipantDto(p.Role, p.Name, p.Phone, p.Email, p.LicenseNumber))
+                    .ToList(),
                 Signals = o.Signals
                     .Select(s => new LeadSignalDto(s.SignalType, s.Description, s.Weight)).ToList(),
                 SourceName = o.Permit.Source.Name,

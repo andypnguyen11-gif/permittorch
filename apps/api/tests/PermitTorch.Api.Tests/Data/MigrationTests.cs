@@ -84,7 +84,7 @@ public class MigrationTests : IAsyncLifetime
         Assert.Equal(new[]
             {
                 "InitialCreate", "AddCategoryOverridden", "AddPermitDetailFields", "AddPermitRecordLink",
-                "MovePermitNamesToTheirRoles",
+                "MovePermitNamesToTheirRoles", "AddParticipantContact",
             },
             applied.Select(m => m[(m.IndexOf('_') + 1)..]).ToArray());
     }
@@ -276,5 +276,19 @@ public class MigrationTests : IAsyncLifetime
         Assert.Equal("Reliable Fire Co", permits[miami].ContractorName);
         Assert.Null(permits[miami].ApplicantName);
         Assert.Equal([(ParticipantRole.Contractor, "Reliable Fire Co")], Of(miami));
+    }
+
+    [Fact]
+    public async Task Participant_contact_migration_adds_empty_columns()
+    {
+        await using var db = CreateContext();
+        await db.Database.MigrateAsync();
+
+        var columns = await db.Database
+            .SqlQuery<string>($"SELECT column_name || ':' || data_type || ':' || is_nullable AS \"Value\" FROM information_schema.columns WHERE table_name = 'permit_participants'")
+            .ToListAsync();
+        Assert.Contains("phone:text:YES", columns);
+        Assert.Contains("email:text:YES", columns);
+        Assert.Contains("license_number:text:YES", columns);
     }
 }

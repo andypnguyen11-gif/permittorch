@@ -122,6 +122,53 @@ public class ApifyModelsTests
         Assert.Equal("Reliable Fire Co", record.Contractor!.Company);
     }
 
+    // Fields added by scraper build 0.1.17: each party's own phone and email. Made-up values.
+    [Fact]
+    public void RawPermitRecord_ReadsEachPartysPhoneAndEmail()
+    {
+        const string json = """
+        {
+          "recordId": "mesa-building-permits:PMT26-00001",
+          "owner": { "name": null, "company": "Acme Holdings LLC", "phone": null, "email": null },
+          "applicant": { "name": "Jane Doe", "company": null, "phone": "480-555-0199", "email": null },
+          "contractor": { "name": null, "company": "Reliable Fire Co", "licenseNumber": "000000",
+            "phone": "(480) 555-0142", "email": "office@example.com" },
+          "source": { "sourceId": "mesa-building-permits", "jurisdiction": "Mesa, AZ",
+            "provider": "socrata", "url": "https://data.mesaaz.gov/d/x" }
+        }
+        """;
+
+        var record = JsonSerializer.Deserialize<RawPermitRecord>(json, Web);
+
+        Assert.NotNull(record);
+        Assert.Equal("(480) 555-0142", record!.Contractor!.Phone);
+        Assert.Equal("office@example.com", record.Contractor.Email);
+        Assert.Equal("000000", record.Contractor.LicenseNumber);
+        Assert.Equal("480-555-0199", record.Applicant!.Phone);
+        Assert.Null(record.Applicant.Email);
+        Assert.Null(record.Owner!.Phone);
+    }
+
+    // Build 0.1.16 and earlier send parties without phone or email.
+    [Fact]
+    public void RawPermitRecord_ReadsParties_ThatHaveNoContactFields()
+    {
+        const string json = """
+        {
+          "recordId": "x:1",
+          "owner": { "name": "Owner", "company": null },
+          "contractor": { "name": null, "company": "Reliable Fire Co", "licenseNumber": null }
+        }
+        """;
+
+        var record = JsonSerializer.Deserialize<RawPermitRecord>(json, Web);
+
+        Assert.Null(record!.Owner!.Phone);
+        Assert.Null(record.Owner.Email);
+        Assert.Null(record.Contractor!.Phone);
+        Assert.Null(record.Contractor.Email);
+    }
+
     // Datasets written before build 0.1.16 carry none of the new fields.
     [Fact]
     public void RawPermitRecord_ReadsAnOlderRecord_WithoutTheNewFields()
