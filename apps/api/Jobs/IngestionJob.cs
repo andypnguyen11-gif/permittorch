@@ -335,12 +335,17 @@ public sealed class IngestionJob : BackgroundService
 
         await SyncParticipantsAsync(db, permit, isNew, ct);
 
+        // Classified and scored from the stored permit, which holds the merged view: a field
+        // this record omitted keeps the value an earlier record supplied. It is also the view the
+        // daily rescoring uses, so the two can never disagree about a lead.
+        var merged = StoredPermit.ToNormalized(permit);
+
         // A manual reclassification (admin) is authoritative: keep the stored category and
         // confidence and only rescore against the refreshed permit fields. The classifier never
         // overrides — or drops — an opportunity an admin has categorised.
         var classification = permit.Opportunity is { CategoryOverridden: true } overridden
             ? new ClassificationResult(overridden.Category, overridden.Confidence, "manual")
-            : FireClassifier.Classify(normalized);
+            : FireClassifier.Classify(merged);
 
         // A record that no longer classifies (an inspection that was completed, a description
         // that changed) keeps the lead it already has, with its stored category, and is scored
@@ -350,9 +355,8 @@ public sealed class IngestionJob : BackgroundService
             classification = new ClassificationResult(existing.Category, existing.Confidence, "retained");
         if (classification is null) return (isNew, false);
 
-        // Scored from the stored permit, which holds the merged view: a field this record
-        // omitted keeps the value an earlier record supplied.
-        var scoreResult = _scoringEngine.Score(StoredPermit.ToNormalized(permit), classification, now);
+        var scoreResult = _scoringEngine.Score(merged, classification, now);
+
         var opportunity = permit.Opportunity;
         if (opportunity is null)
         {
@@ -360,7 +364,10 @@ public sealed class IngestionJob : BackgroundService
             {
                 Id = Guid.NewGuid(),
                 PermitId = permit.Id,
-                FirstDetectedAt = now,
+                // A record already on file that only now becomes a lead (a rule change, a
+                // reprocessed run) was discovered when the record first arrived, not today.
+                // Dating it today would mark old activity as new in the feed and in digests.
+                FirstDetectedAt = isNew ? now : permit.FirstSeenAt,
             };
             permit.Opportunity = opportunity;
             db.Add(opportunity);

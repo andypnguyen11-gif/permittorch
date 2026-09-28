@@ -84,6 +84,9 @@ public class PermitNormalizerRecordTypeTests
     [InlineData("Completed", PermitStatusKind.Closed)]
     [InlineData("Expired", PermitStatusKind.Closed)]
     [InlineData("Passed", PermitStatusKind.Closed)]
+    [InlineData("Failed", PermitStatusKind.Failed)]
+    [InlineData("Not Completed", PermitStatusKind.Failed)]
+    [InlineData("Did Not Pass", PermitStatusKind.Failed)]
     public void Normalize_MapsInspectionStatus_WhenAnInspectionHasNoPermitStatus(string inspectionStatus,
         PermitStatusKind expected)
     {
@@ -126,6 +129,8 @@ public class PermitNormalizerRecordTypeTests
     [InlineData("resolved", PermitStatusKind.Closed)]
     [InlineData("complied", PermitStatusKind.Closed)]
     [InlineData("closed", PermitStatusKind.Closed)]
+    [InlineData("not abated", PermitStatusKind.Failed)]     // the resolving word, negated
+    [InlineData("unresolved", PermitStatusKind.Failed)]
     public void Normalize_MapsViolationStatus(string permitStatus, PermitStatusKind expected)
     {
         var normalized = PermitNormalizer.Normalize(Raw(
@@ -155,6 +160,13 @@ public class PermitNormalizerRecordTypeTests
     [InlineData("Application Incomplete", PermitStatusKind.New)]
     [InlineData("Failed", PermitStatusKind.Failed)]
     [InlineData("Reopened", PermitStatusKind.Unknown)]   // "open" inside another word is not Open
+    // A refusal is never read as an approval.
+    [InlineData("Not Approved", PermitStatusKind.Closed)]
+    [InlineData("Plan Review Not Approved", PermitStatusKind.Closed)]
+    [InlineData("Disapproved", PermitStatusKind.Closed)]
+    [InlineData("Denied", PermitStatusKind.Closed)]
+    [InlineData("Rejected", PermitStatusKind.Closed)]
+    [InlineData("Unapproved", PermitStatusKind.Unknown)]
     public void Normalize_MapsOpenAndApproved_ForPermits(string permitStatus, PermitStatusKind expected)
     {
         var normalized = PermitNormalizer.Normalize(Raw(recordType: "permit", permitStatus: permitStatus));
@@ -171,5 +183,17 @@ public class PermitNormalizerRecordTypeTests
 
         Assert.Null(normalized.RecordType);
         Assert.Equal(PermitStatusKind.Active, normalized.Status);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Normalize_StoresNoRawStatus_ForABlankStatus(string permitStatus)
+    {
+        // A blank would otherwise replace a stored status text on the next merge.
+        var normalized = PermitNormalizer.Normalize(Raw(recordType: "permit", permitStatus: permitStatus));
+
+        Assert.Null(normalized.RawStatus);
+        Assert.Equal(PermitStatusKind.Unknown, normalized.Status);
     }
 }

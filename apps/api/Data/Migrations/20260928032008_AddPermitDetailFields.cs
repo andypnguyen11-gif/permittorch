@@ -71,6 +71,10 @@ namespace PermitTorch.Api.Data.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            // Before this migration nothing wrote Owner (0) or Contractor (2) participants, so
+            // removing them restores the earlier state exactly.
+            migrationBuilder.Sql("DELETE FROM permit_participants WHERE role IN (0, 2);");
+
             migrationBuilder.DropColumn(
                 name: "business_name",
                 table: "permits");

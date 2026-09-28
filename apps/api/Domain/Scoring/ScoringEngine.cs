@@ -46,11 +46,14 @@ public class ScoringEngine
     private static readonly Regex CommercialPattern =
         new(@"commercial|construction|\bbuild(ing)?\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
-    // Contractor names that mark the fire-protection trade, including the abbreviations city
-    // portals truncate them to ("SPRKLR", "SPR."). Whole words only, so "Bonfire" and "Spruce"
-    // do not match.
+    // Contractor names that mark the fire-protection trade. Built from the names production
+    // actually holds: "fire" anywhere in a word ("D8Fire", "FIREQUEST", "DynaFire") except in
+    // everyday words, and the abbreviations city portals truncate "sprinkler" to ("SPRKLR",
+    // "SPKLR", "SPRINK", "SPR."). Only consulted for a permit already classified as fire
+    // protection, which is what makes a bare "fire" in the name meaningful.
     private static readonly Regex FireTradePattern =
-        new(@"\bfire\b|sprinkler|sprklr|\bspr\b|\balarms?\b|suppression",
+        new(@"(?<!bon|camp|wild|back|mis)fire(?!place|side|stone|wood|arm|fly)"
+            + @"|sprink|sprklr|spklr|spinkler|\bspr\b|\balarms?\b|suppression|life\s*safety",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     public static readonly TimeSpan RecentFiledWindow = TimeSpan.FromHours(72);

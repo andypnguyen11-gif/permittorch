@@ -52,7 +52,7 @@ public static class PermitNormalizer
             PermitType: raw.FireSystemType,   // carries the scraper's classification hint downstream
             Description: raw.Description,
             Status: MapStatus(statusText, isInspection, isViolation),
-            RawStatus: statusText,
+            RawStatus: string.IsNullOrWhiteSpace(statusText) ? null : statusText,
             Address: street,
             City: raw.Address?.City ?? raw.Jurisdiction?.City ?? string.Empty,
             State: raw.Address?.State ?? raw.Jurisdiction?.State ?? string.Empty,
@@ -87,6 +87,9 @@ public static class PermitNormalizer
     private static readonly (Regex Pattern, PermitStatusKind Kind)[] StatusRules =
     [
         (new Regex(@"\bvoid|\bnot\s+issued\b|\bwithdrawn\b|\bexpired\b|\bcancel", StatusOpts), PermitStatusKind.Closed),
+        // A refused application is over. Listed before the weak "approved" fallback below so
+        // "Not Approved" and "Plan Review Not Approved" are never read as approved.
+        (new Regex(@"\bnot\s+approved\b|\bdisapproved\b|\bdenied\b|\brejected\b", StatusOpts), PermitStatusKind.Closed),
         (new Regex(@"\binactive\b", StatusOpts), PermitStatusKind.Closed),
         (new Regex(@"\bincomplete\b|\brenewal\b|\bapplied\b|\bsubmitted\b", StatusOpts), PermitStatusKind.New),
         (new Regex(@"\bissued\b|\b(re)?activ(e|ated)\b", StatusOpts), PermitStatusKind.Active),
@@ -103,7 +106,7 @@ public static class PermitNormalizer
     // rules would read as a new application.
     private static readonly (Regex Pattern, PermitStatusKind Kind)[] InspectionStatusRules =
     [
-        (new Regex(@"follow|\bfail", StatusOpts), PermitStatusKind.Failed),
+        (new Regex(@"follow|\bfail|\bnot\s+(complete|pass)", StatusOpts), PermitStatusKind.Failed),
         (new Regex(@"\bpending\b|\bscheduled\b", StatusOpts), PermitStatusKind.Inspection),
         (new Regex(@"\bcomplete|\bexpired\b|\bclosed\b|\bpass", StatusOpts), PermitStatusKind.Closed),
     ];
@@ -112,6 +115,8 @@ public static class PermitNormalizer
     // "order to abate", "referred to hearing") is work somebody still has to do.
     private static readonly Regex ResolvedViolationPattern =
         new(@"\babated\b|\brescinded\b|\bclosed\b|\bresolved\b|\bcomplied\b|\bdismissed\b", StatusOpts);
+    // "not abated", "unresolved": the resolving word is there, the resolution is not.
+    private static readonly Regex NegatedPattern = new(@"\bnot\b|\bun", StatusOpts);
 
     // Weakest rules, tried only when nothing above matched.
     private static readonly Regex OpenOrApprovedPattern = new(@"\bopen\b|\bapproved\b", StatusOpts);
@@ -121,7 +126,9 @@ public static class PermitNormalizer
         if (string.IsNullOrWhiteSpace(rawStatus)) return PermitStatusKind.Unknown;
 
         if (isViolation)
-            return ResolvedViolationPattern.IsMatch(rawStatus) ? PermitStatusKind.Closed : PermitStatusKind.Failed;
+            return ResolvedViolationPattern.IsMatch(rawStatus) && !NegatedPattern.IsMatch(rawStatus)
+                ? PermitStatusKind.Closed
+                : PermitStatusKind.Failed;
 
         if (isInspection)
         {

@@ -29,6 +29,10 @@ public sealed class RescoringJob : BackgroundService
     private readonly ScoringEngine _scoringEngine;
     private readonly ILogger<RescoringJob> _logger;
     private readonly TimeSpan _interval;
+    // Rescoring:FullPassOnStartup rescores every lead once when the service starts, whatever its
+    // dates. Set it for the deploy that changes scoring rules or weights, then remove it: the
+    // windowed pass only revisits leads whose time-based signals can still change.
+    private bool _fullPassPending;
 
     public RescoringJob(IServiceScopeFactory scopeFactory, ScoringEngine scoringEngine,
         IConfiguration configuration, ILogger<RescoringJob> logger)
@@ -37,6 +41,7 @@ public sealed class RescoringJob : BackgroundService
         _scoringEngine = scoringEngine;
         _logger = logger;
         _interval = TimeSpan.FromHours(configuration.GetValue<int?>("Rescoring:IntervalHours") ?? 24);
+        _fullPassPending = configuration.GetValue<bool?>("Rescoring:FullPassOnStartup") ?? false;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -46,7 +51,8 @@ public sealed class RescoringJob : BackgroundService
         {
             try
             {
-                await RescoreOnceAsync(DateTime.UtcNow, stoppingToken);
+                await RescoreOnceAsync(DateTime.UtcNow, stoppingToken, fullPass: _fullPassPending);
+                _fullPassPending = false;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -69,7 +75,7 @@ public sealed class RescoringJob : BackgroundService
     }
 
     // Returns the number of opportunities whose score or signals changed.
-    public async Task<int> RescoreOnceAsync(DateTime nowUtc, CancellationToken ct)
+    public async Task<int> RescoreOnceAsync(DateTime nowUtc, CancellationToken ct, bool fullPass = false)
     {
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -85,9 +91,11 @@ public sealed class RescoringJob : BackgroundService
             var query = db.Set<FireOpportunity>()
                 .Include(o => o.Permit)
                 .Include(o => o.Signals)
-                // Any date inside the window can still gain or lose a time-based signal. A permit
-                // with no filed date is always included, as before.
-                .Where(o => o.Permit.FiledDate == null || o.Permit.FiledDate >= windowStart
+                .AsQueryable();
+            // Any date inside the window can still gain or lose a time-based signal. A permit
+            // with no filed date is always included, as before.
+            if (!fullPass)
+                query = query.Where(o => o.Permit.FiledDate == null || o.Permit.FiledDate >= windowStart
                     || o.Permit.IssuedDate >= windowStart || o.Permit.InspectionDate >= windowStart);
             if (lastId is { } after)
                 query = query.Where(o => o.Id.CompareTo(after) > 0);
@@ -148,8 +156,11 @@ public sealed class RescoringJob : BackgroundService
             db.ChangeTracker.Clear();
         }
 
-        _logger.LogInformation("Rescored {Changed} fire opportunities filed within {Days} days",
-            changed, RescoreWindowDays);
+        if (fullPass)
+            _logger.LogInformation("Rescored {Changed} fire opportunities in a full pass", changed);
+        else
+            _logger.LogInformation("Rescored {Changed} fire opportunities active within {Days} days",
+                changed, RescoreWindowDays);
         return changed;
     }
 

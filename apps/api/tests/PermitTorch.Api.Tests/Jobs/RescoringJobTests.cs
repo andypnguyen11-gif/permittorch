@@ -27,7 +27,9 @@ public class RescoringJobTests
     // Seeds a permit + opportunity scored as of scoredAt, exactly as ingestion would have stored it.
     private async Task<Guid> SeedScoredOpportunityAsync(DateTime filedDate, DateTime scoredAt,
         FireCategory category = FireCategory.GeneralFireProtection, bool overridden = false,
-        string description = "Fire protection work", DateTime? issuedDate = null)
+        string description = "Fire protection work", DateTime? issuedDate = null,
+        string contractorName = "Summit General Contractors", DateTime? inspectionDate = null,
+        string? recordType = null, bool scoreWithoutContractor = false)
     {
         await using var db = _fixture.CreateContext();
         var market = new Market
@@ -46,14 +48,19 @@ public class RescoringJobTests
             Id = Guid.NewGuid(), SourceId = source.Id, ExternalId = $"ext-{Guid.NewGuid():N}",
             Description = description, Status = PermitStatusKind.Active, City = "Tulsa",
             State = "OK", FiledDate = filedDate, IssuedDate = issuedDate,
-            ContractorName = "Summit General Contractors",
+            ContractorName = contractorName, InspectionDate = inspectionDate, RecordType = recordType,
             SourceUrl = "https://example.test", Fingerprint = Guid.NewGuid().ToString("N"),
             FirstSeenAt = scoredAt, LastSeenAt = scoredAt, CreatedAt = scoredAt, UpdatedAt = scoredAt,
         };
         var classification = new ClassificationResult(category, overridden ? 1.0m : 0.6m, "test");
         var normalized = new NormalizedPermit(permit.ExternalId, source.Jurisdiction, null, null,
             permit.Description, permit.Status, null, null, "Tulsa", "OK", null, null, null,
-            filedDate, issuedDate, null, null, null, permit.ContractorName, permit.SourceUrl, permit.Fingerprint);
+            filedDate, issuedDate, null, null, null,
+            // scoreWithoutContractor stores the score an older release would have computed,
+            // before it looked at who the contractor is.
+            scoreWithoutContractor ? "Summit General Contractors" : permit.ContractorName,
+            permit.SourceUrl, permit.Fingerprint,
+            RecordType: recordType, InspectionDate: inspectionDate);
         var score = Engine.Score(normalized, classification, scoredAt);
         var opportunity = new FireOpportunity
         {
@@ -208,5 +215,51 @@ public class RescoringJobTests
         var (after, afterSignals) = await LoadAsync(id);
         Assert.DoesNotContain(afterSignals, s => s.SignalType == "PERMIT_RECENT");
         Assert.Equal(before.LeadScore - 15, after.LeadScore);
+    }
+
+    [Fact]
+    public async Task RescoreOnce_DropsAnExpiredInspectionRecency_ForAnInspectionWithNoOtherDate()
+    {
+        var now = DateTime.UtcNow;
+        // Filed date is required by the helper; put it far outside the window so only the
+        // inspection date can bring this lead into the pass.
+        var id = await SeedScoredOpportunityAsync(now.AddDays(-200), scoredAt: now.AddDays(-8),
+            category: FireCategory.FireInspection, recordType: "inspection",
+            inspectionDate: now.AddDays(-10));
+        var (before, beforeSignals) = await LoadAsync(id);
+        Assert.Contains(beforeSignals, s => s.SignalType == "PERMIT_RECENT");
+        var (job, sp) = BuildJob();
+        await using var _ = sp;
+
+        await job.RescoreOnceAsync(now, CancellationToken.None);
+
+        var (after, afterSignals) = await LoadAsync(id);
+        Assert.DoesNotContain(afterSignals, s => s.SignalType == "PERMIT_RECENT");
+        Assert.Equal(before.LeadScore - 15, after.LeadScore);
+    }
+
+    [Fact]
+    public async Task RescoreOnce_FullPass_AppliesNewRules_ToLeadsOutsideTheWindow()
+    {
+        var now = DateTime.UtcNow;
+        // Filed 150 days ago with a fire contractor, scored by a release that ignored who the
+        // contractor was. The windowed pass never reaches it.
+        var id = await SeedScoredOpportunityAsync(now.AddDays(-150), scoredAt: now.AddDays(-1),
+            contractorName: "XYZ FIRE PROTECTION", scoreWithoutContractor: true);
+        var (before, beforeSignals) = await LoadAsync(id);
+        Assert.DoesNotContain(beforeSignals, s => s.SignalType == "FIRE_CONTRACTOR_ASSIGNED");
+        var (job, sp) = BuildJob();
+        await using var _ = sp;
+
+        await job.RescoreOnceAsync(now, CancellationToken.None);
+        var (windowed, _) = await LoadAsync(id);
+        Assert.Equal(before.LeadScore, windowed.LeadScore);
+
+        await job.RescoreOnceAsync(now, CancellationToken.None, fullPass: true);
+
+        var (after, afterSignals) = await LoadAsync(id);
+        Assert.Contains(afterSignals, s => s.SignalType == "FIRE_CONTRACTOR_ASSIGNED");
+        Assert.Equal(Math.Clamp(afterSignals.Sum(s => s.Weight), 0, 100), after.LeadScore);
+        Assert.True(after.LeadScore < before.LeadScore || before.LeadScore == 0);
     }
 }
