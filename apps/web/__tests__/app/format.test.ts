@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   formatDate, formatRelative, formatValueShort, scoreBand,
-  humanizeMachineString, permitStatusDisplay, recordKind,
+  humanizeMachineString, permitStatusDisplay, recordKind, repeatsTitle,
 } from "@/components/app/format";
 
 describe("scoreBand", () => {
@@ -102,5 +102,18 @@ describe("recordKind", () => {
     expect(recordKind("")).toBe("permit");
     expect(recordKind("permit")).toBe("permit");
     expect(recordKind("standpipe")).toBe("permit");
+  });
+});
+
+describe("repeatsTitle", () => {
+  it("is true when the value only repeats the title, ignoring case and spacing", () => {
+    expect(repeatsTitle("Inspection", "Inspection")).toBe(true);
+    expect(repeatsTitle(" inspection ", "Inspection")).toBe(true);
+  });
+
+  it("is false for a different or missing value", () => {
+    expect(repeatsTitle("Fire sprinkler", "Violation")).toBe(false);
+    expect(repeatsTitle("Fire code violation", "Violation")).toBe(false);
+    expect(repeatsTitle(null, "Inspection")).toBe(false);
   });
 });

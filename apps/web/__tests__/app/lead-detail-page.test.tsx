@@ -74,6 +74,8 @@ describe("/app/leads/[id] page (mock API)", () => {
     expect(within(record).getByText("Record number")).toBeInTheDocument();
     expect(within(record).queryByText("Permit number")).not.toBeInTheDocument();
     expect(within(record).queryByText("Record type")).not.toBeInTheDocument();
+    // Its system type is "inspection", which the card title already says.
+    expect(within(record).queryByText("System type")).not.toBeInTheDocument();
     expect(within(record).getByText("Business")).toBeInTheDocument();
     expect(within(record).getByText("Inspection date")).toBeInTheDocument();
     // Present fields still show (Filed, Square footage, Owner).

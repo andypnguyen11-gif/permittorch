@@ -95,7 +95,7 @@ export const mockLeads: LeadSummary[] = [
     reason: "Assembly-occupancy alarm modernization ahead of re-inspection.", isNew: false },
   { id: "lead-013", score: 70, title: "Strip Center Failed Fire Inspection",
     address: "5601 Washington Ave", city: "Houston", state: "TX",
-    category: "FIRE_INSPECTION", permitType: "Fire Inspection", status: "FAILED",
+    category: "FIRE_INSPECTION", permitType: "inspection", status: "FAILED",
     filedDate: daysAgo(3.2), estimatedValue: null,
     reason: "Failed inspection with sprinkler deficiencies — owner needs a corrective contractor.", isNew: false },
   { id: "lead-014", score: 65, title: "Warehouse Sprinkler Head Replacement",
