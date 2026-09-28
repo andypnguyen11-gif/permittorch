@@ -80,6 +80,10 @@ public class ScoringEngineLeadQualityTests
     [InlineData("Fireside Hearth & Home")]
     [InlineData("Fireplace Specialists LLC")]
     [InlineData("Firestone Building Products")]
+    [InlineData("Crossfire Plumbing")]
+    [InlineData("Spitfire Mechanical")]
+    [InlineData("Surefire HVAC")]
+    [InlineData("Firewall Security")]
     [InlineData("Spruce Street Partners")]  // "spr" inside another word is not "SPR."
     [InlineData("Spring Valley Mechanical")]
     public void Score_DoesNotPenalizeANonFireContractor(string contractor)

@@ -87,6 +87,10 @@ public class PermitNormalizerRecordTypeTests
     [InlineData("Failed", PermitStatusKind.Failed)]
     [InlineData("Not Completed", PermitStatusKind.Failed)]
     [InlineData("Did Not Pass", PermitStatusKind.Failed)]
+    [InlineData("Disapproved", PermitStatusKind.Failed)]    // how many portals word a failed inspection
+    [InlineData("Rejected", PermitStatusKind.Failed)]
+    [InlineData("Denied", PermitStatusKind.Failed)]
+    [InlineData("Not Approved", PermitStatusKind.Failed)]
     public void Normalize_MapsInspectionStatus_WhenAnInspectionHasNoPermitStatus(string inspectionStatus,
         PermitStatusKind expected)
     {
@@ -131,6 +135,10 @@ public class PermitNormalizerRecordTypeTests
     [InlineData("closed", PermitStatusKind.Closed)]
     [InlineData("not abated", PermitStatusKind.Failed)]     // the resolving word, negated
     [InlineData("unresolved", PermitStatusKind.Failed)]
+    [InlineData("unabated", PermitStatusKind.Failed)]
+    [InlineData("Closed - Unfounded", PermitStatusKind.Closed)]      // "un" in another word is not a negation
+    [InlineData("Abated - Unpaid Fine", PermitStatusKind.Closed)]
+    [InlineData("Notice of Violation - Abated", PermitStatusKind.Closed)]
     public void Normalize_MapsViolationStatus(string permitStatus, PermitStatusKind expected)
     {
         var normalized = PermitNormalizer.Normalize(Raw(
@@ -167,6 +175,8 @@ public class PermitNormalizerRecordTypeTests
     [InlineData("Denied", PermitStatusKind.Closed)]
     [InlineData("Rejected", PermitStatusKind.Closed)]
     [InlineData("Unapproved", PermitStatusKind.Unknown)]
+    // A refusal only decides the status when no existing rule does.
+    [InlineData("Issued - Inspection Rejected", PermitStatusKind.Active)]
     public void Normalize_MapsOpenAndApproved_ForPermits(string permitStatus, PermitStatusKind expected)
     {
         var normalized = PermitNormalizer.Normalize(Raw(recordType: "permit", permitStatus: permitStatus));
