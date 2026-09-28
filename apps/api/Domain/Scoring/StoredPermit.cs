@@ -14,5 +14,7 @@ public static class StoredPermit
         Address: p.Address, City: p.City, State: p.State, Zip: p.Zip,
         Latitude: p.Latitude, Longitude: p.Longitude, FiledDate: p.FiledDate, IssuedDate: p.IssuedDate,
         EstimatedValue: p.EstimatedValue, SquareFootage: p.SquareFootage, OwnerName: p.OwnerName,
-        ContractorName: p.ContractorName, SourceUrl: p.SourceUrl, Fingerprint: p.Fingerprint);
+        ContractorName: p.ContractorName, SourceUrl: p.SourceUrl, Fingerprint: p.Fingerprint,
+        RecordType: p.RecordType, WorkType: p.WorkType, ExpirationDate: p.ExpirationDate,
+        InspectionDate: p.InspectionDate, BusinessName: p.BusinessName, PropertyType: p.PropertyType);
 }

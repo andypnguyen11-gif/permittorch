@@ -28,7 +28,13 @@ public static class FireClassifier
         ["kitchen_suppression"] = FireCategory.KitchenSuppression,
         ["kitchen_hood"] = FireCategory.KitchenSuppression,
         ["fire_inspection"] = FireCategory.FireInspection,
+        ["inspection"] = FireCategory.FireInspection,
+        ["fire_code_violation"] = FireCategory.ViolationCorrection,
     };
+
+    // Standpipes are installed by the sprinkler trade. Like the catch-all hint below, the
+    // description rules run first, so a record they already recognize keeps its category.
+    private const string StandpipeHint = "standpipe";
 
     private const string WeakFireProtectionHint = "other_fire_protection";
 
@@ -57,6 +63,11 @@ public static class FireClassifier
 
     public static ClassificationResult? Classify(NormalizedPermit permit)
     {
+        // A completed inspection or an abated violation leaves nothing to sell, so it never
+        // becomes a lead. Closed permits are different: they stay and are scored down.
+        if ((permit.IsInspection || permit.IsViolation) && permit.Status == PermitStatusKind.Closed)
+            return null;
+
         var hint = permit.PermitType?.Trim();
         if (hint is not null && FireSystemTypeHints.TryGetValue(hint, out var hinted))
             return new ClassificationResult(hinted, 0.95m, "fire_system_type_hint");
@@ -66,6 +77,12 @@ public static class FireClassifier
             return MatchSpecificRules(permit.Description?.Trim() ?? string.Empty)
                 ?? new ClassificationResult(FireCategory.GeneralFireProtection, 0.6m,
                     "other_fire_protection_hint");
+        }
+
+        if (string.Equals(hint, StandpipeHint, StringComparison.OrdinalIgnoreCase))
+        {
+            return MatchSpecificRules(permit.Description?.Trim() ?? string.Empty)
+                ?? new ClassificationResult(FireCategory.FireSprinkler, 0.85m, "standpipe_hint");
         }
 
         var text = $"{permit.Description} {permit.PermitType}".Trim();

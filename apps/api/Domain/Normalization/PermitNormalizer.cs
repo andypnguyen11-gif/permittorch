@@ -13,7 +13,19 @@ public record NormalizedPermit(string ExternalId, string Jurisdiction, string? P
     string? PermitType, string? Description, PermitStatusKind Status, string? RawStatus,
     string? Address, string City, string State, string? Zip, double? Latitude, double? Longitude,
     DateTime? FiledDate, DateTime? IssuedDate, decimal? EstimatedValue, int? SquareFootage,
-    string? OwnerName, string? ContractorName, string SourceUrl, string Fingerprint);
+    string? OwnerName, string? ContractorName, string SourceUrl, string Fingerprint,
+    // Trailing and optional so the locked positional shape above is unchanged. RecordType is the
+    // scraper's "permit" | "inspection" | "violation"; null means a permit.
+    string? RecordType = null, string? WorkType = null,
+    DateTime? ExpirationDate = null, DateTime? InspectionDate = null,
+    string? BusinessName = null, string? PropertyType = null)
+{
+    public bool IsInspection => IsRecordType("inspection");
+    public bool IsViolation => IsRecordType("violation");
+
+    private bool IsRecordType(string recordType)
+        => string.Equals(RecordType?.Trim(), recordType, StringComparison.OrdinalIgnoreCase);
+}
 
 // LOCKED entry point — master plan §5. Mapping locked in master §4.
 public static class PermitNormalizer
@@ -22,6 +34,16 @@ public static class PermitNormalizer
     {
         var filedDate = ParseUtcDate(raw.ApplicationDate);
         var street = raw.Address?.Street;
+        var recordType = Clean(raw.RecordType);
+        var isInspection = string.Equals(recordType, "inspection", StringComparison.OrdinalIgnoreCase);
+        var isViolation = string.Equals(recordType, "violation", StringComparison.OrdinalIgnoreCase);
+
+        // An inspection carries its state in inspectionStatus; permitStatus is normally empty.
+        // A permit's own state is never read from an inspection result.
+        var statusText = raw.PermitStatus;
+        if (string.IsNullOrWhiteSpace(statusText) && isInspection
+            && !string.IsNullOrWhiteSpace(raw.InspectionStatus))
+            statusText = raw.InspectionStatus;
 
         return new NormalizedPermit(
             ExternalId: raw.RecordId,
@@ -29,8 +51,8 @@ public static class PermitNormalizer
             PermitNumber: raw.PermitNumber,
             PermitType: raw.FireSystemType,   // carries the scraper's classification hint downstream
             Description: raw.Description,
-            Status: MapStatus(raw.PermitStatus),
-            RawStatus: raw.PermitStatus,
+            Status: MapStatus(statusText, isInspection, isViolation),
+            RawStatus: statusText,
             Address: street,
             City: raw.Address?.City ?? raw.Jurisdiction?.City ?? string.Empty,
             State: raw.Address?.State ?? raw.Jurisdiction?.State ?? string.Empty,
@@ -44,8 +66,17 @@ public static class PermitNormalizer
             OwnerName: raw.Owner?.Name ?? raw.Owner?.Company,
             ContractorName: raw.Contractor?.Name ?? raw.Contractor?.Company,
             SourceUrl: raw.Source?.Url ?? string.Empty,
-            Fingerprint: ComputeFingerprint(street, raw.FireSystemType, filedDate, raw.Description));
+            Fingerprint: ComputeFingerprint(street, raw.FireSystemType, filedDate, raw.Description),
+            RecordType: recordType,
+            WorkType: Clean(raw.WorkType),
+            ExpirationDate: ParseUtcDate(raw.ExpirationDate),
+            InspectionDate: ParseUtcDate(raw.InspectionDate),
+            BusinessName: Clean(raw.BusinessName),
+            PropertyType: Clean(raw.PropertyType));
     }
+
+    private static string? Clean(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private const RegexOptions StatusOpts = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant;
 
@@ -68,14 +99,44 @@ public static class PermitNormalizer
         (new Regex(@"\bpending\b", StatusOpts), PermitStatusKind.New),
     ];
 
-    private static PermitStatusKind MapStatus(string? rawStatus)
+    // Inspection results. "Pending" means the visit has not happened yet, which the general
+    // rules would read as a new application.
+    private static readonly (Regex Pattern, PermitStatusKind Kind)[] InspectionStatusRules =
+    [
+        (new Regex(@"follow|\bfail", StatusOpts), PermitStatusKind.Failed),
+        (new Regex(@"\bpending\b|\bscheduled\b", StatusOpts), PermitStatusKind.Inspection),
+        (new Regex(@"\bcomplete|\bexpired\b|\bclosed\b|\bpass", StatusOpts), PermitStatusKind.Closed),
+    ];
+
+    // A violation is either resolved or it is outstanding; every outstanding state ("open",
+    // "order to abate", "referred to hearing") is work somebody still has to do.
+    private static readonly Regex ResolvedViolationPattern =
+        new(@"\babated\b|\brescinded\b|\bclosed\b|\bresolved\b|\bcomplied\b|\bdismissed\b", StatusOpts);
+
+    // Weakest rules, tried only when nothing above matched.
+    private static readonly Regex OpenOrApprovedPattern = new(@"\bopen\b|\bapproved\b", StatusOpts);
+
+    private static PermitStatusKind MapStatus(string? rawStatus, bool isInspection, bool isViolation)
     {
         if (string.IsNullOrWhiteSpace(rawStatus)) return PermitStatusKind.Unknown;
+
+        if (isViolation)
+            return ResolvedViolationPattern.IsMatch(rawStatus) ? PermitStatusKind.Closed : PermitStatusKind.Failed;
+
+        if (isInspection)
+        {
+            foreach (var (pattern, kind) in InspectionStatusRules)
+            {
+                if (pattern.IsMatch(rawStatus)) return kind;
+            }
+        }
+
         foreach (var (pattern, kind) in StatusRules)
         {
             if (pattern.IsMatch(rawStatus)) return kind;
         }
-        return PermitStatusKind.Unknown;
+
+        return OpenOrApprovedPattern.IsMatch(rawStatus) ? PermitStatusKind.Active : PermitStatusKind.Unknown;
     }
 
     private static DateTime? ParseUtcDate(string? value)

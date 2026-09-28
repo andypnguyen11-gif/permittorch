@@ -20,7 +20,7 @@ public class ScoringEngineTests
         DateTime? filedDate = null,
         decimal? estimatedValue = null,
         int? squareFootage = null,
-        string? contractorName = "Reliable Fire Co")
+        string? contractorName = "Summit General Contractors")  // not a fire trade: no contractor signal either way
         => new("ext-1", "houston-tx", null, permitType, description, status, null,
             "100 Main St", "Houston", "TX", null, null, null, filedDate, null,
             estimatedValue, squareFootage, null, contractorName, "https://example.gov/p/1", "fp");
