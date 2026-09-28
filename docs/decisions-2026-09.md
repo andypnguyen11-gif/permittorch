@@ -72,10 +72,11 @@ Design: `docs/superpowers/specs/2026-09-27-lead-quality-fixes-design.md`. Prompt
 - R-LQ-5 Ruling: a record that stops classifying keeps its existing lead and is rescored with the stored category. This closes the deferred "stale opportunity" item from the pipeline review.
 - R-LQ-6 Ruling: ingestion scores from the stored, merged permit, the same view the daily rescoring uses, so the two can never disagree about a lead.
 - R-LQ-7 Ruling: existing rows are refreshed by ingesting the recorded Apify runs again, not by a new code path. See "Reprocessing recorded runs" in `docs/deploy.md`.
-- R-LQ-8 Ruling (branch review): a stored record that only now becomes a lead is dated from when the record first arrived. Reprocessing would otherwise have presented months-old inspections as new.
+- R-LQ-8 Ruling (branch review, two rounds): a lead is dated from the run that found it, not from ingest time. Reprocessing would otherwise have presented months-old inspections as new. Dating from the record's first arrival was tried first and rejected, because it hid a violation the city reopened.
 - R-LQ-9 Ruling (branch review): `Rescoring:FullPassOnStartup` exists for deploys that change scoring, because the daily pass skips leads with no date in the last 91 days.
 - R-LQ-10 Ruling (branch review): refusals (`Not Approved`, `Denied`, `Rejected`) map to Closed ahead of the weak `approved` fallback.
 - R-LQ-11 Ruling: the fire-trade contractor match was rebuilt from the contractor names in production after a whole-word match on "fire" missed names such as D8Fire, Firequest and DynaFire.
+- Deferred from the second review: a status text the app cannot map replaces the stored text while the stored status is kept; mock fixtures and the digest email headline still use display strings for the system type; a configurable list of known fire contractors whose names do not mention fire.
 - Declined from the review: a unique index on participant role per permit. Ingestion is a single writer, and one permit may need several contractors later.
 - Not done, by decision: buyer trade profiles, a competitor view, contact enrichment, and every scraper-side gap.
 

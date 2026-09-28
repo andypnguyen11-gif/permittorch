@@ -136,7 +136,9 @@ Use this when a pipeline change must be applied to records that are already stor
 4. Watch progress: `select count(*) from scraper_runs` climbs back to the original count.
 5. When it is done, compare the totals with the saved table, then drop the saved table.
 
-Source freshness never moves backwards during this, because it is taken from the run time and only ever advances. A stored record that becomes a lead during reprocessing is dated from when the record first arrived, so it is not shown as new.
+Source freshness never moves backwards during this, because it is taken from the run time and only ever advances. A record that becomes a lead during reprocessing is dated from the run that found it, so it is not shown as new.
+
+Two things look odd while reprocessing runs and settle by themselves. Source health and records-per-run show the values of whichever run was processed last, until the newest run is reached. Public 30-day market counts rise where new kinds of leads appear, which is a true count and not an error.
 
 ## Rescoring every lead after a scoring change
 

@@ -23,13 +23,13 @@ Status mapping becomes record-type aware. The first matching row wins.
 
 | Record type | Raw value (case-insensitive) | Status |
 | --- | --- | --- |
-| inspection | `Open/Follow-Up Needed`, anything containing `follow`, `Failed`, `Not Completed`, `Did Not Pass` | Failed |
+| inspection | `Open/Follow-Up Needed`, anything containing `follow`, `Failed`, `Not Completed`, `Did Not Pass`, `Disapproved`, `Rejected`, `Denied` | Failed |
 | inspection | `Pending`, `Scheduled` | Inspection |
 | inspection | `Completed`, `Expired`, `Closed`, `Passed` | Closed |
 | violation | `abated`, `rescinded`, `closed`, `resolved`, `complied`, `dismissed`, unless negated (`not abated`, `unresolved`) | Closed |
 | violation | any other non-empty value, for example `open`, `order to abate`, `referred to hearing` | Failed |
-| any | `Not Approved`, `Disapproved`, `Denied`, `Rejected` | Closed |
 | any | existing rules | unchanged |
+| any | `Not Approved`, `Disapproved`, `Denied`, `Rejected` when no existing rule matched | Closed |
 | any | `open`, `approved` when no existing rule matched | Active |
 
 For an inspection record the status text is `permitStatus` when present, otherwise `inspectionStatus`. `RawStatus` stores the text that was used. A blank status is stored as missing, so it can never replace a real status text on a later merge.
@@ -50,7 +50,7 @@ A resolved inspection or violation is not a sales opportunity. When the record t
 
 - Classification and scoring both read the stored permit after the merge, the same view the daily rescoring uses. A field the latest record omitted keeps the value an earlier record supplied.
 - When the classifier returns no result for a permit that already has an opportunity, ingestion keeps the stored category and rescores it. A lead whose inspection was completed drops in score the same day instead of going stale. An admin's manual category always wins.
-- A record already on file that only now becomes a lead is dated from when the record first arrived, not from today. Old activity is never presented as new in the feed or in digests.
+- A lead is dated from the run that found it, never from when that run was ingested, and never in the future. A run ingested late or ingested again cannot present old activity as new, and a record that is reopened by the city is dated from the run that reported it.
 - Participants are rebuilt on every upsert from the normalized owner and contractor names: role Owner and role Contractor. Blank names are skipped.
 - The six new fields are stored on `permits`, merged with the existing never-overwrite-with-null rule.
 
