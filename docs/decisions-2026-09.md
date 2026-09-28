@@ -80,3 +80,15 @@ Design: `docs/superpowers/specs/2026-09-27-lead-quality-fixes-design.md`. Prompt
 - Declined from the review: a unique index on participant role per permit. Ingestion is a single writer, and one permit may need several contractors later.
 - Not done, by decision: buyer trade profiles, a competitor view, contact enrichment, and every scraper-side gap.
 
+## 08-record-links-and-contact-details
+
+- Owner decision (2026-09-28): every lead links to its own record. The link is stored per permit and worded by what it opens; see "Filling record links on stored permits" in `docs/deploy.md`.
+- Owner decision (2026-09-28): Atlanta is a market, and the scraper's four new sources are registered (32 markets, 44 sources). "Atlanta, GA" was added to the saved `permittorch-daily` task.
+- Owner decision (2026-09-28): a party's phone, email and licence number are shown where the permit record itself publishes them. This amends the PRD's non-goal, which still rules out looking a party up anywhere else. Party addresses are not shown.
+- R-CD-1 Ruling: contact details are stored on the participant, not on the permit. They belong to the party they came with: kept while the permit names the same party, replaced when that party publishes new ones, and dropped the moment the permit names somebody else. Cost if wrong: a number shown beside the wrong firm, which is the one failure this rule exists to prevent.
+- R-CD-2 Ruling: a contact on a record that names no party is ignored. Nothing says whose it is.
+- R-CD-3 Ruling: the licence number is shown on the contractor, where the scraper delivers it. In New York the licence belongs to the person who filed for the firm; the app adds no per-city rule to move it.
+- R-CD-4 Ruling: contact details are served only with a lead's detail, which needs a signed-in user entitled to the lead's market. They are not in the feed, the CSV export, the digest email or any public endpoint.
+- R-CD-5 Ruling: a phone or an email is a link only when it is one full US number or one plain address. Anything else the record publishes is shown as text. Cost if wrong: a customer copies a number by hand.
+- R-CD-6 Ruling: New York's nine placeholder owner values and Omaha's test permit are removed by a migration, because ingestion never replaces a stored value with an empty one.
+- Not done, by decision: contact details in the CSV export; clearing stored project values of zero; licence numbers and phones that a portal publishes only on a record's detail page.

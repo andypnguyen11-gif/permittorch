@@ -177,6 +177,8 @@ PermitTorch will **not** initially attempt to become:
 
 These may become future opportunities but would distract from validating the core business.
 
+> **Amendment (2026-09-28, owner decision):** showing what a permit record itself publishes about a party is not contact enrichment. Where the government record carries a party's phone number, email address or licence number, the lead shows it to signed-in subscribers, exactly as published. Looking a party up anywhere else (paid data providers, email finders, other websites) remains out of scope. A party's business or mailing address is not shown.
+
 ---
 
 # 6. Target Users

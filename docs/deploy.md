@@ -159,6 +159,7 @@ To fill the links, scrape again over the wanted window:
    - `onlyNewRecords: false`.
    - `maxResults` above the expected total for the group. When the cap binds, sources share it equally and the rest of each source is cut. A full 90-day run over all markets returns about 17,100 leads.
    - `lookbackDays` (up to 365) only if leads older than 90 days need links.
+   - `includeContactDetails: true`, so the run carries each party's phone and email where the record publishes them. The saved `permittorch-daily` task holds this setting for the daily run; a run started by hand must pass it too, or that run delivers none.
 
    Start the runs from the task, not from the actor: ingestion only reads runs of the task.
 3. Let ingestion take every run that was started. A run marks the leads it delivers as seen, so a run that is never ingested hides those leads from the daily only-new feed.
@@ -169,6 +170,8 @@ To fill the links, scrape again over the wanted window:
    Omaha and Tulsa stay at zero: their portals have no link that can be verified. A few Atlanta and Colorado Springs records on a temporary number also have none.
 
 Permits are matched on the scraper's record id, so a second scrape updates the stored permit and never adds a second one. A stored link is kept when a later record arrives without one.
+
+A party's phone, email and licence number arrive the same way and are stored on the participant. A run that carries none leaves the stored ones in place. They are replaced when the same party publishes new ones and dropped when the permit names a different party.
 
 Every lead a run touches is scored again as it is ingested, from the permit's merged fields. A full rescoring pass is only needed for leads the run did not reach.
 

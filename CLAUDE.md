@@ -64,3 +64,4 @@ Build with **scalability, maintainability, and security** in mind — in the spe
 - No duplicate leads may reach users — dedupe on `source_id + external_id` with fingerprint fallback.
 - SEO pages are only generated for markets with real data — no thin programmatic pages.
 - Respect the MVP non-goals (PRD §5, §64): no CRM, no mobile app, no customer-facing API, no contact enrichment, no AI chatbot.
+- Contact details come only from the permit record itself (owner decision, 2026-09-28): a party's phone, email and licence number as the government record publishes them, shown to signed-in subscribers only and never on a public page. Never look a party up anywhere else.
