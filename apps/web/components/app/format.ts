@@ -37,3 +37,25 @@ export function formatDate(iso: string | null): string {
     month: "short", day: "numeric", year: "numeric", timeZone: "UTC",
   });
 }
+
+// Humanizes a scraper machine string ("new_installation", "multifamily_residential")
+// into a display phrase ("New installation", "Multifamily residential"). Only the
+// first word is capitalized. "unknown" (any case), null, and blank input are all
+// treated as absent and render as null so callers can hide the field entirely.
+export function humanizeMachineString(value: string | null): string | null {
+  if (value == null) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (trimmed.toLowerCase() === "unknown") return null;
+  const words = trimmed.toLowerCase().split(/[_\s]+/).filter(Boolean);
+  if (words.length === 0) return null;
+  return words.map((w, i) => (i === 0 ? w.charAt(0).toUpperCase() + w.slice(1) : w)).join(" ");
+}
+
+// Permit status display: the mapped status label, plus the raw source text when
+// it's present and says something different than the label (e.g. "Failed · Open/Follow-Up Needed").
+export function permitStatusDisplay(label: string, rawStatus: string | null): string {
+  const raw = rawStatus?.trim();
+  if (!raw || raw.toLowerCase() === label.trim().toLowerCase()) return label;
+  return `${label} · ${raw}`;
+}

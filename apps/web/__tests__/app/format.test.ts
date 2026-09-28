@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { formatDate, formatRelative, formatValueShort, scoreBand } from "@/components/app/format";
+import {
+  formatDate, formatRelative, formatValueShort, scoreBand,
+  humanizeMachineString, permitStatusDisplay,
+} from "@/components/app/format";
 
 describe("scoreBand", () => {
   it("bands scores per mockup: >=90 hot, 80-89 strong, 70-79 medium, else muted", () => {
@@ -42,5 +45,44 @@ describe("formatDate", () => {
   it("renders a medium date or em dash", () => {
     expect(formatDate("2025-05-13T10:00:00Z")).toBe("May 13, 2025");
     expect(formatDate(null)).toBe("—");
+  });
+});
+
+describe("humanizeMachineString", () => {
+  it("converts snake_case to a capitalized phrase", () => {
+    expect(humanizeMachineString("new_installation")).toBe("New installation");
+    expect(humanizeMachineString("multifamily_residential")).toBe("Multifamily residential");
+  });
+
+  it("capitalizes a single word", () => {
+    expect(humanizeMachineString("inspection")).toBe("Inspection");
+  });
+
+  it("treats unknown (any case) as absent", () => {
+    expect(humanizeMachineString("unknown")).toBeNull();
+    expect(humanizeMachineString("UNKNOWN")).toBeNull();
+    expect(humanizeMachineString("Unknown")).toBeNull();
+  });
+
+  it("treats null and empty string as absent", () => {
+    expect(humanizeMachineString(null)).toBeNull();
+    expect(humanizeMachineString("")).toBeNull();
+    expect(humanizeMachineString("   ")).toBeNull();
+  });
+});
+
+describe("permitStatusDisplay", () => {
+  it("appends the raw status when it differs from the label", () => {
+    expect(permitStatusDisplay("Failed", "Open/Follow-Up Needed")).toBe("Failed · Open/Follow-Up Needed");
+  });
+
+  it("omits the raw status when it matches the label case-insensitively", () => {
+    expect(permitStatusDisplay("Failed", "failed")).toBe("Failed");
+    expect(permitStatusDisplay("Closed", "CLOSED")).toBe("Closed");
+  });
+
+  it("omits the raw status when it is null or empty", () => {
+    expect(permitStatusDisplay("Active", null)).toBe("Active");
+    expect(permitStatusDisplay("Active", "")).toBe("Active");
   });
 });
