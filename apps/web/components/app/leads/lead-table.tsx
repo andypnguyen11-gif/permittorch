@@ -7,7 +7,7 @@ import {
 } from "@/components/ui/table";
 import { ScoreBadge } from "@/components/app/score-badge";
 import { CategoryIcon } from "@/components/app/category-chip";
-import { formatDate, formatRelative, formatValueShort } from "@/components/app/format";
+import { formatDate, formatRelative, formatValueShort, humanizeMachineString } from "@/components/app/format";
 import { cn } from "@/lib/utils";
 
 export function EmptyState({ icon: Icon = SearchX, title, description, action }: {
@@ -78,7 +78,9 @@ export function LeadTable({ leads, className, emptyState, compact = false }: {
                       {lead.title}
                     </Link>
                     <div className="mt-0.5 flex items-center gap-2 text-xs text-stone-500">
-                      {lead.permitType && <span className="truncate">{lead.permitType}</span>}
+                      {humanizeMachineString(lead.permitType) && (
+                        <span className="truncate">{humanizeMachineString(lead.permitType)}</span>
+                      )}
                       {lead.isNew && (
                         <Badge className="h-4.5 bg-orange-100 px-1.5 text-[10px] text-orange-700">New</Badge>
                       )}

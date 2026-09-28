@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   formatDate, formatRelative, formatValueShort, scoreBand,
-  humanizeMachineString, permitStatusDisplay,
+  humanizeMachineString, permitStatusDisplay, recordKind,
 } from "@/components/app/format";
 
 describe("scoreBand", () => {
@@ -84,5 +84,23 @@ describe("permitStatusDisplay", () => {
   it("omits the raw status when it is null or empty", () => {
     expect(permitStatusDisplay("Active", null)).toBe("Active");
     expect(permitStatusDisplay("Active", "")).toBe("Active");
+  });
+});
+
+describe("recordKind", () => {
+  it("recognizes inspection and violation case-insensitively and whitespace-tolerantly", () => {
+    expect(recordKind("inspection")).toBe("inspection");
+    expect(recordKind("Inspection")).toBe("inspection");
+    expect(recordKind(" INSPECTION ")).toBe("inspection");
+    expect(recordKind("violation")).toBe("violation");
+    expect(recordKind("Violation")).toBe("violation");
+    expect(recordKind(" VIOLATION ")).toBe("violation");
+  });
+
+  it("defaults to permit for null, empty, or any other value", () => {
+    expect(recordKind(null)).toBe("permit");
+    expect(recordKind("")).toBe("permit");
+    expect(recordKind("permit")).toBe("permit");
+    expect(recordKind("standpipe")).toBe("permit");
   });
 });

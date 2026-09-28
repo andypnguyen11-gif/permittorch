@@ -292,7 +292,7 @@ const extras: Record<string, DetailExtras> = {
     permit: permit({ permitNumber: "25-175420", zip: "77056",
       description: "Standpipe repair in parking garage levels 3-5 after pressure test failures.",
       squareFootage: 150000, ownerName: "Post Oak Parking LLC", contractorName: "Gulf Coast Fire Services",
-      workType: "standpipe_repair", propertyType: "parking_structure",
+      workType: "corrective_repair", propertyType: "parking_structure",
       expirationDate: daysAgo(-84) }),
     participants: [
       { role: "OWNER", name: "Post Oak Parking LLC" },

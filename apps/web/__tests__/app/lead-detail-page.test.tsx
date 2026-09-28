@@ -45,31 +45,46 @@ describe("/app/leads/[id] page (mock API)", () => {
     expect(screen.getByText("No participants listed on this permit.")).toBeInTheDocument();
   });
 
-  it("shows the humanized new permit fields when present, and hides them when null", async () => {
+  it("shows the humanized new permit fields when present, hides them when null, and has no Record type field", async () => {
     // lead-011: fire contractor already assigned; has workType/propertyType/expirationDate,
-    // but no recordType/inspectionDate/businessName.
+    // but no recordType/inspectionDate/businessName. It's a permit record, so the
+    // always-shown fields (Filed, Issued, Owner, Contractor, etc.) still render.
     await renderPage("lead-011");
     const permit = screen.getByRole("region", { name: "Permit" });
-    expect(within(permit).getByText("Standpipe repair")).toBeInTheDocument();
+    expect(within(permit).getByText("Corrective repair")).toBeInTheDocument();
     expect(within(permit).getByText("Parking structure")).toBeInTheDocument();
     expect(within(permit).queryByText("Record type")).not.toBeInTheDocument();
     expect(within(permit).queryByText("Inspection date")).not.toBeInTheDocument();
     expect(within(permit).queryByText("Business")).not.toBeInTheDocument();
+    expect(within(permit).getByText("Owner")).toBeInTheDocument();
+    expect(within(permit).getByText("Contractor")).toBeInTheDocument();
+    // The system-type field is humanized from the machine permitType.
+    expect(within(permit).getByText("System type")).toBeInTheDocument();
+    expect(within(permit).getByText("Standpipe repair")).toBeInTheDocument();
     // The fire-contractor-assigned signal is visible in the score breakdown.
     expect(screen.getByText("A fire-protection contractor is already on this permit")).toBeInTheDocument();
   });
 
-  it("titles the card 'Inspection' with a 'Record number' label, and shows raw status and inspection date", async () => {
-    // lead-013: recordType inspection, rawStatus differs from the FAILED label.
+  it("titles the card 'Inspection' with a 'Record number' label, no 'Record type' field, and hides never-applicable fields", async () => {
+    // lead-013: recordType inspection, rawStatus differs from the "Failed" label,
+    // estimatedValue/issuedDate/contractorName are all null (never applicable to
+    // an inspection) and must be hidden entirely rather than shown with a dash.
     await renderPage("lead-013");
     const record = screen.getByRole("region", { name: "Inspection" });
     expect(within(record).getByText("Record number")).toBeInTheDocument();
     expect(within(record).queryByText("Permit number")).not.toBeInTheDocument();
-    expect(within(record).getByText("Record type")).toBeInTheDocument(); // humanized recordType field label
-    expect(within(record).getAllByText("Inspection").length).toBeGreaterThanOrEqual(2); // card title + field value
+    expect(within(record).queryByText("Record type")).not.toBeInTheDocument();
     expect(within(record).getByText("Business")).toBeInTheDocument();
     expect(within(record).getByText("Inspection date")).toBeInTheDocument();
+    // Present fields still show (Filed, Square footage, Owner).
+    expect(within(record).getByText("Filed")).toBeInTheDocument();
+    expect(within(record).getByText("Owner")).toBeInTheDocument();
+    // Never-applicable, empty fields for this record are hidden, not dashed.
+    expect(within(record).queryByText("Issued")).not.toBeInTheDocument();
+    expect(within(record).queryByText("Estimated value")).not.toBeInTheDocument();
+    expect(within(record).queryByText("Contractor")).not.toBeInTheDocument();
     expect(screen.getByText("Failed · Open/Follow-Up Needed")).toBeInTheDocument();
+    expect(screen.getByText("Status")).toBeInTheDocument();
   });
 
   it("renders a CONTRACTOR participant with the label 'Contractor'", async () => {
