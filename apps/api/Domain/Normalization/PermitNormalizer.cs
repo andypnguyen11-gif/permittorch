@@ -87,9 +87,6 @@ public static class PermitNormalizer
     private static readonly (Regex Pattern, PermitStatusKind Kind)[] StatusRules =
     [
         (new Regex(@"\bvoid|\bnot\s+issued\b|\bwithdrawn\b|\bexpired\b|\bcancel", StatusOpts), PermitStatusKind.Closed),
-        // A refused application is over. Listed before the weak "approved" fallback below so
-        // "Not Approved" and "Plan Review Not Approved" are never read as approved.
-        (new Regex(@"\bnot\s+approved\b|\bdisapproved\b|\bdenied\b|\brejected\b", StatusOpts), PermitStatusKind.Closed),
         (new Regex(@"\binactive\b", StatusOpts), PermitStatusKind.Closed),
         (new Regex(@"\bincomplete\b|\brenewal\b|\bapplied\b|\bsubmitted\b", StatusOpts), PermitStatusKind.New),
         (new Regex(@"\bissued\b|\b(re)?activ(e|ated)\b", StatusOpts), PermitStatusKind.Active),
@@ -106,7 +103,8 @@ public static class PermitNormalizer
     // rules would read as a new application.
     private static readonly (Regex Pattern, PermitStatusKind Kind)[] InspectionStatusRules =
     [
-        (new Regex(@"follow|\bfail|\bnot\s+(complete|pass)", StatusOpts), PermitStatusKind.Failed),
+        // Many portals report a failed inspection as "Disapproved", "Rejected" or "Denied".
+        (new Regex(@"follow|\bfail|\bnot\s+(complete|pass|approved)|\bdisapproved\b|\brejected\b|\bdenied\b", StatusOpts), PermitStatusKind.Failed),
         (new Regex(@"\bpending\b|\bscheduled\b", StatusOpts), PermitStatusKind.Inspection),
         (new Regex(@"\bcomplete|\bexpired\b|\bclosed\b|\bpass", StatusOpts), PermitStatusKind.Closed),
     ];
@@ -116,9 +114,13 @@ public static class PermitNormalizer
     private static readonly Regex ResolvedViolationPattern =
         new(@"\babated\b|\brescinded\b|\bclosed\b|\bresolved\b|\bcomplied\b|\bdismissed\b", StatusOpts);
     // "not abated", "unresolved": the resolving word is there, the resolution is not.
-    private static readonly Regex NegatedPattern = new(@"\bnot\b|\bun", StatusOpts);
+    private static readonly Regex NegatedPattern = new(@"\bnot\b|\bun(abated|resolved)\b", StatusOpts);
 
-    // Weakest rules, tried only when nothing above matched.
+    // Weakest rules, tried only when nothing above matched. A refused application is over; it
+    // is checked first so "Not Approved" is never read as approved. Both come after the
+    // existing rules, so "Issued - Inspection Rejected" is still an issued permit.
+    private static readonly Regex RefusedPattern =
+        new(@"\bnot\s+approved\b|\bdisapproved\b|\bdenied\b|\brejected\b", StatusOpts);
     private static readonly Regex OpenOrApprovedPattern = new(@"\bopen\b|\bapproved\b", StatusOpts);
 
     private static PermitStatusKind MapStatus(string? rawStatus, bool isInspection, bool isViolation)
@@ -143,6 +145,7 @@ public static class PermitNormalizer
             if (pattern.IsMatch(rawStatus)) return kind;
         }
 
+        if (RefusedPattern.IsMatch(rawStatus)) return PermitStatusKind.Closed;
         return OpenOrApprovedPattern.IsMatch(rawStatus) ? PermitStatusKind.Active : PermitStatusKind.Unknown;
     }
 

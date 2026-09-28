@@ -52,7 +52,7 @@ public class ScoringEngine
     // "SPKLR", "SPRINK", "SPR."). Only consulted for a permit already classified as fire
     // protection, which is what makes a bare "fire" in the name meaningful.
     private static readonly Regex FireTradePattern =
-        new(@"(?<!bon|camp|wild|back|mis)fire(?!place|side|stone|wood|arm|fly)"
+        new(@"(?<!bon|camp|wild|back|mis|cross|spit|sure)fire(?!place|side|stone|wood|arm|fly|wall)"
             + @"|sprink|sprklr|spklr|spinkler|\bspr\b|\balarms?\b|suppression|life\s*safety",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 

@@ -166,6 +166,9 @@ public sealed class IngestionJob : BackgroundService
         var unknownSources = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var inactiveSources = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var processed = 0;
+        // A lead is dated from the run that found it, never from when the run was ingested. A
+        // run ingested late, or ingested again, must not present old activity as new.
+        var detectedAt = Earliest(run.FinishedAt ?? run.StartedAt, DateTime.UtcNow);
 
         foreach (var raw in run.Records)
         {
@@ -189,7 +192,8 @@ public sealed class IngestionJob : BackgroundService
                 }
 
                 var now = DateTime.UtcNow;
-                var (isNew, isClassified) = await UpsertRecordAsync(db, source, normalized, now, ct);
+                var (isNew, isClassified) = await UpsertRecordAsync(db, source, normalized, now,
+                    detectedAt, ct);
                 await db.SaveChangesAsync(ct);
                 // Counted only after the save succeeds so a failed record is never also "imported".
                 if (isNew) counts.Imported++; else counts.Duplicates++;
@@ -262,7 +266,7 @@ public sealed class IngestionJob : BackgroundService
         };
 
     private async Task<(bool IsNew, bool IsClassified)> UpsertRecordAsync(AppDbContext db, Source source,
-        NormalizedPermit normalized, DateTime now, CancellationToken ct)
+        NormalizedPermit normalized, DateTime now, DateTime detectedAt, CancellationToken ct)
     {
         var permit = await db.Set<Permit>().Include(p => p.Opportunity)
             .FirstOrDefaultAsync(p => p.SourceId == source.Id
@@ -364,10 +368,7 @@ public sealed class IngestionJob : BackgroundService
             {
                 Id = Guid.NewGuid(),
                 PermitId = permit.Id,
-                // A record already on file that only now becomes a lead (a rule change, a
-                // reprocessed run) was discovered when the record first arrived, not today.
-                // Dating it today would mark old activity as new in the feed and in digests.
-                FirstDetectedAt = isNew ? now : permit.FirstSeenAt,
+                FirstDetectedAt = detectedAt,
             };
             permit.Opportunity = opportunity;
             db.Add(opportunity);
@@ -556,6 +557,8 @@ public sealed class IngestionJob : BackgroundService
     // serialization only for providers that do not carry the raw text.
     private static string? CoverageJson(CoverageReport? coverage)
         => coverage is null ? null : coverage.RawJson ?? JsonSerializer.Serialize(coverage, WebJson);
+
+    private static DateTime Earliest(DateTime a, DateTime b) => a < b ? a : b;
 
     private static DateTime Latest(DateTime? existing, DateTime candidate)
         => existing.HasValue && existing.Value > candidate ? existing.Value : candidate;

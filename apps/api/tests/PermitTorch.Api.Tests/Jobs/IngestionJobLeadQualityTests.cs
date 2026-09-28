@@ -88,13 +88,16 @@ public class IngestionJobLeadQualityTests
             Source: new RawSource(sourceId, "San Francisco, CA", "socrata", "https://data.sfgov.org/x"),
             ScrapedAt: "2026-09-27T01:27:22.486Z");
 
-    private async Task IngestAsync(params RawPermitRecord[] records)
+    private Task IngestAsync(params RawPermitRecord[] records)
+        => IngestAtAsync(DateTime.UtcNow.AddMinutes(-5), records);
+
+    private async Task IngestAtAsync(DateTime runFinishedAt, params RawPermitRecord[] records)
     {
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddDbContext<AppDbContext>(o => o.UseNpgsql(_fixture.ConnectionString));
         var run = new ProviderRunResult($"run-{Guid.NewGuid():N}", "SUCCEEDED",
-            DateTime.UtcNow.AddMinutes(-10), DateTime.UtcNow.AddMinutes(-5), records, Coverage: null);
+            runFinishedAt.AddMinutes(-5), runFinishedAt, records, Coverage: null);
         services.AddScoped<IPermitSourceProvider>(_ => new FakePermitSourceProvider(run));
         await using var sp = services.BuildServiceProvider();
         var job = new IngestionJob(sp.GetRequiredService<IServiceScopeFactory>(),
@@ -318,44 +321,56 @@ public class IngestionJobLeadQualityTests
     }
 
     [Fact]
-    public async Task RunOnce_DatesALeadFromWhenItsRecordFirstArrived_NotFromWhenItBecameALead()
+    public async Task RunOnce_DatesALeadFromTheRunThatFoundIt_NotFromWhenTheRunWasIngested()
     {
         var sourceId = await SeedSourceAsync();
         var recordId = $"insp-{Guid.NewGuid():N}";
-        // On file for ten days as a completed inspection: stored, but never a lead.
-        await IngestAsync(Record(recordId, sourceId, recordType: "inspection",
-            fireSystemType: "inspection", description: "School Annual Inspection | 23",
-            inspectionStatus: "Completed", inspectionDate: Today(12)));
-        var firstSeen = DateTime.UtcNow.AddDays(-10);
-        await using (var db = _fixture.CreateContext())
-        {
-            var stored = await db.Set<Permit>().SingleAsync(p => p.ExternalId == recordId);
-            stored.FirstSeenAt = firstSeen;
-            stored.Status = PermitStatusKind.Unknown;   // as stored before statuses were read
-            stored.RawStatus = null;
-            await db.SaveChangesAsync();
-        }
+        var runFinishedAt = DateTime.UtcNow.AddDays(-6);
 
-        await IngestAsync(Record(recordId, sourceId, recordType: "inspection",
+        // A run from six days ago, ingested (or ingested again) today.
+        await IngestAtAsync(runFinishedAt, Record(recordId, sourceId, recordType: "inspection",
             fireSystemType: "inspection", description: "School Annual Inspection | 23",
-            inspectionStatus: "Open/Follow-Up Needed", inspectionDate: Today(12)));
+            inspectionStatus: "Open/Follow-Up Needed", inspectionDate: Today(8)));
 
         var (_, opportunity, _, _) = await LoadAsync(recordId);
         Assert.NotNull(opportunity);
-        Assert.Equal(firstSeen, opportunity!.FirstDetectedAt, TimeSpan.FromSeconds(1));
-        Assert.True(opportunity.LastUpdatedAt > DateTime.UtcNow.AddMinutes(-5));
+        Assert.Equal(runFinishedAt, opportunity!.FirstDetectedAt, TimeSpan.FromSeconds(1));
     }
 
     [Fact]
-    public async Task RunOnce_DatesALeadNow_WhenItsRecordIsNew()
+    public async Task RunOnce_DatesALeadFromTheLatestRun_WhenAnOldRecordOnlyNowBecomesALead()
+    {
+        var sourceId = await SeedSourceAsync();
+        var recordId = $"viol-{Guid.NewGuid():N}";
+        // Abated when first seen sixty days ago: stored, never a lead.
+        await IngestAtAsync(DateTime.UtcNow.AddDays(-60), Record(recordId, sourceId,
+            recordType: "violation", fireSystemType: "fire_code_violation",
+            description: "alarm system maintained", permitStatus: "abated"));
+        var (_, none, _, _) = await LoadAsync(recordId);
+        Assert.Null(none);
+
+        // The city reopens it. That is new activity and must reach the feed and the digest.
+        var reopenedAt = DateTime.UtcNow.AddMinutes(-5);
+        await IngestAtAsync(reopenedAt, Record(recordId, sourceId,
+            recordType: "violation", fireSystemType: "fire_code_violation",
+            description: "alarm system maintained", permitStatus: "open"));
+
+        var (permit, opportunity, _, _) = await LoadAsync(recordId);
+        Assert.Equal(PermitStatusKind.Failed, permit.Status);
+        Assert.NotNull(opportunity);
+        Assert.Equal(reopenedAt, opportunity!.FirstDetectedAt, TimeSpan.FromSeconds(1));
+    }
+
+    [Fact]
+    public async Task RunOnce_NeverDatesALeadInTheFuture()
     {
         var sourceId = await SeedSourceAsync();
         var recordId = $"permit-{Guid.NewGuid():N}";
 
-        await IngestAsync(Record(recordId, sourceId, permitStatus: "Issued"));
+        await IngestAtAsync(DateTime.UtcNow.AddHours(3), Record(recordId, sourceId, permitStatus: "Issued"));
 
         var (_, opportunity, _, _) = await LoadAsync(recordId);
-        Assert.True(opportunity!.FirstDetectedAt > DateTime.UtcNow.AddMinutes(-5));
+        Assert.True(opportunity!.FirstDetectedAt <= DateTime.UtcNow);
     }
 
     [Fact]
