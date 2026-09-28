@@ -1,4 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.Extensions.DependencyInjection;
 using PermitTorch.Api.Data;
 using Testcontainers.PostgreSql;
 
@@ -78,7 +81,74 @@ public class MigrationTests : IAsyncLifetime
         Assert.Equal("boolean:NO:false", column);
 
         var applied = await db.Database.GetAppliedMigrationsAsync();
-        Assert.Equal(new[] { "InitialCreate", "AddCategoryOverridden" },
+        Assert.Equal(new[] { "InitialCreate", "AddCategoryOverridden", "AddPermitDetailFields" },
             applied.Select(m => m[(m.IndexOf('_') + 1)..]).ToArray());
+    }
+
+    [Fact]
+    public async Task Permit_detail_migration_adds_nullable_columns_and_backfills_participants()
+    {
+        await using var db = CreateContext();
+        var migrator = db.GetInfrastructure().GetRequiredService<IMigrator>();
+        await migrator.MigrateAsync("AddCategoryOverridden");
+
+        var marketId = Guid.NewGuid();
+        var sourceId = Guid.NewGuid();
+        var both = Guid.NewGuid();        // owner and contractor named
+        var blank = Guid.NewGuid();       // blank owner, no contractor
+        var already = Guid.NewGuid();     // already has an owner participant
+        await db.Database.ExecuteSqlAsync($"""
+            INSERT INTO markets (id, name, city, state, slug, active)
+            VALUES ({marketId}, 'New York City', 'New York', 'NY', 'new-york-city-ny', true);
+            INSERT INTO sources (id, market_id, name, city, state, portal_type, source_url, jurisdiction,
+                                 active, records_last_run, health_status)
+            VALUES ({sourceId}, {marketId}, 'NYC DOB', 'New York', 'NY', 'socrata', 'https://example.gov',
+                    'nyc-dobnow-permits', true, 0, 0);
+            """);
+        foreach (var (id, owner, contractor) in new (Guid, string?, string?)[]
+                 {
+                     (both, "  RXR 590 Madison Owner LLC ", "Safety Fire Sprinkler Corp"),
+                     (blank, "   ", null),
+                     (already, "Stored Owner LLC", null),
+                 })
+        {
+            await db.Database.ExecuteSqlAsync($"""
+                INSERT INTO permits (id, source_id, external_id, status, city, state, owner_name,
+                                     contractor_name, source_url, fingerprint, first_seen_at,
+                                     last_seen_at, created_at, updated_at)
+                VALUES ({id}, {sourceId}, {id.ToString()}, 1, 'New York', 'NY', {owner}, {contractor},
+                        'https://example.gov', {id.ToString()}, now(), now(), now(), now());
+                """);
+        }
+        await db.Database.ExecuteSqlAsync($"""
+            INSERT INTO permit_participants (id, permit_id, role, name)
+            VALUES ({Guid.NewGuid()}, {already}, 0, 'Participant Already There');
+            """);
+
+        await migrator.MigrateAsync();
+
+        var columns = await db.Database
+            .SqlQuery<string>($"SELECT column_name || ':' || data_type || ':' || is_nullable AS \"Value\" FROM information_schema.columns WHERE table_name = 'permits'")
+            .ToListAsync();
+        Assert.Contains("record_type:text:YES", columns);
+        Assert.Contains("work_type:text:YES", columns);
+        Assert.Contains("business_name:text:YES", columns);
+        Assert.Contains("property_type:text:YES", columns);
+        Assert.Contains("expiration_date:timestamp with time zone:YES", columns);
+        Assert.Contains("inspection_date:timestamp with time zone:YES", columns);
+
+        var participants = await db.PermitParticipants.AsNoTracking().ToListAsync();
+        Assert.Equal(3, participants.Count);
+        Assert.Contains(participants, p => p.PermitId == both && p.Role == ParticipantRole.Owner
+            && p.Name == "RXR 590 Madison Owner LLC");
+        Assert.Contains(participants, p => p.PermitId == both && p.Role == ParticipantRole.Contractor
+            && p.Name == "Safety Fire Sprinkler Corp");
+        Assert.DoesNotContain(participants, p => p.PermitId == blank);
+        Assert.Equal("Participant Already There", participants.Single(p => p.PermitId == already).Name);
+
+        // Existing rows keep working: the new columns are simply empty for them.
+        var stored = await db.Permits.AsNoTracking().SingleAsync(p => p.Id == both);
+        Assert.Null(stored.RecordType);
+        Assert.Null(stored.ExpirationDate);
     }
 }

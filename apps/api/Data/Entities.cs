@@ -53,6 +53,12 @@ public class Permit
     public int? SquareFootage { get; set; }
     public string? OwnerName { get; set; }
     public string? ContractorName { get; set; }
+    public string? RecordType { get; set; }                // scraper: "permit" | "inspection" | "violation"; null = permit
+    public string? WorkType { get; set; }                  // scraper: e.g. "new_installation", "repair"
+    public DateTime? ExpirationDate { get; set; }
+    public DateTime? InspectionDate { get; set; }
+    public string? BusinessName { get; set; }
+    public string? PropertyType { get; set; }              // scraper: e.g. "school", "restaurant"
     public string SourceUrl { get; set; } = null!;
     public string Fingerprint { get; set; } = null!;       // sha256 of address|permit_type|filed_date|description
     public DateTime FirstSeenAt { get; set; }

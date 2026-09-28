@@ -25,6 +25,18 @@ public class LeadsEndpointTests(ApiFactory factory) : IAsyncLifetime
         var hotPermit = TestSeed.Permit(entitledSource,
             description: "New warehouse fire sprinkler installation",
             permitNumber: "FP-2026-001234", contractorName: "Alpha Fire Protection");
+        hotPermit.RawStatus = "Permit Issued";
+        hotPermit.RecordType = "permit";
+        hotPermit.WorkType = "new_installation";
+        hotPermit.ExpirationDate = new DateTime(2026, 12, 31, 0, 0, 0, DateTimeKind.Utc);
+        hotPermit.InspectionDate = new DateTime(2026, 9, 20, 0, 0, 0, DateTimeKind.Utc);
+        hotPermit.BusinessName = "Bayou Logistics";
+        hotPermit.PropertyType = "warehouse";
+        hotPermit.Participants.Add(new PermitParticipant
+        {
+            Id = Guid.NewGuid(), PermitId = hotPermit.Id, Role = ParticipantRole.Contractor,
+            Name = "Alpha Fire Protection",
+        });
         var oldPermit = TestSeed.Permit(entitledSource,
             description: "Fire alarm panel replacement", filedDate: DateTime.UtcNow.AddDays(-20),
             status: PermitStatusKind.Failed);
@@ -132,7 +144,19 @@ public class LeadsEndpointTests(ApiFactory factory) : IAsyncLifetime
         Assert.Equal("FP-2026-001234", detail.GetProperty("permit").GetProperty("permitNumber").GetString());
         Assert.Equal("Warehouse Owner LLC", detail.GetProperty("permit").GetProperty("ownerName").GetString());
         Assert.Equal(JsonValueKind.Array, detail.GetProperty("signals").ValueKind);
-        Assert.Equal(JsonValueKind.Array, detail.GetProperty("participants").ValueKind);
+        var permit = detail.GetProperty("permit");
+        Assert.Equal("Permit Issued", permit.GetProperty("rawStatus").GetString());
+        Assert.Equal("permit", permit.GetProperty("recordType").GetString());
+        Assert.Equal("new_installation", permit.GetProperty("workType").GetString());
+        Assert.Equal(new DateTime(2026, 12, 31, 0, 0, 0, DateTimeKind.Utc),
+            permit.GetProperty("expirationDate").GetDateTime().ToUniversalTime());
+        Assert.Equal(new DateTime(2026, 9, 20, 0, 0, 0, DateTimeKind.Utc),
+            permit.GetProperty("inspectionDate").GetDateTime().ToUniversalTime());
+        Assert.Equal("Bayou Logistics", permit.GetProperty("businessName").GetString());
+        Assert.Equal("warehouse", permit.GetProperty("propertyType").GetString());
+        var participant = Assert.Single(detail.GetProperty("participants").EnumerateArray());
+        Assert.Equal("CONTRACTOR", participant.GetProperty("role").GetString());
+        Assert.Equal("Alpha Fire Protection", participant.GetProperty("name").GetString());
         Assert.Equal("https://permits.example.gov/record/1", detail.GetProperty("source").GetProperty("url").GetString());
 
         var foreign = await _client.GetAsync($"/api/leads/{_foreign.Id}");

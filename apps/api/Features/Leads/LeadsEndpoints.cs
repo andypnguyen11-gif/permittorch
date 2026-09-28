@@ -64,8 +64,12 @@ public static class LeadsEndpoints
                     o.Permit.State, o.Permit.FiledDate, o.Permit.EstimatedValue),
                 o.Confidence, o.LastUpdatedAt,
                 Permit = new LeadPermitDto(o.Permit.PermitNumber, o.Permit.Description, o.Permit.Zip,
-                    o.Permit.IssuedDate, o.Permit.SquareFootage, o.Permit.OwnerName, o.Permit.ContractorName),
+                    o.Permit.IssuedDate, o.Permit.SquareFootage, o.Permit.OwnerName, o.Permit.ContractorName,
+                    o.Permit.RawStatus, o.Permit.RecordType, o.Permit.WorkType,
+                    o.Permit.ExpirationDate, o.Permit.InspectionDate, o.Permit.BusinessName,
+                    o.Permit.PropertyType),
                 Participants = o.Permit.Participants
+                    .OrderBy(p => p.Role).ThenBy(p => p.Name)
                     .Select(p => new ParticipantDto(p.Role, p.Name)).ToList(),
                 Signals = o.Signals
                     .Select(s => new LeadSignalDto(s.SignalType, s.Description, s.Weight)).ToList(),
