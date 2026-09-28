@@ -21,7 +21,11 @@ public sealed record LeadSignalDto(string SignalType, string Description, int We
 
 public sealed record LeadPermitDto(
     string? PermitNumber, string? Description, string? Zip,
-    DateTime? IssuedDate, int? SquareFootage, string? OwnerName, string? ContractorName);
+    DateTime? IssuedDate, int? SquareFootage, string? OwnerName, string? ContractorName,
+    // The source's own words and extra fields. RawStatus is shown beside the normalized status
+    // so a mapped value never hides what the city actually published.
+    string? RawStatus, string? RecordType, string? WorkType,
+    DateTime? ExpirationDate, DateTime? InspectionDate, string? BusinessName, string? PropertyType);
 
 public sealed record ParticipantDto(ParticipantRole Role, string Name);
 

@@ -15,7 +15,8 @@ using PermitTorch.Api.Domain.Scoring;
 
 namespace PermitTorch.Api.Jobs;
 
-// Scores are persisted, but PERMIT_RECENT and OLD_PERMIT depend on the current time. This pass
+// Scores are persisted, but PERMIT_RECENT and OLD_PERMIT depend on the current time, measured
+// from the filed, issued and inspection dates. This pass
 // recomputes recent opportunities with the same ScoringEngine so time-based signals never go
 // stale (a lead must not keep "Filed within the last 72 hours" a week later).
 public sealed class RescoringJob : BackgroundService
@@ -84,7 +85,10 @@ public sealed class RescoringJob : BackgroundService
             var query = db.Set<FireOpportunity>()
                 .Include(o => o.Permit)
                 .Include(o => o.Signals)
-                .Where(o => o.Permit.FiledDate == null || o.Permit.FiledDate >= windowStart);
+                // Any date inside the window can still gain or lose a time-based signal. A permit
+                // with no filed date is always included, as before.
+                .Where(o => o.Permit.FiledDate == null || o.Permit.FiledDate >= windowStart
+                    || o.Permit.IssuedDate >= windowStart || o.Permit.InspectionDate >= windowStart);
             if (lastId is { } after)
                 query = query.Where(o => o.Id.CompareTo(after) > 0);
             var batch = await query

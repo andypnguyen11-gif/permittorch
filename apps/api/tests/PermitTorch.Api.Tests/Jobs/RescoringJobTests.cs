@@ -27,7 +27,7 @@ public class RescoringJobTests
     // Seeds a permit + opportunity scored as of scoredAt, exactly as ingestion would have stored it.
     private async Task<Guid> SeedScoredOpportunityAsync(DateTime filedDate, DateTime scoredAt,
         FireCategory category = FireCategory.GeneralFireProtection, bool overridden = false,
-        string description = "Fire protection work")
+        string description = "Fire protection work", DateTime? issuedDate = null)
     {
         await using var db = _fixture.CreateContext();
         var market = new Market
@@ -45,14 +45,15 @@ public class RescoringJobTests
         {
             Id = Guid.NewGuid(), SourceId = source.Id, ExternalId = $"ext-{Guid.NewGuid():N}",
             Description = description, Status = PermitStatusKind.Active, City = "Tulsa",
-            State = "OK", FiledDate = filedDate, ContractorName = "Reliable Fire Co",
+            State = "OK", FiledDate = filedDate, IssuedDate = issuedDate,
+            ContractorName = "Summit General Contractors",
             SourceUrl = "https://example.test", Fingerprint = Guid.NewGuid().ToString("N"),
             FirstSeenAt = scoredAt, LastSeenAt = scoredAt, CreatedAt = scoredAt, UpdatedAt = scoredAt,
         };
         var classification = new ClassificationResult(category, overridden ? 1.0m : 0.6m, "test");
         var normalized = new NormalizedPermit(permit.ExternalId, source.Jurisdiction, null, null,
             permit.Description, permit.Status, null, null, "Tulsa", "OK", null, null, null,
-            filedDate, null, null, null, null, permit.ContractorName, permit.SourceUrl, permit.Fingerprint);
+            filedDate, issuedDate, null, null, null, permit.ContractorName, permit.SourceUrl, permit.Fingerprint);
         var score = Engine.Score(normalized, classification, scoredAt);
         var opportunity = new FireOpportunity
         {
@@ -188,5 +189,24 @@ public class RescoringJobTests
         Assert.DoesNotContain(afterSignals, s => s.SignalType == "FIRE_SPRINKLER_SCOPE");
         Assert.DoesNotContain(afterSignals, s => s.SignalType == "PERMIT_RECENT"); // the rescore did run
         Assert.Equal(after.LeadScore, afterSignals.Sum(s => s.Weight));
+    }
+
+    [Fact]
+    public async Task RescoreOnce_DropsAnExpiredIssuedRecency_EvenWhenTheFilingIsOutsideTheWindow()
+    {
+        var now = DateTime.UtcNow;
+        // Filed long ago, issued nine days ago, scored when the issue was two days old.
+        var id = await SeedScoredOpportunityAsync(now.AddDays(-200), scoredAt: now.AddDays(-7),
+            issuedDate: now.AddDays(-9));
+        var (before, beforeSignals) = await LoadAsync(id);
+        Assert.Contains(beforeSignals, s => s.SignalType == "PERMIT_RECENT");
+        var (job, sp) = BuildJob();
+        await using var _ = sp;
+
+        await job.RescoreOnceAsync(now, CancellationToken.None);
+
+        var (after, afterSignals) = await LoadAsync(id);
+        Assert.DoesNotContain(afterSignals, s => s.SignalType == "PERMIT_RECENT");
+        Assert.Equal(before.LeadScore - 15, after.LeadScore);
     }
 }

@@ -311,6 +311,12 @@ public sealed class IngestionJob : BackgroundService
                 SquareFootage = normalized.SquareFootage,
                 OwnerName = normalized.OwnerName,
                 ContractorName = normalized.ContractorName,
+                RecordType = normalized.RecordType,
+                WorkType = normalized.WorkType,
+                ExpirationDate = normalized.ExpirationDate,
+                InspectionDate = normalized.InspectionDate,
+                BusinessName = normalized.BusinessName,
+                PropertyType = normalized.PropertyType,
                 SourceUrl = normalized.SourceUrl,
                 Fingerprint = normalized.Fingerprint,
                 FirstSeenAt = now,
@@ -327,15 +333,26 @@ public sealed class IngestionJob : BackgroundService
             permit.UpdatedAt = now;
         }
 
+        await SyncParticipantsAsync(db, permit, isNew, ct);
+
         // A manual reclassification (admin) is authoritative: keep the stored category and
         // confidence and only rescore against the refreshed permit fields. The classifier never
         // overrides — or drops — an opportunity an admin has categorised.
         var classification = permit.Opportunity is { CategoryOverridden: true } overridden
             ? new ClassificationResult(overridden.Category, overridden.Confidence, "manual")
             : FireClassifier.Classify(normalized);
+
+        // A record that no longer classifies (an inspection that was completed, a description
+        // that changed) keeps the lead it already has, with its stored category, and is scored
+        // against the refreshed fields. Dropping out of classification must lower a lead's
+        // score, never freeze it at its last value.
+        if (classification is null && permit.Opportunity is { } existing)
+            classification = new ClassificationResult(existing.Category, existing.Confidence, "retained");
         if (classification is null) return (isNew, false);
 
-        var scoreResult = _scoringEngine.Score(normalized, classification, now);
+        // Scored from the stored permit, which holds the merged view: a field this record
+        // omitted keeps the value an earlier record supplied.
+        var scoreResult = _scoringEngine.Score(StoredPermit.ToNormalized(permit), classification, now);
         var opportunity = permit.Opportunity;
         if (opportunity is null)
         {
@@ -375,6 +392,37 @@ public sealed class IngestionJob : BackgroundService
         }
 
         return (isNew, true);
+    }
+
+    // Owner and Contractor participants mirror the permit's merged owner and contractor names.
+    // Other roles are left alone: they belong to providers that report them directly.
+    private static async Task SyncParticipantsAsync(AppDbContext db, Permit permit, bool isNew,
+        CancellationToken ct)
+    {
+        var existing = isNew
+            ? new List<PermitParticipant>()
+            : await db.Set<PermitParticipant>()
+                .Where(p => p.PermitId == permit.Id
+                    && (p.Role == ParticipantRole.Owner || p.Role == ParticipantRole.Contractor))
+                .ToListAsync(ct);
+
+        SyncParticipant(db, permit, existing, ParticipantRole.Owner, permit.OwnerName);
+        SyncParticipant(db, permit, existing, ParticipantRole.Contractor, permit.ContractorName);
+    }
+
+    private static void SyncParticipant(AppDbContext db, Permit permit,
+        List<PermitParticipant> existing, ParticipantRole role, string? name)
+    {
+        var wanted = string.IsNullOrWhiteSpace(name) ? null : name.Trim();
+        var current = existing.Where(p => p.Role == role).ToList();
+        if (wanted is not null && current.Count == 1 && current[0].Name == wanted) return;
+
+        db.RemoveRange(current);
+        if (wanted is null) return;
+        db.Add(new PermitParticipant
+        {
+            Id = Guid.NewGuid(), PermitId = permit.Id, Role = role, Name = wanted,
+        });
     }
 
     // Loads the affected sources fresh (the loop clears the change tracker) and applies
@@ -437,6 +485,12 @@ public sealed class IngestionJob : BackgroundService
         if (n.SquareFootage.HasValue) permit.SquareFootage = n.SquareFootage;
         if (n.OwnerName is not null) permit.OwnerName = n.OwnerName;
         if (n.ContractorName is not null) permit.ContractorName = n.ContractorName;
+        if (n.RecordType is not null) permit.RecordType = n.RecordType;
+        if (n.WorkType is not null) permit.WorkType = n.WorkType;
+        if (n.ExpirationDate.HasValue) permit.ExpirationDate = n.ExpirationDate;
+        if (n.InspectionDate.HasValue) permit.InspectionDate = n.InspectionDate;
+        if (n.BusinessName is not null) permit.BusinessName = n.BusinessName;
+        if (n.PropertyType is not null) permit.PropertyType = n.PropertyType;
         if (!string.IsNullOrEmpty(n.SourceUrl)) permit.SourceUrl = n.SourceUrl;
     }
 
