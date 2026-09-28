@@ -102,3 +102,22 @@ export function recordLink(source: {
   const dataset = webAddress(source.url);
   return dataset ? { href: dataset, label: "View source dataset" } : null;
 }
+
+// A link that dials the number, only when the value is one full US number and nothing else.
+// An extension, a second number or a foreign number is shown as text: dialling a guess
+// would reach the wrong person.
+export function phoneHref(phone: string | null | undefined): string | null {
+  const trimmed = phone?.trim();
+  if (!trimmed || !/^[0-9+().\- ]+$/.test(trimmed)) return null;
+  const digits = trimmed.replace(/\D/g, "");
+  if (digits.length === 10) return `tel:+1${digits}`;
+  return digits.length === 11 && digits.startsWith("1") ? `tel:+${digits}` : null;
+}
+
+// A link that writes to the address, only when the value is exactly one plain address.
+export function emailHref(email: string | null | undefined): string | null {
+  const trimmed = email?.trim();
+  return trimmed && /^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/.test(trimmed)
+    ? `mailto:${trimmed}`
+    : null;
+}

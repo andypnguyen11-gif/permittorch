@@ -31,7 +31,12 @@ export interface LeadDetail extends LeadSummary {
     expirationDate: string | null; inspectionDate: string | null;
     businessName: string | null; propertyType: string | null;
   };
-  participants: { role: string; name: string }[];
+  /** `phone`, `email` and `licenseNumber` are the party's own, as the permit record itself
+   *  publishes them. Null when the record has none. */
+  participants: {
+    role: string; name: string;
+    phone: string | null; email: string | null; licenseNumber: string | null;
+  }[];
   signals: LeadSignal[];
   /** `url` is the dataset's home page, the same for every record of a source. `recordUrl`
    *  opens this one record and is null when the source has no such link. */

@@ -160,7 +160,13 @@ export const mockLeads: LeadSummary[] = [
     reason: "Fire-protection related permit activity.", isNew: false },
 ];
 
-type DetailExtras = Omit<LeadDetail, keyof LeadSummary | "source" | "lastUpdatedAt"> & {
+// Most permit records publish no contact details, so a fixture names them only where it has
+// some. Every phone is a 555-01xx number and every address is at example.com: made up.
+type FixtureParticipant = Pick<LeadDetail["participants"][number], "role" | "name">
+  & Partial<Omit<LeadDetail["participants"][number], "role" | "name">>;
+
+type DetailExtras = Omit<LeadDetail, keyof LeadSummary | "source" | "lastUpdatedAt" | "participants"> & {
+  participants: FixtureParticipant[];
   lastUpdatedAt?: string;
   source?: LeadDetail["source"];
 };
@@ -300,7 +306,7 @@ const extras: Record<string, DetailExtras> = {
       expirationDate: daysAgo(-84) }),
     participants: [
       { role: "OWNER", name: "Post Oak Parking LLC" },
-      { role: "CONTRACTOR", name: "Gulf Coast Fire Services" },
+      { role: "CONTRACTOR", name: "Gulf Coast Fire Services", phone: "713-555-0177 x12" },
     ],
     signals: signalsOf("LARGE_SQUARE_FOOTAGE", "FIRE_CONTRACTOR_ASSIGNED"),
   },
@@ -335,7 +341,8 @@ const extras: Record<string, DetailExtras> = {
       squareFootage: 40000, ownerName: "Harwin Storage Partners", contractorName: "Bayou Sprinkler Co." }),
     participants: [
       { role: "OWNER", name: "Harwin Storage Partners" },
-      { role: "CONTRACTOR", name: "Bayou Sprinkler Co." },
+      { role: "CONTRACTOR", name: "Bayou Sprinkler Co.", phone: "(713) 555-0142",
+        email: "office@example.com", licenseNumber: "000000" },
     ],
     signals: signalsOf("FIRE_SPRINKLER_SCOPE", "LARGE_SQUARE_FOOTAGE"),
   },
@@ -445,10 +452,11 @@ const extras: Record<string, DetailExtras> = {
 };
 
 export const mockLeadDetails: LeadDetail[] = mockLeads.map((lead) => {
-  const { source, lastUpdatedAt, ...rest } = extras[lead.id];
+  const { source, lastUpdatedAt, participants, ...rest } = extras[lead.id];
   return {
     ...lead,
     ...rest,
+    participants: participants.map((p) => ({ phone: null, email: null, licenseNumber: null, ...p })),
     lastUpdatedAt: lastUpdatedAt ?? hoursAgo(2),
     source: source
       ?? (lead.city === "Houston" ? HOUSTON_SOURCE(rest.permit.permitNumber) : DALLAS_SOURCE()),

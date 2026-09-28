@@ -12,8 +12,8 @@ import { SaveButton } from "@/components/app/lead-detail/save-button";
 import { TrackOnMount } from "@/components/app/track-on-mount";
 import { STATUS_LABELS } from "@/components/app/leads/query";
 import {
-  formatDate, formatRelative, formatValueShort,
-  humanizeMachineString, permitStatusDisplay, recordKind, recordLink, repeatsTitle,
+  emailHref, formatDate, formatRelative, formatValueShort,
+  humanizeMachineString, permitStatusDisplay, phoneHref, recordKind, recordLink, repeatsTitle,
 } from "@/components/app/format";
 import { Badge } from "@/components/ui/badge";
 
@@ -36,6 +36,17 @@ const ROLE_LABELS: Record<string, string> = {
   OWNER: "Owner", APPLICANT: "Applicant", CONTRACTOR: "Contractor", GENERAL_CONTRACTOR: "General contractor",
 };
 const roleLabel = (role: string): string => ROLE_LABELS[role] ?? humanizeMachineString(role) ?? role;
+
+const CONTACT_LINK_CLASS =
+  "rounded font-medium text-orange-600 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50";
+
+// A phone or an email is a link only when it is safe to dial or write to as it stands;
+// anything else the record publishes is shown as plain text.
+function ContactValue({ value, href }: { value: string; href: string | null }) {
+  return href
+    ? <a href={href} className={CONTACT_LINK_CLASS}>{value}</a>
+    : <span className="text-stone-700">{value}</span>;
+}
 
 // A record whose kind is "inspection" or "violation" is not a permit; the
 // Permit card retitles itself and relabels the permit-number field to match.
@@ -66,6 +77,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
   // An inspection's system type is usually just "inspection", which the card title already says.
   const showSystemType = !repeatsTitle(systemType, cardTitle) && (showAlways || systemType !== null);
   const sourceLink = recordLink(lead.source);
+  const hasContactDetails = lead.participants.some((p) => p.phone || p.email || p.licenseNumber);
 
   return (
     <div className="space-y-6">
@@ -151,10 +163,20 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
                 {lead.participants.map((p) => (
                   <li key={p.role + p.name} className="flex justify-between gap-4 py-2 text-sm first:pt-0 last:pb-0">
                     <span className="text-stone-500">{roleLabel(p.role)}</span>
-                    <span className="text-right font-medium text-stone-800">{p.name}</span>
+                    <div className="space-y-0.5 text-right">
+                      <p className="font-medium text-stone-800">{p.name}</p>
+                      {p.phone && <p><ContactValue value={p.phone} href={phoneHref(p.phone)} /></p>}
+                      {p.email && <p><ContactValue value={p.email} href={emailHref(p.email)} /></p>}
+                      {p.licenseNumber && <p className="text-stone-500">License {p.licenseNumber}</p>}
+                    </div>
                   </li>
                 ))}
               </ul>
+            )}
+            {hasContactDetails && (
+              <p className="mt-3 border-t border-border pt-3 text-xs text-stone-500">
+                Contact details are shown as the public permit record lists them.
+              </p>
             )}
           </SectionCard>
         </div>

@@ -46,7 +46,11 @@ const detail: LeadDetail = {
     expirationDate: null, inspectionDate: null,
     businessName: null, propertyType: "commercial",
   },
-  participants: [{ role: "OWNER", name: "Acme Holdings" }],
+  participants: [
+    { role: "OWNER", name: "Acme Holdings", phone: null, email: null, licenseNumber: null },
+    { role: "CONTRACTOR", name: "Reliable Fire Co", phone: "(713) 555-0142",
+      email: "office@example.com", licenseNumber: "000000" },
+  ],
   signals: [signal],
   source: {
     name: "Houston", url: "https://example.com", lastCheckedAt: null,

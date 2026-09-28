@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   formatDate, formatRelative, formatValueShort, scoreBand,
-  humanizeMachineString, permitStatusDisplay, recordKind, recordLink, repeatsTitle,
+  emailHref, humanizeMachineString, permitStatusDisplay, phoneHref, recordKind, recordLink, repeatsTitle,
 } from "@/components/app/format";
 
 describe("scoreBand", () => {
@@ -161,5 +161,51 @@ describe("recordLink", () => {
       .toEqual({ href: dataset, label: "View source dataset" });
     expect(recordLink({ url: "javascript:alert(1)", recordUrl: null, recordUrlKind: null })).toBeNull();
     expect(recordLink({ url: "", recordUrl: null, recordUrlKind: null })).toBeNull();
+  });
+});
+
+// Made-up values throughout: 555-01xx numbers and example.com addresses.
+describe("phoneHref", () => {
+  it("dials one full US number, however the record punctuates it", () => {
+    for (const phone of ["7135550142", "(713) 555-0142", "713-555-0142", "713.555.0142", "+1 713 555 0142", "1-713-555-0142"]) {
+      expect(phoneHref(phone), phone).toBe("tel:+17135550142");
+    }
+  });
+
+  it("does not guess a number to dial when the value holds more than one", () => {
+    expect(phoneHref("713-555-0142 x12")).toBeNull();
+    expect(phoneHref("713-555-0142 / 713-555-0199")).toBeNull();
+    expect(phoneHref("713-555-0142 ext 4")).toBeNull();
+    expect(phoneHref("+44 20 7946 0958")).toBeNull();
+  });
+
+  it("is null for what is not a phone", () => {
+    expect(phoneHref("555-0142")).toBeNull();
+    expect(phoneHref("N/A")).toBeNull();
+    expect(phoneHref("javascript:alert(1)")).toBeNull();
+    expect(phoneHref("")).toBeNull();
+    expect(phoneHref(null)).toBeNull();
+  });
+});
+
+describe("emailHref", () => {
+  it("writes to one plain address", () => {
+    expect(emailHref("office@example.com")).toBe("mailto:office@example.com");
+    expect(emailHref(" First.Last+permits@sub.example.com ")).toBe("mailto:First.Last+permits@sub.example.com");
+  });
+
+  it("is null for anything that could carry more than one address", () => {
+    expect(emailHref("a@example.com; b@example.com")).toBeNull();
+    expect(emailHref("a@example.com,b@example.com")).toBeNull();
+    expect(emailHref("office@example.com?subject=x&bcc=other@example.com")).toBeNull();
+    expect(emailHref("office@example.com%0Abcc:other@example.com")).toBeNull();
+  });
+
+  it("is null for what is not an email", () => {
+    expect(emailHref("office at example.com")).toBeNull();
+    expect(emailHref("office@example")).toBeNull();
+    expect(emailHref("javascript:alert(1)")).toBeNull();
+    expect(emailHref("")).toBeNull();
+    expect(emailHref(null)).toBeNull();
   });
 });

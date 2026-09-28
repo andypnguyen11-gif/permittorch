@@ -129,6 +129,65 @@ describe("/app/leads/[id] page (mock API)", () => {
     expect(within(participants).getByText("Bayou Sprinkler Co.")).toBeInTheDocument();
   });
 
+  it("shows a participant's phone, email and licence number from the permit record", async () => {
+    await renderPage("lead-014");
+    const participants = screen.getByRole("region", { name: "Participants" });
+    const phone = within(participants).getByRole("link", { name: "(713) 555-0142" });
+    expect(phone).toHaveAttribute("href", "tel:+17135550142");
+    const email = within(participants).getByRole("link", { name: "office@example.com" });
+    expect(email).toHaveAttribute("href", "mailto:office@example.com");
+    expect(within(participants).getByText("License 000000")).toBeInTheDocument();
+    // Says where the details come from: the record, not a lookup.
+    expect(within(participants).getByText("Contact details are shown as the public permit record lists them."))
+      .toBeInTheDocument();
+    // The owner has none, and shows none.
+    expect(within(participants).getAllByRole("link")).toHaveLength(2);
+  });
+
+  it("shows a phone it cannot safely dial as plain text", async () => {
+    await renderPage("lead-011");
+    const participants = screen.getByRole("region", { name: "Participants" });
+    expect(within(participants).getByText("713-555-0177 x12")).toBeInTheDocument();
+    expect(within(participants).queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("says nothing about contact details when the record publishes none", async () => {
+    await renderPage("lead-001");
+    const participants = screen.getByRole("region", { name: "Participants" });
+    expect(within(participants).getByText("Katy Freeway Industrial LP")).toBeInTheDocument();
+    expect(within(participants).queryByRole("link")).not.toBeInTheDocument();
+    expect(within(participants).queryByText(/Contact details are shown/)).not.toBeInTheDocument();
+    expect(within(participants).queryByText(/^License /)).not.toBeInTheDocument();
+  });
+
+  it("never turns a contact value from the API into a link it did not check", async () => {
+    const lead = await api.getLead("lead-014", "mock-token");
+    const spy = vi.spyOn(api, "getLead").mockResolvedValueOnce({
+      ...lead,
+      participants: [{
+        role: "CONTRACTOR", name: "Bayou Sprinkler Co.", phone: "javascript:alert(1)",
+        email: "office@example.com?bcc=other@example.com", licenseNumber: null,
+      }],
+    });
+    await renderPage("lead-014");
+    const participants = screen.getByRole("region", { name: "Participants" });
+    expect(within(participants).queryByRole("link")).not.toBeInTheDocument();
+    spy.mockRestore();
+  });
+
+  it("still renders participants from an API response that has no contact fields", async () => {
+    const lead = await api.getLead("lead-014", "mock-token");
+    const spy = vi.spyOn(api, "getLead").mockResolvedValueOnce({
+      ...lead,
+      participants: [{ role: "CONTRACTOR", name: "Bayou Sprinkler Co." }] as never,
+    });
+    await renderPage("lead-014");
+    const participants = screen.getByRole("region", { name: "Participants" });
+    expect(within(participants).getByText("Bayou Sprinkler Co.")).toBeInTheDocument();
+    expect(within(participants).queryByRole("link")).not.toBeInTheDocument();
+    spy.mockRestore();
+  });
+
   it("renders not-found for an unknown lead id in mock mode", async () => {
     await expect(renderPage("lead-does-not-exist")).rejects.toThrow("NOT_FOUND");
   });
