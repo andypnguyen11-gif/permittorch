@@ -546,10 +546,11 @@ Example signals:
 | Explicit sprinkler scope    |            +25 |
 | Explicit fire alarm scope   |            +20 |
 | Failed inspection           |            +20 |
-| Permit <72 hours old        |            +15 |
+| Permit filed <72 hours ago, or issued or inspected <7 days ago | +15 |
 | Project value >$500K        |            +10 |
 | Large square footage        |            +10 |
 | Contractor not listed       |            +10 |
+| Fire contractor already on the permit | -25 |
 | Old permit                  |            -20 |
 | Closed permit               |            -30 |
 

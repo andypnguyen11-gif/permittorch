@@ -60,3 +60,22 @@ Decisions made during the autonomous MVP build, in the order they were made. Eac
 - R-WS5-6 Ruling: Apify schedule + 90-day backfill are run by the controller only AFTER the deployment is verified and the WS5 review is clean (user instruction: not before WS5 deploy).
 - R-WS5-7 Ruling: ONE fix wave after the deploy implementer finishes (single writer on main): C1 split seeder (registry upsert always safe; samples + E2E identities require explicit opt-in flags AND refuse in Production; separate SEED_SUPERADMIN_FIREBASE_UID for prod admin); I2 checkout=success confirming state + server refuses new checkout while a recent open placeholder exists; I3 409 → open billing portal + `hasLiveSubscription` on /api/account/me; I4 picker lists only markets with data + API refuses checkout for markets without recent data; I5 PostHog autocapture off, session recording off, sanitize URLs, search event sends length only; minors 6 (anchor icon/og routes), 7 (identify with internal user id — add `id` to AccountMe), 8 (signed-in /signup?plan → /app/account?plan), 9 (seed --refresh-samples + e2e global-setup data check), 11 (Sentry captureMessage on missing keys), Sentry header/cookie scrubbing in both SDKs. Then redeploy. Cost if wrong: WS5-only rework.
 - WS5 fix-wave re-review (opus): all findings ADDRESSED; new N1 (Important: different selection while a session is open → 409 dead end) and N2 (Minor: confirming never ends for live-but-planless subscription). R-WS5-8 Ruling: round 2 to the same implementer (expire+replace; confirming exits on hasLiveSubscription; multi-source guard tests); deploy after a quick scoped re-check.
+
+## 07-lead-quality-fixes
+
+Design: `docs/superpowers/specs/2026-09-27-lead-quality-fixes-design.md`. Prompted by the owner asking why a customer would pay for public data while looking at a 90-point lead that already named a sprinkler contractor.
+
+- R-LQ-1 Ruling: a permit that already names a fire-protection contractor loses 25 points (`FIRE_CONTRACTOR_ASSIGNED`). It is not removed, because inspection, monitoring and supply firms still want it. Cost if wrong: one configuration value.
+- R-LQ-2 Ruling: recency falls back from the filed date to the issued date (7 days), then to the inspection date for inspection and violation records. `OLD_PERMIT` uses the latest of the three. Before this, one lead in 9,080 had the recency signal.
+- R-LQ-3 Ruling: the classifier accepts the scraper's `inspection`, `fire_code_violation` and `standpipe` labels. Completed inspections and abated violations create no lead. Pending inspections do, at the baseline score.
+- R-LQ-4 Ruling: `NO_CONTRACTOR_LISTED` no longer fires on inspections and violations, which never carry a contractor.
+- R-LQ-5 Ruling: a record that stops classifying keeps its existing lead and is rescored with the stored category. This closes the deferred "stale opportunity" item from the pipeline review.
+- R-LQ-6 Ruling: ingestion scores from the stored, merged permit, the same view the daily rescoring uses, so the two can never disagree about a lead.
+- R-LQ-7 Ruling: existing rows are refreshed by ingesting the recorded Apify runs again, not by a new code path. See "Reprocessing recorded runs" in `docs/deploy.md`.
+- R-LQ-8 Ruling (branch review): a stored record that only now becomes a lead is dated from when the record first arrived. Reprocessing would otherwise have presented months-old inspections as new.
+- R-LQ-9 Ruling (branch review): `Rescoring:FullPassOnStartup` exists for deploys that change scoring, because the daily pass skips leads with no date in the last 91 days.
+- R-LQ-10 Ruling (branch review): refusals (`Not Approved`, `Denied`, `Rejected`) map to Closed ahead of the weak `approved` fallback.
+- R-LQ-11 Ruling: the fire-trade contractor match was rebuilt from the contractor names in production after a whole-word match on "fire" missed names such as D8Fire, Firequest and DynaFire.
+- Declined from the review: a unique index on participant role per permit. Ingestion is a single writer, and one permit may need several contractors later.
+- Not done, by decision: buyer trade profiles, a competitor view, contact enrichment, and every scraper-side gap.
+

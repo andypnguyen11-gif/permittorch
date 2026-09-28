@@ -123,6 +123,25 @@ In production:
 
 Seed markets and sources **before** the first boot with `Pipeline__Enabled=true`. Otherwise ingestion could consume an Apify run while the sources table is still empty.
 
+## Reprocessing recorded runs
+
+Use this when a pipeline change must be applied to records that are already stored, for example a new field or a new classification rule. Permits do not keep the raw scraper record, so the only way to refresh them is to ingest the recorded Apify runs again. Upserts are idempotent: no permit or lead is duplicated.
+
+1. Confirm the datasets still exist. Apify keeps unnamed datasets for a limited time, so a run older than the retention period cannot be reprocessed.
+2. Save the run history, then remove it so ingestion sees the runs as new:
+   ```bash
+   railway ssh --service Postgres -- sh -c 'psql -U "$PGUSER" -d "$PGDATABASE" -c "create table scraper_runs_before_reprocess as select * from scraper_runs" -c "delete from scraper_runs"'
+   ```
+3. Ingestion takes one run per pass, oldest first. To shorten the wait, set `Ingestion__IntervalMinutes=1` on `api`, and remove it again afterwards.
+4. Watch progress: `select count(*) from scraper_runs` climbs back to the original count.
+5. When it is done, compare the totals with the saved table, then drop the saved table.
+
+Source freshness never moves backwards during this, because it is taken from the run time and only ever advances. A stored record that becomes a lead during reprocessing is dated from when the record first arrived, so it is not shown as new.
+
+## Rescoring every lead after a scoring change
+
+The daily rescoring pass only revisits leads with a date inside the last 91 days. After a deploy that changes scoring rules or weights, set `Rescoring__FullPassOnStartup=true` on `api`. The next start rescores every lead once. Remove the variable afterwards, or every restart repeats the full pass.
+
 ## Rotating secrets
 
 Each `railway variable set` below redeploys the service unless you pass `--skip-deploys`.
