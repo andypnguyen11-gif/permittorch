@@ -7,12 +7,12 @@ Ordering within a phase is roughly dependency order. Every PR includes tests (se
 
 ## Status (2026-09-27)
 
-- Live in production: API `https://api-production-bab7.up.railway.app`, web `https://web-production-2b8db2.up.railway.app`. All 31 markets have real ingested data (`GET /api/markets/stats` reports `totalLast30Days > 0` for every market).
+- Live in production: API `https://api.permittorch.com`, web `https://permittorch.com` (`www` redirects to it). The original Railway domains stay attached as a fallback. All 31 markets have real ingested data (`GET /api/markets/stats` reports `totalLast30Days > 0` for every market).
 - Daily Apify ingestion (`permittorch-daily`) runs on schedule, `0 6 * * *` UTC, enabled; 90-day backfill complete.
 - Test totals from this verification pass: API 461/461 passing (xUnit, `dotnet test`, Release, no-build); web 56 test files / 554 tests passing (Vitest); typecheck clean across all workspaces; E2E (Playwright) 36 passed, 20 skipped, 0 failed — skips are the Firebase-auth-dependent specs (signup, sign-in, leads, saved, entitlement, admin, billing), pending the Firebase console step below.
 - Production API/web health, authorization boundaries (`/app/leads` → `/login`, `/api/leads` → 401), and SEO surface (unique titles, one canonical + ≥2 OG tags per page, sitemap, robots) all verified green.
 - Remaining for the product owner before full go-live:
-  - Enable Firebase **Email/Password** and **Google** sign-in providers in the Firebase console, and add the production web domain to Firebase's authorized domains — unblocks the 20 skipped E2E specs and real user sign-in.
+  - Enable Firebase **Email/Password** and **Google** sign-in providers in the Firebase console, and add `permittorch.com` and `www.permittorch.com` to Firebase's authorized domains — unblocks the 20 skipped E2E specs and real user sign-in.
   - Set `RESEND_API_KEY` in the API's Railway environment — the digest code (subscriber + sample-lead nurture) is implemented and tested but cannot send until this is set.
   - Set `SENTRY_DSN` (API + web) and `NEXT_PUBLIC_POSTHOG_KEY` (web) in Railway — both integrations are wired but inert without them.
   - Issue a dedicated Stripe **restricted** API key for the API (currently a broader test-mode secret key) and configure the customer portal; switch to live Stripe products/prices/webhook at go-live (`STRIPE_SECRET_KEY` in production is currently `sk_test_…`).

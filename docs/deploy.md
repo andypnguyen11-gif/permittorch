@@ -4,8 +4,8 @@ Production runs on **Railway**. There is one project, `permittorch`, with one en
 
 | Service | Source | Public URL | Healthcheck |
 | --- | --- | --- | --- |
-| `api` | GitHub `andypnguyen11-gif/permittorch` @ `main`, Dockerfile `apps/api/Dockerfile` (repo-root context) | https://api-production-bab7.up.railway.app | `GET /api/health` → `{"status":"ok"}` |
-| `web` | same repo @ `main`, Dockerfile `apps/web/Dockerfile` (repo-root context) | https://web-production-2b8db2.up.railway.app | `GET /` → 200 |
+| `api` | GitHub `andypnguyen11-gif/permittorch` @ `main`, Dockerfile `apps/api/Dockerfile` (repo-root context) | https://api.permittorch.com (Railway domain `api-production-bab7.up.railway.app` stays attached) | `GET /api/health` → `{"status":"ok"}` |
+| `web` | same repo @ `main`, Dockerfile `apps/web/Dockerfile` (repo-root context) | https://permittorch.com (`www.permittorch.com` redirects here; Railway domain `web-production-2b8db2.up.railway.app` stays attached) | `GET /` → 200 |
 | `Postgres` | Railway PostgreSQL template (volume `postgres-volume`) | private only (`postgres.railway.internal`) | Railway managed |
 
 Service settings are applied through the Railway API or the dashboard. They are not stored as files, because Railway no longer accepts `railway.json` config-as-code:
@@ -38,8 +38,8 @@ Service settings are applied through the Railway API or the dashboard. They are 
 - `RUN_MIGRATIONS_ON_STARTUP=true`
 - `Pipeline__Enabled=true`
 - `ForwardedHeaders__ForwardLimit=2` (see below)
-- `WEB_ORIGIN=https://web-production-2b8db2.up.railway.app`
-- `API_PUBLIC_URL=https://api-production-bab7.up.railway.app`
+- `WEB_ORIGIN=https://permittorch.com` (the API allows this one browser origin, so the app must be used on the apex)
+- `API_PUBLIC_URL=https://api.permittorch.com`
 - `EMAIL_FROM=leads@permittorch.dev` (placeholder until Resend is set up)
 - `RAILWAY_DOCKERFILE_PATH=apps/api/Dockerfile`
 - Secrets and IDs: `FIREBASE_PROJECT_ID`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_TERRITORY`, `EMAIL_UNSUBSCRIBE_SECRET`, `APIFY_TOKEN`, `APIFY_TASK_ID`.
@@ -52,7 +52,7 @@ Service settings are applied through the Railway API or the dashboard. They are 
 **web:**
 - `NODE_ENV=production`
 - `PORT=3000`
-- `NEXT_PUBLIC_API_URL=https://api-production-bab7.up.railway.app` (the **public** API domain, because browsers call it)
+- `NEXT_PUBLIC_API_URL=https://api.permittorch.com` (the **public** API domain, because browsers call it)
 - `RAILWAY_DOCKERFILE_PATH=apps/web/Dockerfile`
 - Build-time: `NEXT_PUBLIC_FIREBASE_API_KEY`, `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`, `NEXT_PUBLIC_FIREBASE_PROJECT_ID`, `NEXT_PUBLIC_FIREBASE_APP_ID`
 - Runtime (server): `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` (single line with `\n` escapes), `AUTH_COOKIE_SIGNATURE_KEY_CURRENT`, `AUTH_COOKIE_SIGNATURE_KEY_PREVIOUS`
@@ -63,7 +63,7 @@ Service settings are applied through the Railway API or the dashboard. They are 
 
 ## Stripe webhook
 
-- **Endpoint:** `we_1UK6Vb2ObeZMEPuNk4U6pVNV` (TEST mode, account `acct_1TuG0M2ObeZMEPuN`), URL `https://api-production-bab7.up.railway.app/api/webhooks/stripe`.
+- **Endpoint:** `we_1UK6Vb2ObeZMEPuNk4U6pVNV` (TEST mode, account `acct_1TuG0M2ObeZMEPuN`), URL `https://api.permittorch.com/api/webhooks/stripe`.
 - **Events:** `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`. These are the three the API handles. It re-fetches the subscription on every subscription event.
 - **Signing secret:** stored in `STRIPE_WEBHOOK_SECRET` on `api`.
 - **Unsigned or wrongly signed requests** return 400.
@@ -119,7 +119,7 @@ In production:
    ```
    The output must contain no `WARN: SEED_…` line. If it does, remove that variable from the service.
 2. Optional, once the operator has signed up in the web app: make them SuperAdmin by setting `SEED_SUPERADMIN_FIREBASE_UID` (their Firebase uid) and `SEED_SUPERADMIN_EMAIL` on the api service with `--skip-deploys`, run the same command, then delete both variables.
-3. Verify: `curl -s https://api-production-bab7.up.railway.app/api/markets` returns 31 markets. Check the database with `railway ssh --service Postgres -- sh -c 'psql -U "$PGUSER" -d "$PGDATABASE" -c "select count(*) from permits where external_id like \$\$seed-%\$\$"'`, which must return 0.
+3. Verify: `curl -s https://api.permittorch.com/api/markets` returns 31 markets. Check the database with `railway ssh --service Postgres -- sh -c 'psql -U "$PGUSER" -d "$PGDATABASE" -c "select count(*) from permits where external_id like \$\$seed-%\$\$"'`, which must return 0.
 
 Seed markets and sources **before** the first boot with `Pipeline__Enabled=true`. Otherwise ingestion could consume an Apify run while the sources table is still empty.
 
@@ -144,7 +144,7 @@ The Railway volume backup schedules on `postgres-volume` are **DAILY** (6-day re
 ## Smoke test (after every deploy)
 
 ```bash
-API=https://api-production-bab7.up.railway.app; WEB=https://web-production-2b8db2.up.railway.app
+API=https://api.permittorch.com; WEB=https://permittorch.com
 curl -s $API/api/health                                                    # {"status":"ok"}
 curl -s $API/api/markets | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))'   # 31
 for p in / /pricing /locations /login /sitemap.xml; do curl -s -o /dev/null -w "$p %{http_code}\n" $WEB$p; done   # 200s
@@ -152,21 +152,32 @@ curl -s $WEB/sitemap.xml | grep -m3 '<loc>'                                # abs
 curl -s -o /dev/null -w "%{http_code}\n" -H "Origin: $WEB" $API/api/leads  # 401 (+ Access-Control-Allow-Origin: $WEB)
 curl -s -o /dev/null -w "%{http_code}\n" "$API/api/email/unsubscribe?token=bad"            # 400 HTML page
 curl -s -o /dev/null -w "%{http_code}\n" -X POST -d '{}' $API/api/webhooks/stripe          # 400 (no signature)
+curl -s -o /dev/null -w "%{http_code} %{redirect_url}\n" https://www.permittorch.com/pricing   # 308 https://permittorch.com/pricing
 ```
 
 ## Remaining human steps
 
 1. **Firebase console** (https://console.firebase.google.com/project/permittorch-app/authentication):
    - Click **Get started**, then under **Sign-in method** enable **Email/Password** and **Google**.
-   - Under **Settings → Authorized domains**, add `web-production-2b8db2.up.railway.app`.
+   - Under **Settings → Authorized domains**, add `permittorch.com` and `www.permittorch.com`.
 2. **Stripe key:** replace `STRIPE_SECRET_KEY` on `api` (currently a full `sk_test_…` key) with a restricted `rk_test_…` key. Also disable plan switching in the Billing Portal settings.
 3. **Resend:** verify a sending domain, then set `RESEND_API_KEY` and a real `EMAIL_FROM` on `api`.
 4. **Sentry and PostHog:** set `SENTRY_DSN` (api) and `NEXT_PUBLIC_SENTRY_DSN` + `NEXT_PUBLIC_POSTHOG_KEY` (web; a web rebuild follows automatically).
 5. **Browser smoke pass:** sign up → `/app/leads` locked → `/pricing` → test card `4242 4242 4242 4242` → leads visible. Stripe → Webhooks → the endpoint should show a 200.
-6. **Custom domain** (when ready):
-   - Railway `web` → Settings → Networking → Custom Domain `permittorch.com` + `www`, and add the CNAMEs shown.
-   - Optionally add `api.permittorch.com` on `api`. Then update `NEXT_PUBLIC_API_URL`, `API_PUBLIC_URL`, `WEB_ORIGIN` and the Stripe endpoint URL, and add the domains to Firebase authorized domains.
-   - `SITE_URL` (canonical, sitemap, OG) is already `https://permittorch.com`.
+## Custom domain
+
+`permittorch.com` is registered at Porkbun, which also hosts its DNS. Cut over on 2026-09-27.
+
+| Hostname | Railway service | Role |
+| --- | --- | --- |
+| `permittorch.com` | `web` | The one public web address. Matches `SITE_URL`, so canonical links, the sitemap and Open Graph URLs use it. |
+| `www.permittorch.com` | `web` | Redirects every path to the apex with a 308 (`lib/canonical-host.ts`, wired in `next.config.ts`). |
+| `api.permittorch.com` | `api` | Public API address, used by browsers, email links and the Stripe webhook. |
+
+- **One web host on purpose.** Session cookies are per hostname and `WEB_ORIGIN` holds a single allowed origin. Signed-in pages therefore work on the apex only. The Railway `web` domain still serves pages, but its browser calls to the API are refused.
+- **Railway domains stay attached** as a fallback and for direct health checks.
+- **DNS records** live at Porkbun: an ALIAS for the apex, CNAMEs for `www` and `api`, and one `_railway-verify` TXT record per hostname. Railway shows the required values under each service's Networking settings.
+- **Mail:** the MX and SPF records belong to Porkbun email forwarding. When Resend is added, merge its include into the existing SPF record. A second SPF record breaks delivery.
 
 ## Alternative: web on Vercel
 
