@@ -155,7 +155,9 @@ public class PermitNormalizerTests
         var normalized = PermitNormalizer.Normalize(Raw(permitStatus: permitStatus));
 
         Assert.Equal(expected, normalized.Status);
-        Assert.Equal(permitStatus, normalized.RawStatus);
+        // The source's text is kept verbatim, except that a blank is stored as missing so it
+        // can never replace a real status text on a later merge.
+        Assert.Equal(string.IsNullOrWhiteSpace(permitStatus) ? null : permitStatus, normalized.RawStatus);
     }
 
     [Fact]

@@ -42,6 +42,22 @@ public class ScoringEngineLeadQualityTests
     [InlineData("Guardian Alarm Systems")]
     [InlineData("Apex Suppression Services")]
     [InlineData("aqueduct fire protection systems, llc")]
+    // Real names from production that a whole-word match on "fire" missed.
+    [InlineData("D8Fire")]
+    [InlineData("FIREQUEST CORP")]
+    [InlineData("DynaFire  LLC")]
+    [InlineData("Diversifire Systems Inc")]
+    [InlineData("PREFERRED SPKLR AND MECH")]
+    [InlineData("BUCKMILLER AUTO.SPKLR.COR")]
+    [InlineData("TRISTATE FIRE SPRINK INC")]
+    [InlineData("RITE WAY SPINKLER CORP")]
+    [InlineData("API GROUP LIFE SAFETY USA LLC")]
+    [InlineData("ADVANCED PLBG, MECH & SPR")]
+    [InlineData("ACME SPRINKLR CORP")]
+    [InlineData("ABC SPRINKL")]
+    [InlineData("FIREPROTECTION INC")]
+    [InlineData("Firetrol Protection")]
+    [InlineData("Firecom Inc")]
     public void Score_PenalizesAPermitThatAlreadyNamesAFireContractor(string contractor)
     {
         var result = Engine().Score(Permit(contractorName: contractor), Sprinkler(), Now);
@@ -58,9 +74,14 @@ public class ScoringEngineLeadQualityTests
     [InlineData("Summit General Contractors")]
     [InlineData("RRP PLUMBING CORP")]
     [InlineData("Barringer Construction")]
-    [InlineData("Bonfire Builders")]        // "fire" inside another word is not the fire trade
-    [InlineData("Spruce Street Partners")]  // "spr" inside another word is not "SPR."
+    [InlineData("Bonfire Builders")]        // everyday words that contain "fire"
     [InlineData("Campfire Electric")]
+    [InlineData("Wildfire Restoration Inc")]
+    [InlineData("Fireside Hearth & Home")]
+    [InlineData("Fireplace Specialists LLC")]
+    [InlineData("Firestone Building Products")]
+    [InlineData("Spruce Street Partners")]  // "spr" inside another word is not "SPR."
+    [InlineData("Spring Valley Mechanical")]
     public void Score_DoesNotPenalizeANonFireContractor(string contractor)
     {
         var result = Engine().Score(Permit(contractorName: contractor), Sprinkler(), Now);

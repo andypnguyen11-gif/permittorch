@@ -316,4 +316,110 @@ public class IngestionJobLeadQualityTests
         Assert.NotNull(opportunity);
         Assert.Contains(signals, s => s.SignalType == "NO_CONTRACTOR_LISTED");
     }
+
+    [Fact]
+    public async Task RunOnce_DatesALeadFromWhenItsRecordFirstArrived_NotFromWhenItBecameALead()
+    {
+        var sourceId = await SeedSourceAsync();
+        var recordId = $"insp-{Guid.NewGuid():N}";
+        // On file for ten days as a completed inspection: stored, but never a lead.
+        await IngestAsync(Record(recordId, sourceId, recordType: "inspection",
+            fireSystemType: "inspection", description: "School Annual Inspection | 23",
+            inspectionStatus: "Completed", inspectionDate: Today(12)));
+        var firstSeen = DateTime.UtcNow.AddDays(-10);
+        await using (var db = _fixture.CreateContext())
+        {
+            var stored = await db.Set<Permit>().SingleAsync(p => p.ExternalId == recordId);
+            stored.FirstSeenAt = firstSeen;
+            stored.Status = PermitStatusKind.Unknown;   // as stored before statuses were read
+            stored.RawStatus = null;
+            await db.SaveChangesAsync();
+        }
+
+        await IngestAsync(Record(recordId, sourceId, recordType: "inspection",
+            fireSystemType: "inspection", description: "School Annual Inspection | 23",
+            inspectionStatus: "Open/Follow-Up Needed", inspectionDate: Today(12)));
+
+        var (_, opportunity, _, _) = await LoadAsync(recordId);
+        Assert.NotNull(opportunity);
+        Assert.Equal(firstSeen, opportunity!.FirstDetectedAt, TimeSpan.FromSeconds(1));
+        Assert.True(opportunity.LastUpdatedAt > DateTime.UtcNow.AddMinutes(-5));
+    }
+
+    [Fact]
+    public async Task RunOnce_DatesALeadNow_WhenItsRecordIsNew()
+    {
+        var sourceId = await SeedSourceAsync();
+        var recordId = $"permit-{Guid.NewGuid():N}";
+
+        await IngestAsync(Record(recordId, sourceId, permitStatus: "Issued"));
+
+        var (_, opportunity, _, _) = await LoadAsync(recordId);
+        Assert.True(opportunity!.FirstDetectedAt > DateTime.UtcNow.AddMinutes(-5));
+    }
+
+    [Fact]
+    public async Task RunOnce_ScoresAgainstTheStoredContractor_WhenALaterRecordOmitsIt()
+    {
+        var sourceId = await SeedSourceAsync();
+        var recordId = $"permit-{Guid.NewGuid():N}";
+        await IngestAsync(Record(recordId, sourceId, permitStatus: "Issued",
+            contractorCompany: "Safety Fire Sprinkler Corp"));
+
+        await IngestAsync(Record(recordId, sourceId, permitStatus: "Issued", contractorCompany: null));
+
+        var (permit, opportunity, signals, _) = await LoadAsync(recordId);
+        Assert.Equal("Safety Fire Sprinkler Corp", permit.ContractorName);
+        Assert.Contains(signals, s => s.SignalType == "FIRE_CONTRACTOR_ASSIGNED");
+        Assert.DoesNotContain(signals, s => s.SignalType == "NO_CONTRACTOR_LISTED");
+        Assert.Equal(Math.Clamp(signals.Sum(s => s.Weight), 0, 100), opportunity!.LeadScore);
+    }
+
+    [Fact]
+    public async Task RunOnce_DoesNotReviveACompletedInspection_WhenALaterRecordOmitsItsStatus()
+    {
+        var sourceId = await SeedSourceAsync();
+        var recordId = $"insp-{Guid.NewGuid():N}";
+        await IngestAsync(Record(recordId, sourceId, recordType: "inspection",
+            fireSystemType: "inspection", description: "DBI Inspection | 31",
+            inspectionStatus: "Completed", inspectionDate: Today(3)));
+
+        await IngestAsync(Record(recordId, sourceId, recordType: "inspection",
+            fireSystemType: "inspection", description: "DBI Inspection | 31",
+            inspectionStatus: "", inspectionDate: Today(3)));
+
+        var (permit, opportunity, _, _) = await LoadAsync(recordId);
+        Assert.Equal(PermitStatusKind.Closed, permit.Status);
+        Assert.Equal("Completed", permit.RawStatus);
+        Assert.Null(opportunity);
+    }
+
+    [Fact]
+    public async Task RunOnce_KeepsAnAdminsCategory_WhenTheInspectionIsLaterCompleted()
+    {
+        var sourceId = await SeedSourceAsync();
+        var recordId = $"insp-{Guid.NewGuid():N}";
+        await IngestAsync(Record(recordId, sourceId, recordType: "inspection",
+            fireSystemType: "inspection", description: "School Annual Inspection | 23",
+            inspectionStatus: "Pending", inspectionDate: Today(1)));
+        await using (var db = _fixture.CreateContext())
+        {
+            var opp = await db.Set<FireOpportunity>().SingleAsync(o => o.Permit.ExternalId == recordId);
+            opp.Category = FireCategory.FireAlarm;
+            opp.Confidence = 1.0m;
+            opp.CategoryOverridden = true;
+            await db.SaveChangesAsync();
+        }
+
+        await IngestAsync(Record(recordId, sourceId, recordType: "inspection",
+            fireSystemType: "inspection", description: "School Annual Inspection | 23",
+            inspectionStatus: "Completed", inspectionDate: Today(0)));
+
+        var (_, opportunity, signals, _) = await LoadAsync(recordId);
+        Assert.Equal(FireCategory.FireAlarm, opportunity!.Category);
+        Assert.True(opportunity.CategoryOverridden);
+        Assert.Equal(1.0m, opportunity.Confidence);
+        Assert.Contains(signals, s => s.SignalType == "CLOSED_PERMIT");
+        Assert.Contains(signals, s => s.SignalType == "FIRE_ALARM_SCOPE");
+    }
 }
