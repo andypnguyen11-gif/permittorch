@@ -23,15 +23,16 @@ Status mapping becomes record-type aware. The first matching row wins.
 
 | Record type | Raw value (case-insensitive) | Status |
 | --- | --- | --- |
-| inspection | `Open/Follow-Up Needed`, anything containing `follow` | Failed |
+| inspection | `Open/Follow-Up Needed`, anything containing `follow`, `Failed`, `Not Completed`, `Did Not Pass` | Failed |
 | inspection | `Pending`, `Scheduled` | Inspection |
 | inspection | `Completed`, `Expired`, `Closed`, `Passed` | Closed |
-| violation | `abated`, `rescinded`, `closed`, `resolved`, `complied` | Closed |
+| violation | `abated`, `rescinded`, `closed`, `resolved`, `complied`, `dismissed`, unless negated (`not abated`, `unresolved`) | Closed |
 | violation | any other non-empty value, for example `open`, `order to abate`, `referred to hearing` | Failed |
+| any | `Not Approved`, `Disapproved`, `Denied`, `Rejected` | Closed |
 | any | existing rules | unchanged |
 | any | `open`, `approved` when no existing rule matched | Active |
 
-For an inspection record the status text is `permitStatus` when present, otherwise `inspectionStatus`. `RawStatus` stores the text that was used.
+For an inspection record the status text is `permitStatus` when present, otherwise `inspectionStatus`. `RawStatus` stores the text that was used. A blank status is stored as missing, so it can never replace a real status text on a later merge.
 
 ### Classification
 
@@ -47,7 +48,9 @@ A resolved inspection or violation is not a sales opportunity. When the record t
 
 ### Ingestion
 
-- When the classifier returns no result for a permit that already has an opportunity, ingestion keeps the stored category and rescores it. A lead whose inspection was completed drops in score the same day instead of going stale.
+- Classification and scoring both read the stored permit after the merge, the same view the daily rescoring uses. A field the latest record omitted keeps the value an earlier record supplied.
+- When the classifier returns no result for a permit that already has an opportunity, ingestion keeps the stored category and rescores it. A lead whose inspection was completed drops in score the same day instead of going stale. An admin's manual category always wins.
+- A record already on file that only now becomes a lead is dated from when the record first arrived, not from today. Old activity is never presented as new in the feed or in digests.
 - Participants are rebuilt on every upsert from the normalized owner and contractor names: role Owner and role Contractor. Blank names are skipped.
 - The six new fields are stored on `permits`, merged with the existing never-overwrite-with-null rule.
 
@@ -57,7 +60,7 @@ Weights stay in configuration. New and changed signals:
 
 | Signal | Weight | Applies when |
 | --- | --- | --- |
-| `FIRE_CONTRACTOR_ASSIGNED` | -25 | The contractor name matches a fire-trade pattern: `fire`, `sprinkler`, `sprklr`, `spr.`, `alarm`, `suppression` |
+| `FIRE_CONTRACTOR_ASSIGNED` | -25 | The contractor name marks the fire trade: `fire` anywhere in a word except everyday words such as bonfire, fireplace and Firestone; `sprink`, `sprklr`, `spklr`, `spr`; `alarm`; `suppression`; `life safety`. The list was built from the contractor names in production |
 | `NO_CONTRACTOR_LISTED` | +10 | Unchanged, but only for permit records. It no longer fires on inspections and violations, which never carry a contractor |
 | `PERMIT_RECENT` | +15 | Filed within 72 hours. Otherwise issued within 7 days. Otherwise, for inspection and violation records, inspection dated within the last 7 days |
 | `OLD_PERMIT` | -20 | The latest known activity date is older than 90 days. Activity date is the latest of filed, issued and a past inspection date |
@@ -66,19 +69,23 @@ Weights stay in configuration. New and changed signals:
 
 The daily rescoring window includes permits whose issued date or inspection date falls inside the window, not only the filed date.
 
+`Rescoring:FullPassOnStartup` rescores every lead once at startup, whatever its dates. It is set for a deploy that changes scoring rules, then removed.
+
 ### API contract
 
 `LeadPermitDto` and the `permit` object in `@permittorch/types` gain:
 `rawStatus`, `recordType`, `workType`, `expirationDate`, `inspectionDate`, `businessName`, `propertyType`. All nullable.
 
+Participant roles are sent in upper case like every other enum: `OWNER`, `APPLICANT`, `CONTRACTOR`, `GENERAL_CONTRACTOR`.
+
 ### Web
 
-The lead detail page shows the new fields when present and hides each one when empty. Signals already render generically.
+The lead detail page shows the new fields when present and hides each one when empty. Signals already render generically. Machine strings from the scraper, including the system type in the lead table, are shown in plain words. An inspection or violation record is titled as such and hides the permit-only fields it never carries.
 The marketing score weights mirror gains `FIRE_CONTRACTOR_ASSIGNED`.
 
 ## Data migration
 
-- One migration adds six nullable columns to `permits` and fills `permit_participants` from the existing owner and contractor columns.
+- One migration adds six nullable columns to `permits` and fills `permit_participants` from the existing owner and contractor columns. Rolling it back removes those participants again.
 - Existing inspection rows have no stored status, so they cannot be classified from the database. After deploy, the recorded Apify runs are ingested again through the normal pipeline. Upserts are idempotent.
 - The rescoring job runs at startup and applies the new scoring to every lead in its window.
 
@@ -91,6 +98,7 @@ The marketing score weights mirror gains `FIRE_CONTRACTOR_ASSIGNED`.
 | Completed inspections and abated violations create no lead | Fewer San Francisco leads; reversible by removing one rule |
 | Standpipe maps to the sprinkler category | Category label only |
 | Pending inspections become leads at the baseline score | Lower-value leads in San Francisco, ranked low |
+| No unique index on participant role per permit | A permit may need several contractors later; ingestion is a single writer today |
 
 ## Out of scope
 
