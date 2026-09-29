@@ -56,6 +56,8 @@ public class ScoringEngine
             + @"|sprink|sprklr|spklr|spinkler|\bspr\b|\balarms?\b|suppression|life\s*safety",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
+    public static bool IsFireTrade(string name) => FireTradePattern.IsMatch(name);
+
     public static readonly TimeSpan RecentFiledWindow = TimeSpan.FromHours(72);
     public static readonly TimeSpan RecentIssuedWindow = TimeSpan.FromDays(7);
     public static readonly TimeSpan RecentInspectionWindow = TimeSpan.FromDays(7);
@@ -95,12 +97,22 @@ public class ScoringEngine
             AddSignal(signals, "LARGE_SQUARE_FOOTAGE", "Large square footage (over 20,000 sqft)");
 
         // Inspections and violations never carry a contractor, so its absence says nothing.
+        // A contractor whose name was removed on request is still on the permit: it earns no
+        // "no contractor" points, and a fire-protection firm keeps the job marked as awarded.
         if (string.IsNullOrWhiteSpace(permit.ContractorName))
         {
-            if (!permit.IsInspection && !permit.IsViolation)
+            if (permit.ContractorWithheld)
+            {
+                if (permit.ContractorWithheldIsFireTrade)
+                    AddSignal(signals, "FIRE_CONTRACTOR_ASSIGNED",
+                        "A fire-protection contractor is already on this permit");
+            }
+            else if (!permit.IsInspection && !permit.IsViolation)
+            {
                 AddSignal(signals, "NO_CONTRACTOR_LISTED", "No contractor listed yet");
+            }
         }
-        else if (FireTradePattern.IsMatch(permit.ContractorName))
+        else if (IsFireTrade(permit.ContractorName))
         {
             AddSignal(signals, "FIRE_CONTRACTOR_ASSIGNED",
                 "A fire-protection contractor is already on this permit");

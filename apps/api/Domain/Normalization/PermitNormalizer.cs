@@ -29,7 +29,10 @@ public record NormalizedPermit(string ExternalId, string Jurisdiction, string? P
     string? ApplicantName = null,
     // Null when the record publishes no contact detail for that party.
     PartyContact? OwnerContact = null, PartyContact? ApplicantContact = null,
-    PartyContact? ContractorContact = null)
+    PartyContact? ContractorContact = null,
+    // The record names a contractor whose name was removed on request. The name is gone; what
+    // the score needs to know about it is kept. Neither is personal data.
+    bool ContractorWithheld = false, bool ContractorWithheldIsFireTrade = false)
 {
     public bool IsInspection => IsRecordType("inspection");
     public bool IsViolation => IsRecordType("violation");
@@ -125,7 +128,7 @@ public static class PermitNormalizer
         return digits >= 10 ? cleaned : null;
     }
 
-    private static string? CleanEmail(string? value)
+    public static string? CleanEmail(string? value)
     {
         var cleaned = Clean(value);
         return cleaned is not null && cleaned.Length <= MaxEmailLength && EmailPattern.IsMatch(cleaned)
