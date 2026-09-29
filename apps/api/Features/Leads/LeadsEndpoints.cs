@@ -61,7 +61,7 @@ public static class LeadsEndpoints
             {
                 Row = new LeadRow(o.Id, o.LeadScore, o.Category, o.Reason, o.FirstDetectedAt,
                     o.Permit.PermitType, o.Permit.Status, o.Permit.Address, o.Permit.City,
-                    o.Permit.State, o.Permit.FiledDate, o.Permit.EstimatedValue),
+                    o.Permit.State, o.Permit.FiledDate, o.Permit.EstimatedValue, o.Permit.Description),
                 o.Confidence, o.LastUpdatedAt,
                 Permit = new LeadPermitDto(o.Permit.PermitNumber, o.Permit.Description, o.Permit.Zip,
                     o.Permit.IssuedDate, o.Permit.SquareFootage, o.Permit.OwnerName, o.Permit.ContractorName,

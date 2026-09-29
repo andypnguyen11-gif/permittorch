@@ -51,11 +51,11 @@ public static class LeadQueries
     public static readonly Expression<Func<FireOpportunity, LeadRow>> ToRow = o => new LeadRow(
         o.Id, o.LeadScore, o.Category, o.Reason, o.FirstDetectedAt,
         o.Permit.PermitType, o.Permit.Status, o.Permit.Address, o.Permit.City, o.Permit.State,
-        o.Permit.FiledDate, o.Permit.EstimatedValue);
+        o.Permit.FiledDate, o.Permit.EstimatedValue, o.Permit.Description);
 
     public static LeadSummaryDto ToSummary(LeadRow row, DateTime nowUtc) => new(
         row.Id, row.Score,
-        Wire.Label(row.PermitType) ?? Wire.Title(row.Category),
+        LeadTitle.From(row.Description, row.PermitType, row.Category),
         row.Address, row.City, row.State, row.Category, row.PermitType, row.Status,
         row.FiledDate, row.EstimatedValue, row.Reason,
         IsNew: row.FirstDetectedAt >= nowUtc.AddHours(-72));
@@ -78,4 +78,4 @@ public static class LeadQueries
 public sealed record LeadRow(
     Guid Id, int Score, FireCategory Category, string Reason, DateTime FirstDetectedAt,
     string? PermitType, PermitStatusKind Status, string? Address, string City, string State,
-    DateTime? FiledDate, decimal? EstimatedValue);
+    DateTime? FiledDate, decimal? EstimatedValue, string? Description);

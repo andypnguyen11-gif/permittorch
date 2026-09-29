@@ -110,7 +110,9 @@ public class LeadsEndpointTests(ApiFactory factory) : IAsyncLifetime
         Assert.True(item.GetProperty("isNew").GetBoolean());
         Assert.Equal("FIRE_SPRINKLER", item.GetProperty("category").GetString());
         Assert.Equal("ACTIVE", item.GetProperty("status").GetString());
-        Assert.Equal("Fire Sprinkler", item.GetProperty("title").GetString());
+        // The title is what the permit says the work is; the type stays in its own field.
+        Assert.Equal("New warehouse fire sprinkler installation", item.GetProperty("title").GetString());
+        Assert.Equal("Fire Sprinkler", item.GetProperty("permitType").GetString());
         Assert.Equal("New commercial construction with sprinkler scope", item.GetProperty("reason").GetString());
     }
 

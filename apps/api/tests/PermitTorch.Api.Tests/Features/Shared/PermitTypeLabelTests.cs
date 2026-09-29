@@ -43,10 +43,10 @@ public class PermitTypeLabelTests
 
     private static LeadRow Row(string? permitType) => new(
         Guid.NewGuid(), 90, FireCategory.FireSuppression, "Reason", DateTime.UtcNow,
-        permitType, PermitStatusKind.Active, "1 Main St", "Mesa", "AZ", null, null);
+        permitType, PermitStatusKind.Active, "1 Main St", "Mesa", "AZ", null, null, Description: null);
 
     [Fact]
-    public void A_leads_title_is_its_type_in_plain_words()
+    public void A_lead_without_a_description_is_titled_by_its_type_in_plain_words()
     {
         Assert.Equal("Standpipe", LeadQueries.ToSummary(Row("standpipe"), DateTime.UtcNow).Title);
     }
