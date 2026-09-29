@@ -95,6 +95,40 @@ export async function getLeads(params: LeadsQuery, token: string): Promise<Leads
   return apiFetch<LeadsResponse>(`/api/leads${qs}`, {}, token);
 }
 
+export interface LeadsExport { blob: Blob; truncated: boolean; }
+
+// The export covers every lead the filters match, up to the API's limit, so paging is left
+// out. `truncated` is true when the API cut the file at that limit.
+export async function exportLeadsCsv(params: LeadsQuery, token: string): Promise<LeadsExport> {
+  if (isMock()) return (await fixtures()).exportLeadsCsv(params);
+  const qs = buildQuery({
+    market: params.market,
+    category: params.category,
+    minScore: params.minScore,
+    maxAgeDays: params.maxAgeDays,
+    status: params.status,
+    q: params.q,
+  });
+  const base = resolveApiBaseUrl({
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
+    NODE_ENV: process.env.NODE_ENV,
+  });
+  const res = await fetch(`${base}/api/leads/export.csv${qs}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    let message = `API request failed with status ${res.status}`;
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body.error) message = body.error;
+    } catch {
+      // Non-JSON error body: keep the generic message.
+    }
+    throw new ApiError(message, res.status);
+  }
+  return { blob: await res.blob(), truncated: res.headers.get("X-Truncated") === "true" };
+}
+
 export async function getLead(id: string, token: string): Promise<LeadDetail> {
   if (isMock()) return (await fixtures()).getLead(id);
   return apiFetch<LeadDetail>(`/api/leads/${encodeURIComponent(id)}`, {}, token);

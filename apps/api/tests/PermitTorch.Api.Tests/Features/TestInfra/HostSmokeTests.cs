@@ -32,4 +32,16 @@ public class HostSmokeTests(ApiFactory factory)
         var evilResponse = await client.SendAsync(evil);
         Assert.False(evilResponse.Headers.Contains("Access-Control-Allow-Origin"));
     }
+
+    // The web app runs on another origin. A browser hides a response header from it unless
+    // the API names the header, and the export's "cut at the limit" flag is one.
+    [Fact]
+    public async Task Cors_lets_the_web_app_read_the_exports_truncation_header()
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, "/api/health");
+        request.Headers.Add("Origin", "https://web.test.permittorch.local");
+        var response = await factory.CreateClient().SendAsync(request);
+        Assert.Contains("X-Truncated",
+            string.Join(",", response.Headers.GetValues("Access-Control-Expose-Headers")));
+    }
 }

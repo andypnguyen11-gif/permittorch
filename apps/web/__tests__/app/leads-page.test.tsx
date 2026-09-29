@@ -29,6 +29,11 @@ describe("/app/leads page (mock API)", () => {
     expect(within(screen.getByRole("table")).getAllByRole("link")).toHaveLength(25);
   });
 
+  it("offers a CSV export of the listed leads", async () => {
+    await renderPage({ category: "FIRE_ALARM" });
+    expect(screen.getByRole("button", { name: "Export CSV" })).toBeEnabled();
+  });
+
   it("applies URL filters through lib/api", async () => {
     await renderPage({ minScore: "90", category: "FIRE_SPRINKLER" });
     const links = within(screen.getByRole("table")).getAllByRole("link");

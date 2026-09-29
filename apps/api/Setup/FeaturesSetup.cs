@@ -77,7 +77,9 @@ public static class FeaturesSetup
         services.AddCors(o => o.AddPolicy(CorsPolicy, policy => policy
             .WithOrigins(webOrigin)
             .AllowAnyHeader()
-            .AllowAnyMethod()));
+            .AllowAnyMethod()
+            // A browser hides response headers from another origin unless they are named.
+            .WithExposedHeaders("X-Truncated")));
 
         var globalLimit = configuration.GetValue("RateLimiting:GlobalPermitLimit", 100);
         services.AddRateLimiter(o =>

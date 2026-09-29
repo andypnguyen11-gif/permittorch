@@ -10,6 +10,7 @@ const fixtureMarkets = [
 
 vi.mock("@/lib/fixtures", () => ({
   getLeads: vi.fn(async () => fixtureLeads),
+  exportLeadsCsv: vi.fn(async () => ({ blob: new Blob(["Score,Address,City\r\n"]), truncated: false })),
   submitSampleLeadRequest: vi.fn(async () => undefined),
 }));
 
@@ -92,6 +93,51 @@ describe("lib/api", () => {
     const { mockMarketStats } = await import("@/lib/fixtures/markets");
 
     expect(await api.getAllMarketStats()).toEqual(Object.values(mockMarketStats));
+  });
+
+  it("exports the filtered leads as a CSV file, without paging", async () => {
+    vi.stubEnv("NEXT_PUBLIC_API_URL", "https://api.example.com");
+    const fetchMock = vi.fn(async () => new Response("Score,Address\r\n90,1 Main St\r\n", {
+      status: 200, headers: { "Content-Type": "text/csv", "X-Truncated": "true" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const api = await import("@/lib/api");
+
+    const { blob, truncated } = await api.exportLeadsCsv(
+      { market: "mesa-az", minScore: 80, q: "sprinkler", page: 3, pageSize: 25 }, "tok_123");
+
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("https://api.example.com/api/leads/export.csv?market=mesa-az&minScore=80&q=sprinkler");
+    expect(new Headers(init.headers).get("Authorization")).toBe("Bearer tok_123");
+    expect(await blob.text()).toBe("Score,Address\r\n90,1 Main St\r\n");
+    expect(truncated).toBe(true);
+  });
+
+  it("reports an export that was not cut, and the API's reason when it is refused", async () => {
+    vi.stubEnv("NEXT_PUBLIC_API_URL", "https://api.example.com");
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response("Score\r\n", { status: 200, headers: { "Content-Type": "text/csv" } }))
+      .mockResolvedValueOnce(jsonResponse({ error: "CSV export requires the Pro or Territory plan" }, 403));
+    vi.stubGlobal("fetch", fetchMock);
+    const api = await import("@/lib/api");
+
+    expect((await api.exportLeadsCsv({}, "tok_123")).truncated).toBe(false);
+    await expect(api.exportLeadsCsv({}, "tok_123")).rejects.toMatchObject({
+      name: "ApiError", status: 403, message: "CSV export requires the Pro or Territory plan",
+    });
+  });
+
+  it("exports the fixture leads in mock mode without calling fetch", async () => {
+    vi.stubEnv("NEXT_PUBLIC_API_MOCK", "1");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const api = await import("@/lib/api");
+
+    const { blob, truncated } = await api.exportLeadsCsv({}, "tok_ignored");
+
+    expect((await blob.text()).startsWith("Score,Address,City")).toBe(true);
+    expect(truncated).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("sends JSON bodies for mutating calls", async () => {

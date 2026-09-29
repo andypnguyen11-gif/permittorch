@@ -8,6 +8,7 @@ import { FilterBar } from "@/components/app/leads/filter-bar";
 import { LeadTable } from "@/components/app/leads/lead-table";
 import { LeadsPagination, lastPageFor } from "@/components/app/leads/pagination";
 import { FreshnessLine } from "@/components/app/leads/freshness-line";
+import { ExportButton } from "@/components/app/leads/export-button";
 
 export const metadata: Metadata = { title: "Leads" };
 
@@ -30,10 +31,13 @@ export default async function LeadsPage({ searchParams }: {
           <h1 className="text-2xl font-bold tracking-tight">Leads</h1>
           <FreshnessLine freshness={res.freshness} />
         </div>
-        <p className="text-sm text-stone-500">
-          <span className="font-semibold text-stone-900 tabular-nums">{res.total}</span>{" "}
-          {res.total === 1 ? "opportunity" : "opportunities"}
-        </p>
+        <div className="flex items-center gap-4">
+          <p className="text-sm text-stone-500">
+            <span className="font-semibold text-stone-900 tabular-nums">{res.total}</span>{" "}
+            {res.total === 1 ? "opportunity" : "opportunities"}
+          </p>
+          {res.total > 0 && <ExportButton query={query} />}
+        </div>
       </div>
       <FilterBar query={query} />
       {query.q && (

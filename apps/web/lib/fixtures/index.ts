@@ -8,7 +8,7 @@ import type {
   AccountMe, AdminSource, DigestFrequency, LeadDetail, LeadsResponse,
   Market, Paged, PlanTier, SavedLeadItem, SavedLeadStatus, ScraperRunSummary,
 } from "@permittorch/types";
-import { ApiError, type LeadsQuery } from "@/lib/api";
+import { ApiError, type LeadsExport, type LeadsQuery } from "@/lib/api";
 import { mockLeads, mockLeadsResponse, mockLeadDetail } from "./leads";
 import { mockSavedLeads } from "./saved";
 import { mockAccountForRole, mockAccountMarkets } from "./account";
@@ -19,6 +19,13 @@ const savedState: SavedLeadItem[] = [...mockSavedLeads];
 
 export async function getLeads(params: LeadsQuery): Promise<LeadsResponse> { return mockLeadsResponse(params); }
 export async function getLead(id: string): Promise<LeadDetail> { return mockLeadDetail(id); }
+// A stand-in for the API's file: the matching fixture leads, all pages, in three columns.
+export async function exportLeadsCsv(params: LeadsQuery): Promise<LeadsExport> {
+  const { items } = mockLeadsResponse({ ...params, page: 1, pageSize: mockLeads.length });
+  const quote = (value: string) => `"${value.replace(/"/g, '""')}"`;
+  const lines = ["Score,Address,City", ...items.map((l) => `${l.score},${quote(l.address ?? "")},${quote(l.city)}`)];
+  return { blob: new Blob([lines.join("\r\n") + "\r\n"], { type: "text/csv" }), truncated: false };
+}
 export async function getSavedLeads(): Promise<SavedLeadItem[]> { return [...savedState]; }
 export async function saveLead(fireOpportunityId: string): Promise<SavedLeadItem> {
   const lead = mockLeads.find((l) => l.id === fireOpportunityId);
