@@ -36,6 +36,7 @@ describe("the removals page", () => {
   it("shows the form and the list to a super admin", async () => {
     render(await AdminRemovalsPage());
     expect(screen.getByRole("heading", { level: 1, name: "Removals" })).toBeInTheDocument();
+    expect(screen.getByText(/A removal cannot be put back\.$/)).toBeInTheDocument();
     expect(screen.getByLabelText("What to remove")).toBeInTheDocument();
     const table = screen.getByRole("table");
     expect(within(table).getAllByRole("row")).toHaveLength(3); // header + 2
@@ -146,6 +147,36 @@ describe("RemovalForm", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("This is already on the list.");
   });
 
+  it("says a removal cannot be put back once it is ready, and not before", async () => {
+    render(<RemovalForm markets={markets} />);
+    fill("Phone number", "(480) 555-0142");
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Check matches" }));
+    await screen.findByText(/This matches 3 permits/);
+    expect(screen.getByRole("note")).toHaveTextContent(
+      "A removal cannot be put back. What it clears or deletes stays gone, even if you take the removal off the list later.");
+  });
+
+  it("says a removal cannot be put back once a record is picked", async () => {
+    render(<RemovalForm markets={markets} />);
+    choose("RECORD");
+    fill("Permit number or address", "1 Main");
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    const pick = await screen.findByRole("button", { name: "Pick BLD-2026-0117" });
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+    fireEvent.click(pick);
+    expect(screen.getByRole("note")).toHaveTextContent(/A removal cannot be put back\./);
+  });
+
+  it("gives the general message for a refusal that is not about the value", async () => {
+    vi.spyOn(api, "previewRemoval").mockRejectedValue(new api.ApiError("market is required", 400));
+    render(<RemovalForm markets={markets} />);
+    fill("Phone number", "(480) 555-0142");
+    fireEvent.click(screen.getByRole("button", { name: "Check matches" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Something went wrong. Please try again.");
+    expect(screen.queryByText("A phone number needs at least 10 digits.")).not.toBeInTheDocument();
+  });
+
   it("says what is wrong with a value the API refuses", async () => {
     vi.spyOn(api, "previewRemoval").mockRejectedValue(new api.ApiError("invalid_value", 400));
     render(<RemovalForm markets={markets} />);
@@ -191,29 +222,32 @@ describe("RemovalTable", () => {
     expect(screen.getByText("Nothing has been removed yet.")).toBeInTheDocument();
   });
 
-  it("asks before an undo and says that nothing comes back by itself", async () => {
+  it("asks before taking a removal off the list and says that nothing comes back by itself", async () => {
     const undo = vi.spyOn(api, "undoRemoval");
     render(<RemovalTable removals={mockRemovals} />);
-    fireEvent.click(screen.getByRole("button", { name: "Undo the removal of (480) 555-0142" }));
+    fireEvent.click(screen.getByRole("button", { name: "Take (480) 555-0142 off the list" }));
 
     expect(undo).not.toHaveBeenCalled();
-    expect(screen.getByText(/does not put anything back/)).toBeInTheDocument();
+    expect(screen.getByText(
+      "Taking this off the list stops it applying to later imports. It does not put anything back. A value returns only if a later scrape delivers that record again.",
+    )).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.queryByText(/does not put anything back/)).not.toBeInTheDocument();
     expect(undo).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "Undo the removal of (480) 555-0142" }));
-    fireEvent.click(screen.getByRole("button", { name: "Undo the removal" }));
+    fireEvent.click(screen.getByRole("button", { name: "Take (480) 555-0142 off the list" }));
+    fireEvent.click(screen.getByRole("button", { name: "Take off the list" }));
     await waitFor(() => expect(refresh).toHaveBeenCalledOnce());
     expect(undo).toHaveBeenCalledExactlyOnceWith("rem-001", "mock-token");
+    expect(toast.success).toHaveBeenCalledWith("Taken off the list");
   });
 
-  it("keeps the row and says so when the undo fails", async () => {
+  it("keeps the row and says so when taking it off the list fails", async () => {
     vi.spyOn(api, "undoRemoval").mockRejectedValue(new Error("down"));
     render(<RemovalTable removals={mockRemovals} />);
-    fireEvent.click(screen.getByRole("button", { name: "Undo the removal of (480) 555-0142" }));
-    fireEvent.click(screen.getByRole("button", { name: "Undo the removal" }));
-    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("button", { name: "Take (480) 555-0142 off the list" }));
+    fireEvent.click(screen.getByRole("button", { name: "Take off the list" }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Could not take it off the list"));
     expect(screen.getByText("(480) 555-0142")).toBeInTheDocument();
     expect(refresh).not.toHaveBeenCalled();
   });

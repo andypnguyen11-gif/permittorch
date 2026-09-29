@@ -28,11 +28,11 @@ export function RemovalTable({ removals }: { removals: Removal[] }) {
     setBusy(true);
     try {
       await undoRemoval(removal.id, await getToken());
-      toast.success("Removal undone");
+      toast.success("Taken off the list");
       setAsking(null);
       router.refresh();
     } catch (err) {
-      reportMutationError(err, "Could not undo the removal");
+      reportMutationError(err, "Could not take it off the list");
     } finally {
       setBusy(false);
     }
@@ -70,17 +70,17 @@ export function RemovalTable({ removals }: { removals: Removal[] }) {
                 {asking === removal.id ? (
                   <div className="space-y-2 text-left">
                     <p className="max-w-xs text-xs whitespace-normal text-stone-600">
-                      Undoing stops this removal applying to later imports. It does not put anything back.
+                      Taking this off the list stops it applying to later imports. It does not put anything back.
                       A value returns only if a later scrape delivers that record again.
                     </p>
                     <div className="flex justify-end gap-2">
                       <Button variant="ghost" size="sm" disabled={busy} onClick={() => setAsking(null)}>Cancel</Button>
-                      <Button variant="outline" size="sm" disabled={busy} onClick={() => undo(removal)}>Undo the removal</Button>
+                      <Button variant="outline" size="sm" disabled={busy} onClick={() => undo(removal)}>Take off the list</Button>
                     </div>
                   </div>
                 ) : (
                   <Button variant="outline" size="sm" disabled={busy} onClick={() => setAsking(removal.id)}
-                    aria-label={`Undo the removal of ${removal.value}`}>Undo</Button>
+                    aria-label={`Take ${removal.value} off the list`}>Take off the list</Button>
                 )}
               </TableCell>
             </TableRow>

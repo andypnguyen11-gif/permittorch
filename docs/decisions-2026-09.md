@@ -110,6 +110,6 @@ Design: `docs/superpowers/specs/2026-09-27-lead-quality-fixes-design.md`. Prompt
 - R-CD-16 Ruling: a phone is compared by its ten digits, an email in lower case, a name without case or extra space. A name is matched whole. A description is free text and is not searched; when it names a person, the record is removed.
 - R-CD-17 Ruling: a contractor whose name is removed is still on the permit. The lead earns no "no contractor" points for it, and a fire-protection firm keeps the job marked as awarded. A removal never adds points to a lead.
 - R-CD-18 Ruling: the admin confirms a count. The page sends the number of permits it showed, and the API refuses the removal when that is no longer the number that match.
-- R-CD-19 Ruling: undoing a removal takes it off the list and puts nothing back. A value returns only if a later scrape delivers that record again.
+- R-CD-19 Ruling: undoing a removal takes it off the list and puts nothing back. A value returns only if a later scrape delivers that record again. The page calls it "Take off the list" and says before every removal that it cannot be put back.
 - R-CD-20 Ruling: the removal list holds the value itself, because that is how the import recognises it. The privacy page says so.
 - Not done, by decision: licence numbers and phones that a portal publishes only on a record's detail page.

@@ -64,7 +64,9 @@ export function RemovalForm({ markets }: { markets: Market[] }) {
     if (err.message === "count_changed") { forget(); return setError("The number of matches changed. Check the matches again."); }
     if (err.message === "removal_exists") return setError("This is already on the list.");
     if (err.message === "permit_not_found") { forget(); return setError("That permit is no longer stored. Search again."); }
-    if (err.status === 400) return setError(current.invalid);
+    if (err.status === 400 && (err.message === "invalid_value" || (isRecord && err.message.startsWith("q must")))) {
+      return setError(current.invalid);
+    }
     setError("Something went wrong. Please try again.");
   };
 
@@ -154,6 +156,12 @@ export function RemovalForm({ markets }: { markets: Market[] }) {
 
       {error && (
         <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+      )}
+
+      {ready && (
+        <p role="note" className="text-sm text-stone-700">
+          A removal cannot be put back. What it clears or deletes stays gone, even if you take the removal off the list later.
+        </p>
       )}
 
       <div className="flex flex-wrap gap-2">

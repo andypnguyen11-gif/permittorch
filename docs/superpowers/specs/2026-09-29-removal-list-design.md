@@ -120,7 +120,7 @@ Rules at the boundary:
 
 ## Undo
 
-Deleting a removal stops it applying to later imports. It does not put anything back. A value returns only when the scraper delivers that record again, and the daily run delivers new records only. The page says so before the admin confirms.
+Deleting a removal stops it applying to later imports. It does not put anything back. A value returns only when the scraper delivers that record again, and the daily run delivers new records only. The page says so before the admin confirms. On the page the button reads "Take off the list", because "undo" promises more than it does.
 
 ## Admin page
 
@@ -129,7 +129,8 @@ Deleting a removal stops it applying to later imports. It does not put anything 
 - A form: kind, value, note.
 - For a record: a market, a search box and a list of matches to pick from.
 - A preview before confirming: "This matches 3 permits: Mesa, AZ 2, Austin, TX 1."
-- A list of removals: date, kind, value, note, permits affected, an Undo button.
+- A list of removals: date, kind, value, note, permits affected, a button that takes the removal off the list.
+- Before confirming, and at the top of the page, it says that a removal cannot be put back.
 
 The page holds no matching rule. It shows what the API returns.
 

@@ -16,7 +16,7 @@ export default async function AdminRemovalsPage() {
       <div className="space-y-1">
         <h1 className="text-2xl font-bold tracking-tight">Removals</h1>
         <p className="text-sm text-stone-500">
-          What people asked to have removed. A removed value is cleared from what is stored and kept out of every later import.
+          What people asked to have removed. A removed value is cleared from what is stored and kept out of every later import. A removal cannot be put back.
         </p>
       </div>
       <RemovalForm markets={markets} />
