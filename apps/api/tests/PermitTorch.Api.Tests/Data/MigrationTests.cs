@@ -86,7 +86,7 @@ public class MigrationTests : IAsyncLifetime
                 "InitialCreate", "AddCategoryOverridden", "AddPermitDetailFields", "AddPermitRecordLink",
                 "MovePermitNamesToTheirRoles", "AddParticipantContact",
                 "RemovePlaceholderOwnersAndTestPermit", "ClearProjectValuesOfZero",
-                "AddTermsAcceptances",
+                "AddTermsAcceptances", "AddRemovals",
             },
             applied.Select(m => m[(m.IndexOf('_') + 1)..]).ToArray());
     }
