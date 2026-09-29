@@ -74,7 +74,7 @@ One transaction:
 1. The removal row is written.
 2. Stored data is cleaned, by kind, as the first table says. A participant whose name is removed is deleted. A permit's `owner_name`, `applicant_name`, `contractor_name` and `business_name` are each cleared where they have the key.
 3. Where a contractor name is cleared, `contractor_withheld` is set, and `contractor_withheld_is_fire_trade` is set from the name before it is cleared.
-4. Every lead on a changed permit is scored again with the same scoring code as the daily rescoring.
+4. Where a contractor name is cleared, the permit's lead is scored again with the same scoring code as the daily rescoring. The contractor's name is the only thing a removal clears that the score reads, so no other removal can change a score.
 5. For a record, the permit is deleted. Its participants, its lead, the lead's signals and every customer's saved copy of the lead go with it.
 
 ## The import
