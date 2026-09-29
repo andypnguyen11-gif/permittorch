@@ -4,7 +4,8 @@
 import type {
   AccountMe, AdminSource, DigestFrequency, FireCategory, Freshness,
   HealthStatus, LeadDetail, LeadSignal, LeadsResponse, LeadSummary,
-  Market, MarketStats, Paged, PermitStatus, PlanTier, SavedLeadItem,
+  Market, MarketStats, Paged, PermitStatus, PlanTier, Removal,
+  RemovalPreview, RemovalRecord, SavedLeadItem,
   SavedLeadStatus, ScraperRunSummary,
 } from "./index";
 
@@ -89,6 +90,16 @@ const run: ScraperRunSummary = {
   startedAt: "2026-08-19T00:00:00Z", finishedAt: null,
   recordsImported: 100, duplicatesSkipped: 5, failures: 0, durationSeconds: 42.5,
 };
+
+const removal: Removal = {
+  id: "rem_1", kind: "PHONE", value: "(480) 555-0142", label: null, note: null,
+  recordsAffected: 2, createdAt: "2026-09-29T00:00:00Z",
+};
+const removalPreview: RemovalPreview = { permits: 2, cities: [{ city: "Mesa", state: "AZ", permits: 2 }] };
+const removalRecord: RemovalRecord = {
+  permitId: "per_1", permitNumber: "BLD-1", address: "1 Main St", city: "Mesa", state: "AZ", filedDate: null,
+};
+void removal; void removalPreview; void removalRecord;
 
 export type ContractOk = [
   typeof leads, typeof detail, typeof market, typeof stats,

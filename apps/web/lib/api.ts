@@ -10,6 +10,10 @@ import type {
   Paged,
   PermitStatus,
   PlanTier,
+  Removal,
+  RemovalKind,
+  RemovalPreview,
+  RemovalRecord,
   SavedLeadItem,
   SavedLeadStatus,
   ScraperRunSummary,
@@ -255,4 +259,37 @@ export async function setSourceActive(id: string, active: boolean, token: string
     { method: "POST" },
     token,
   );
+}
+
+export interface CreateRemovalInput {
+  kind: RemovalKind; value?: string; permitId?: string; note?: string; confirmedCount: number;
+}
+
+export async function getRemovals(token: string, page = 1): Promise<Paged<Removal>> {
+  if (isMock()) return (await fixtures()).getRemovals();
+  return apiFetch<Paged<Removal>>(`/api/admin/removals${buildQuery({ page, pageSize: 100 })}`, {}, token);
+}
+
+// Counts what a removal would change. Changes nothing.
+export async function previewRemoval(kind: RemovalKind, value: string, token: string): Promise<RemovalPreview> {
+  if (isMock()) return (await fixtures()).previewRemoval();
+  return apiFetch<RemovalPreview>(
+    "/api/admin/removals/preview", { method: "POST", body: JSON.stringify({ kind, value }) }, token);
+}
+
+export async function searchRemovalRecords(market: string, q: string, token: string): Promise<RemovalRecord[]> {
+  if (isMock()) return (await fixtures()).searchRemovalRecords();
+  return apiFetch<RemovalRecord[]>(`/api/admin/removals/records${buildQuery({ market, q })}`, {}, token);
+}
+
+// `confirmedCount` is the count the admin saw. The API refuses the removal (409
+// "count_changed") when it is no longer the number of permits that match.
+export async function createRemoval(input: CreateRemovalInput, token: string): Promise<Removal> {
+  if (isMock()) return (await fixtures()).createRemoval(input);
+  return apiFetch<Removal>("/api/admin/removals", { method: "POST", body: JSON.stringify(input) }, token);
+}
+
+export async function undoRemoval(id: string, token: string): Promise<void> {
+  if (isMock()) return (await fixtures()).undoRemoval(id);
+  return apiFetch<void>(`/api/admin/removals/${encodeURIComponent(id)}`, { method: "DELETE" }, token);
 }
