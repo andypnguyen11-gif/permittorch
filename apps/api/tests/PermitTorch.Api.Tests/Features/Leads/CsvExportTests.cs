@@ -58,4 +58,81 @@ public class CsvExportTests(ApiFactory factory)
         var response = await client.GetAsync("/api/leads/export.csv?minScore=9000");
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
+
+    // The export is a subscriber's own download of the leads they are entitled to, so it
+    // carries what the lead's page shows. Every value here is made up.
+    private async Task<(HttpClient Entitled, HttpClient Other, HttpClient Starter, Market Market)> SeedContactsAsync()
+    {
+        var market = TestSeed.Market("Mesa", "AZ");
+        var elsewhere = TestSeed.Market("Tucson", "AZ");
+        var source = TestSeed.Source(market, DateTime.UtcNow);
+        var permit = TestSeed.Permit(source, contractorName: "Reliable Fire Co");
+        permit.ApplicantName = "Pat Example";
+        permit.Participants.Add(new PermitParticipant
+        {
+            Id = Guid.NewGuid(), PermitId = permit.Id, Role = ParticipantRole.Contractor,
+            Name = "Reliable Fire Co", Phone = "(480) 555-0142", Email = "office@example.com",
+            LicenseNumber = "000000",
+        });
+        permit.Participants.Add(new PermitParticipant
+        {
+            Id = Guid.NewGuid(), PermitId = permit.Id, Role = ParticipantRole.Applicant,
+            Name = "Pat Example", Phone = "480-555-0177",
+        });
+        var bare = TestSeed.Permit(source, contractorName: "No Contact Fire");
+        var leads = new[] { TestSeed.Opportunity(permit, 92), TestSeed.Opportunity(bare, 81) };
+
+        var clients = new List<HttpClient>();
+        var rows = new List<object> { market, elsewhere, source, permit, bare, leads[0], leads[1] };
+        foreach (var (plan, where) in new[]
+                 {
+                     (PlanTier.Pro, market), (PlanTier.Pro, elsewhere), (PlanTier.Starter, market),
+                 })
+        {
+            var sub = $"user_{Guid.NewGuid():N}";
+            var (org, user, pref) = TestSeed.User(sub, $"{sub}@example.com");
+            rows.AddRange([org, user, pref, TestSeed.Subscription(org, plan, "active", where)]);
+            clients.Add(factory.CreateClientFor(sub, user.Email));
+        }
+        await factory.SeedAsync(db => db.AddRange(rows));
+        return (clients[0], clients[1], clients[2], market);
+    }
+
+    [Fact]
+    public async Task Export_carries_each_partys_contact_details_as_the_record_publishes_them()
+    {
+        var (client, _, _, market) = await SeedContactsAsync();
+
+        var csv = await client.GetStringAsync($"/api/leads/export.csv?market={market.Slug}");
+
+        var lines = csv.TrimEnd().Split("\r\n");
+        Assert.EndsWith(
+            ",Applicant,OwnerPhone,OwnerEmail,ContractorPhone,ContractorEmail,ContractorLicense,ApplicantPhone,ApplicantEmail,ApplicantLicense",
+            lines[0]);
+        Assert.Equal(3, lines.Length);
+        var withContact = Assert.Single(lines, l => l.Contains("Reliable Fire Co"));
+        Assert.EndsWith(",Pat Example,,,(480) 555-0142,office@example.com,000000,480-555-0177,,", withContact);
+        var without = Assert.Single(lines, l => l.Contains("No Contact Fire"));
+        Assert.EndsWith(",,,,,,,,,", without);
+    }
+
+    [Fact]
+    public async Task Contact_details_are_not_exported_without_a_session_outside_the_users_markets_or_on_starter()
+    {
+        var (_, other, starter, _) = await SeedContactsAsync();
+
+        var anonymous = await factory.CreateClient().GetAsync("/api/leads/export.csv");
+        var outside = await other.GetAsync("/api/leads/export.csv");
+        var onStarter = await starter.GetAsync("/api/leads/export.csv");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+        outside.EnsureSuccessStatusCode();
+        Assert.Equal(HttpStatusCode.Forbidden, onStarter.StatusCode);
+        foreach (var response in new[] { anonymous, outside, onStarter })
+        {
+            var body = await response.Content.ReadAsStringAsync();
+            Assert.DoesNotContain("555-0142", body);
+            Assert.DoesNotContain("office@example.com", body);
+        }
+    }
 }

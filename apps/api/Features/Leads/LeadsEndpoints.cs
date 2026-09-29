@@ -115,12 +115,17 @@ public static class LeadsEndpoints
         var rows = await LeadQueries.OrderForFeed(
                 LeadQueries.ApplyFilters(LeadQueries.ForEntitledMarkets(db, marketIds), filters, nowUtc))
             .Take(ExportCap + 1)   // one extra row detects truncation
-            .Select(o => new LeadExportRow(
-                o.LeadScore, o.Permit.Address, o.Permit.City, o.Permit.PermitType, o.Category,
-                o.Permit.Description, o.Permit.FiledDate, o.Permit.EstimatedValue,
-                o.Permit.OwnerName, o.Permit.ContractorName,
-                // The record's own link where there is one, otherwise the dataset it came from.
-                o.Permit.RecordUrl ?? o.Permit.SourceUrl))
+            .Select(o => new
+            {
+                o.PermitId,
+                Row = new LeadExportRow(
+                    o.LeadScore, o.Permit.Address, o.Permit.City, o.Permit.PermitType, o.Category,
+                    o.Permit.Description, o.Permit.FiledDate, o.Permit.EstimatedValue,
+                    o.Permit.OwnerName, o.Permit.ContractorName,
+                    // The record's own link where there is one, otherwise the dataset it came from.
+                    o.Permit.RecordUrl ?? o.Permit.SourceUrl,
+                    o.Permit.ApplicantName, null, null, null),
+            })
             .ToListAsync(ct);
 
         if (rows.Count > ExportCap)
@@ -128,7 +133,32 @@ public static class LeadsEndpoints
             rows.RemoveAt(rows.Count - 1);
             http.Response.Headers["X-Truncated"] = "true";
         }
-        var csv = CsvFormatter.Write(rows);
+
+        // Contact details as the permit record publishes them, for the exported leads only.
+        // The rows above are already limited to the user's markets.
+        var permitIds = rows.Select(r => r.PermitId).ToArray();
+        var contacts = (await db.PermitParticipants.AsNoTracking()
+                .Where(p => permitIds.Contains(p.PermitId)
+                    && (p.Phone != null || p.Email != null || p.LicenseNumber != null))
+                .OrderBy(p => p.Id)
+                .Select(p => new { p.PermitId, p.Role, p.Name, p.Phone, p.Email, p.LicenseNumber })
+                .ToListAsync(ct))
+            .ToLookup(p => p.PermitId);
+
+        var csv = CsvFormatter.Write(rows.Select(r =>
+        {
+            // A contact is exported only beside the name it belongs to.
+            ExportContact? Of(ParticipantRole role, string? name) => contacts[r.PermitId]
+                .Where(p => p.Role == role && p.Name == name)
+                .Select(p => new ExportContact(p.Phone, p.Email, p.LicenseNumber))
+                .FirstOrDefault();
+            return r.Row with
+            {
+                Owner = Of(ParticipantRole.Owner, r.Row.OwnerName),
+                Contractor = Of(ParticipantRole.Contractor, r.Row.ContractorName),
+                Applicant = Of(ParticipantRole.Applicant, r.Row.ApplicantName),
+            };
+        }));
         return Results.File(System.Text.Encoding.UTF8.GetBytes(csv), "text/csv", "permittorch-leads.csv");
     }
 }

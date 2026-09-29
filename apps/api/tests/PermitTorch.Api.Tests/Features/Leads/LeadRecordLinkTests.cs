@@ -75,7 +75,8 @@ public class LeadRecordLinkTests(ApiFactory factory)
 
         var lines = csv.TrimEnd().Split("\r\n");
         Assert.Equal(2, lines.Length);
-        Assert.EndsWith(",https://permits.example.gov/record/FP-77", lines[1]);
+        // The link is the eleventh column; the applicant and contact columns follow it.
+        Assert.Contains(",https://permits.example.gov/record/FP-77,", lines[1]);
     }
 
     [Fact]
@@ -87,6 +88,6 @@ public class LeadRecordLinkTests(ApiFactory factory)
 
         var lines = csv.TrimEnd().Split("\r\n");
         Assert.Equal(2, lines.Length);
-        Assert.EndsWith("," + DatasetUrl, lines[1]);
+        Assert.Contains("," + DatasetUrl + ",", lines[1]);
     }
 }
