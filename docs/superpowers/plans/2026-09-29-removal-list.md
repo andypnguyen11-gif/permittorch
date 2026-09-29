@@ -3276,4 +3276,5 @@ Open a pull request from `removal-list`, wait for CI, then move `main` to the br
 
 - Matching a phone reads every participant that has a phone and works out the key in the API. Production holds 180. When that passes a few tens of thousands, store the key in a column and index it.
 - A removal made during a run is obeyed within 100 records, and the sweep at the end of the run cleans or deletes what was stored in between. Until the run ends, a removed value can be stored again and shown.
+- The sweep runs at the end of a run that was ingested, and covers removals of the last 7 days. If a run is cut short after it stored a removed value, and no run is ingested for more than 7 days after the removal was made, that value stays stored. To check: preview the listed value on the admin page; a count above zero means stored data holds it again.
 - The admin list shows the newest 100 removals. Paging the page comes when the list is that long.

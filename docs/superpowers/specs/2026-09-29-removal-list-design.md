@@ -114,7 +114,8 @@ All under `/api/admin/removals`, SuperAdmin only. A member gets 403 and an anony
 
 Rules at the boundary:
 
-- A phone must hold at least 10 digits. An email must be one plain address. A name must be 3 to 200 characters after trimming.
+- A phone must hold at least 10 digits and fewer than 20: a value with 20 or more holds two numbers and is refused. An email must be one plain address. A name must be at least 3 characters after trimming. A value of any kind is at most 200 characters.
+- A record search needs 3 to 100 characters.
 - `confirmedCount` must equal the number of permits that match at that moment. If it does not, the call is refused with 409 and nothing changes. The admin has always seen the count they confirm.
 - A second removal with the same kind and key is refused with 409.
 
