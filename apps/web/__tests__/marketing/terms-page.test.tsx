@@ -71,6 +71,12 @@ describe("terms page", () => {
     expect(text).toMatch(/indemnify, defend and hold harmless PermitTorch/);
   });
 
+  it("names the law and the courts that apply", () => {
+    const { text } = page();
+    expect(text).toMatch(/governed by the laws of the State of Texas/);
+    expect(text).toMatch(/state or federal courts located in Harris County, Texas/);
+  });
+
   it("sets the warranty and liability paragraphs apart from the rest", () => {
     const { container } = page();
     const notices = [...container.querySelectorAll("p.font-semibold")].map((p) => p.textContent ?? "");
@@ -93,8 +99,9 @@ describe("TERMS_VERSION ↔ API Terms.CurrentVersion", () => {
     expect(TERMS_VERSION).toBe(match![1]);
   });
 
-  it("is the date shown as last updated", () => {
-    expect(new Date(`${TERMS_VERSION}T12:00:00Z`).toLocaleDateString("en-US", {
+  it("starts with the date shown as last updated", () => {
+    expect(TERMS_VERSION).toMatch(/^\d{4}-\d{2}-\d{2}(\.\d+)?$/);
+    expect(new Date(`${TERMS_VERSION.slice(0, 10)}T12:00:00Z`).toLocaleDateString("en-US", {
       year: "numeric", month: "long", day: "numeric", timeZone: "UTC",
     })).toBe(TERMS_UPDATED);
   });

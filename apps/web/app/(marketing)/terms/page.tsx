@@ -127,7 +127,8 @@ const SECTIONS: LegalSection[] = [
     heading: "13. General",
     body: [
       "If a court finds part of these terms unenforceable, the rest still applies. If we do not enforce a term, we have not given it up. These terms and the Privacy Policy are the whole agreement between you and PermitTorch about the service.",
-      "Sections 5, 6, 8, 9, 10 and 11 continue to apply after your account closes.",
+      "These terms are governed by the laws of the State of Texas, without regard to its rules on conflicts of law. Any lawsuit about these terms or the service must be brought in the state or federal courts located in Harris County, Texas, and you and PermitTorch agree to the authority of those courts.",
+      "Sections 5, 6, 8, 9, 10, 11 and 13 continue to apply after your account closes.",
     ],
   },
   {
