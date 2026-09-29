@@ -238,3 +238,23 @@ curl -s -o /dev/null -w "%{http_code} %{redirect_url}\n" https://www.permittorch
 ## Alternative: web on Vercel
 
 Import the repo at https://vercel.com/new with **Root Directory** `apps/web`. Vercel detects the pnpm workspace. Set the same web variables. Set `WEB_ORIGIN` on `api` to the Vercel domain and add that domain to Firebase authorized domains. `output: "standalone"` is harmless on Vercel.
+
+## Making an account an admin
+
+The admin pages, the removals page among them, need the role SuperAdmin. Roles are stored as numbers: 0 Member, 1 Admin, 2 SuperAdmin. The account must have signed in once, so that its row exists.
+
+1. Look first. The email is the one Firebase has verified; an unverified account is stored under an address ending `@unknown.permittorch.invalid`.
+
+   ```bash
+   railway ssh --service Postgres -- sh -c 'psql -U "$PGUSER" -d "$PGDATABASE" -c "select u.email, u.role, o.name from app_users u join organizations o on o.id = u.organization_id order by u.email"'
+   ```
+
+2. Change one account, naming it by its email:
+
+   ```bash
+   railway ssh --service Postgres -- sh -c 'psql -U "$PGUSER" -d "$PGDATABASE" -c "update app_users set role = 2 where email = \$\$owner@example.com\$\$ returning email, role"'
+   ```
+
+   It must return one row. No row means the email is not the stored one.
+
+3. The account signs out and in again. The sidebar then shows the admin links.

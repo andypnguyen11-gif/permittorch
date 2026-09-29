@@ -39,6 +39,7 @@ const SECTIONS: LegalSection[] = [
       "You can ask us to remove your phone number, your email address, your name, or a whole record from PermitTorch. You do not have to give a reason, and it costs nothing.",
       "Email support@permittorch.com. Tell us the city, the permit number or the property address, and what you want removed. We use what you send only to find the record and to handle your request.",
       "We will act on your request within 30 days. If a law gives you a right to faster removal, for example because you are a judge or a law enforcement officer, tell us and we will act within the time that law sets.",
+      "To keep it removed, we keep what you asked us to remove on a private list that our daily import checks. Customers never see that list.",
       "Removal has limits. The record stays on the website of the government office that published it, and that office has its own rules. We cannot take back a file that a customer downloaded before your request.",
       "If one of our customers contacts you and you want it to stop, tell them. You can also tell us who contacted you and when. We look into every complaint, and we can suspend or close the account of a customer who breaks our terms.",
     ],

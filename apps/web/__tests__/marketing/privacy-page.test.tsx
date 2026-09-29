@@ -28,6 +28,13 @@ describe("privacy page", () => {
     expect(text).toMatch(/within 30 days/);
   });
 
+  it("says that a removed value is kept on a list so that it stays removed", () => {
+    const { container } = render(<PrivacyPage />);
+    const text = container.textContent ?? "";
+    expect(text).toMatch(/we keep what you asked us to remove on a private list that our daily import checks/);
+    expect(text).toMatch(/Customers never see that list/);
+  });
+
   it("does not say that permit records are not sold", () => {
     const { container } = render(<PrivacyPage />);
     const text = container.textContent ?? "";
