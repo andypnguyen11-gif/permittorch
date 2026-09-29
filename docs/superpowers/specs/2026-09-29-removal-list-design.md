@@ -50,7 +50,7 @@ New table `removals`:
 | `kind` | Phone, Email, Name or Record |
 | `value` | what the admin entered, trimmed. For a record: the permit number, or the external id when there is none |
 | `match_key` | the key above. For a record: source id, a colon, external id |
-| `source_id`, `external_id`, `fingerprint` | a record only, otherwise null |
+| `source_id`, `external_id`, `permit_number`, `fingerprint` | a record only, otherwise null |
 | `label` | a record only: the city and state, for the admin's list. No address and no name |
 | `note` | the admin's note, such as "email of 3 Oct". Up to 500 characters |
 | `records_affected` | how many permits the removal changed or deleted when it was made |
@@ -79,9 +79,10 @@ One transaction:
 
 ## The import
 
-- The removals are read once at the start of a run.
+- The removals are read at the start of a run and again every 100 records.
+- At the end of a run, every removal made since the run began is applied to stored data once more. A removal made while a run was storing records holds when the run ends.
 - Each record is checked after it is normalized and before anything is stored.
-- A record whose source and external id are on the list is skipped. So is a record of that source with a listed fingerprint, because the same permit can come back under a new id. A skipped record is logged and is counted neither as imported nor as a failure.
+- A record whose source and external id are on the list is skipped. So is a record of that source with a listed fingerprint, because the same permit can come back under a new id. The fingerprint counts only when the record has an address and the two permit numbers cannot disagree, which is the rule the import already uses for that case. A skipped record is logged and is counted neither as imported nor as a failure.
 - A listed phone or email is dropped from the party it came with. A listed name is dropped with that party's contact details. A listed business name is dropped.
 - A dropped contractor name sets the two withheld flags on the normalized record.
 - When a record names a contractor that is not on the list, both flags are cleared.
