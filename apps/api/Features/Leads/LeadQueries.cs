@@ -55,7 +55,7 @@ public static class LeadQueries
 
     public static LeadSummaryDto ToSummary(LeadRow row, DateTime nowUtc) => new(
         row.Id, row.Score,
-        string.IsNullOrWhiteSpace(row.PermitType) ? Wire.Title(row.Category) : row.PermitType,
+        Wire.Label(row.PermitType) ?? Wire.Title(row.Category),
         row.Address, row.City, row.State, row.Category, row.PermitType, row.Status,
         row.FiledDate, row.EstimatedValue, row.Reason,
         IsNew: row.FirstDetectedAt >= nowUtc.AddHours(-72));

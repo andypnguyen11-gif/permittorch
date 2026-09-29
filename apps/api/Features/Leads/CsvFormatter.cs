@@ -35,7 +35,7 @@ public static class CsvFormatter
                 .Append(row.Score.ToString(CultureInfo.InvariantCulture)).Append(',')
                 .Append(Escape(row.Address)).Append(',')
                 .Append(Escape(row.City)).Append(',')
-                .Append(Escape(row.PermitType)).Append(',')
+                .Append(Escape(Wire.Label(row.PermitType))).Append(',')
                 .Append(Wire.Name(row.Category)).Append(',')
                 .Append(Escape(row.Description)).Append(',')
                 .Append(row.FiledDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)).Append(',')

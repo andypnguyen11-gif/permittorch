@@ -18,6 +18,16 @@ const lead = (overrides: Partial<LeadSummary>): LeadSummary => ({
 });
 
 describe("LeadTable", () => {
+  it("does not repeat the title underneath it", () => {
+    render(<LeadTable leads={[lead({ title: "Fire Sprinkler", permitType: "fire_sprinkler" })]} />);
+    expect(screen.getAllByText(/^fire sprinkler$/i)).toHaveLength(1);
+  });
+
+  it("words the permit type under a title that says something else", () => {
+    render(<LeadTable leads={[lead({ permitType: "fire_sprinkler" })]} />);
+    expect(screen.getByText("Fire sprinkler")).toBeInTheDocument();
+  });
+
   it("renders score badge, title, address, relative date, value, and reason", () => {
     render(<LeadTable leads={[lead({})]} />);
     expect(screen.getByTestId("score-badge")).toHaveTextContent("92");

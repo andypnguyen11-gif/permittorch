@@ -41,7 +41,7 @@ public static class DigestEmailBuilder
             if (lead.EstimatedValue is { } value)
                 html.Append(WebUtility.HtmlEncode(value.ToString("$#,0", CultureInfo.InvariantCulture)))
                     .Append(" project<br/>");
-            var headline = lead.Description ?? lead.PermitType ?? "New permit opportunity";
+            var headline = lead.Description ?? Wire.Label(lead.PermitType) ?? "New permit opportunity";
             if (headline.Length > 120) headline = headline[..120];
             html.Append(WebUtility.HtmlEncode(headline)).Append("<br/>")
                 .Append(WebUtility.HtmlEncode(lead.City)).Append(", ")
