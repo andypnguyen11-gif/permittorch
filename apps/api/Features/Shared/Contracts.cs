@@ -57,10 +57,11 @@ public sealed record SavedLeadItemDto(Guid Id, SavedLeadStatus Status, DateTime 
 /// <summary>`Id` is the internal user id (safe for analytics; never the Firebase uid).
 /// `HasLiveSubscription` is true while a Stripe subscription still exists for the org — including
 /// unpaid/paused/incomplete ones that grant no plan — so the UI routes to the billing portal, not a
-/// second checkout.</summary>
+/// second checkout. `TermsAccepted` is false until the user agrees to the current terms; the API
+/// serves no leads before that.</summary>
 public sealed record AccountMeDto(
     Guid Id, string Email, UserRole Role, string OrganizationName, PlanTier? Plan,
-    DigestFrequency DigestFrequency, bool HasLiveSubscription);
+    DigestFrequency DigestFrequency, bool HasLiveSubscription, bool TermsAccepted);
 
 public sealed record AdminSourceDto(
     Guid Id, string Name, string City, string State, bool Active,

@@ -35,5 +35,28 @@ export async function signIn(page: Page, user: TestUser): Promise<void> {
   if (outcome === "error") {
     throw new Error(`Sign-in as ${user.email} failed on /login: "${await formError.textContent()}"`);
   }
+  await agreeToTermsIfAsked(page);
   await expect(page.getByRole("heading", { level: 1, name: "Leads" })).toBeVisible();
+}
+
+const termsGate = (page: Page) =>
+  page.getByRole("heading", { level: 1, name: "Agree to the terms to see your leads" });
+
+/**
+ * Agrees on the agreement screen that a new account gets in place of the app
+ * (components/app/terms-gate.tsx). The agreement is stored, so a user is asked once per
+ * version of the terms.
+ */
+export async function agreeToTerms(page: Page): Promise<void> {
+  await expect(termsGate(page)).toBeVisible();
+  await page.getByRole("checkbox", { name: /I have read and agree to the Terms of Service/ }).check();
+  await page.getByRole("button", { name: "Agree and continue" }).click();
+  await expect(termsGate(page)).toBeHidden();
+}
+
+/** For a seeded user, who is asked only on the first sign-in after the terms change. */
+export async function agreeToTermsIfAsked(page: Page): Promise<void> {
+  const leads = page.getByRole("heading", { level: 1, name: "Leads" });
+  await expect(termsGate(page).or(leads)).toBeVisible();
+  if (await termsGate(page).isVisible()) await agreeToTerms(page);
 }

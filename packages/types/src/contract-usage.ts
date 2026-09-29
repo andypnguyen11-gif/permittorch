@@ -76,6 +76,7 @@ const savedItem: SavedLeadItem = { id: "sl_1", status: savedStatus, createdAt: "
 const me: AccountMe = {
   id: "usr_1", email: "owner@example.com", role: "ADMIN",
   organizationName: "Acme Fire", plan, digestFrequency: digest, hasLiveSubscription: true,
+  termsAccepted: true,
 };
 
 const adminSource: AdminSource = {

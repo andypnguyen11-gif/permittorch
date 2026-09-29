@@ -1,6 +1,8 @@
 using System.Net;
+using System.Net.Http.Json;
 using System.Text.Json;
 using PermitTorch.Api.Data;
+using PermitTorch.Api.Features.Account;
 using PermitTorch.Api.Tests.Features.TestInfra;
 
 namespace PermitTorch.Api.Tests.Features.Leads;
@@ -173,6 +175,7 @@ public class LeadsEndpointTests(ApiFactory factory) : IAsyncLifetime
     {
         var sub = $"user_{Guid.NewGuid():N}";
         var client = factory.CreateClientFor(sub, $"{sub}@example.com");   // auto-provisioned, no subscription
+        await client.PostAsJsonAsync("/api/account/terms", new { version = Terms.CurrentVersion });
         var response = await client.GetAsync("/api/leads");
         response.EnsureSuccessStatusCode();
         var body = JsonSerializer.Deserialize<JsonElement>(await response.Content.ReadAsStringAsync());

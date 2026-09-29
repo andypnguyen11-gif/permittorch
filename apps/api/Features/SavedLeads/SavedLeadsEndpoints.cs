@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using PermitTorch.Api.Data;
+using PermitTorch.Api.Features.Account;
 using PermitTorch.Api.Features.Auth;
 using PermitTorch.Api.Features.Leads;
 using PermitTorch.Api.Features.Shared;
@@ -15,7 +16,8 @@ public static class SavedLeadsEndpoints
 {
     public static IEndpointRouteBuilder MapSavedLeadsEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var group = endpoints.MapGroup("/api/saved-leads").RequireAuthorization("User");
+        var group = endpoints.MapGroup("/api/saved-leads").RequireAuthorization("User")
+            .AddEndpointFilter<TermsAcceptedFilter>();
         group.MapGet("", GetSavedLeads);
         group.MapPost("", SaveLead);
         group.MapPatch("/{id:guid}", UpdateSavedLead);

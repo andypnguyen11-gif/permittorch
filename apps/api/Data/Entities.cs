@@ -141,6 +141,17 @@ public class AppUser
     public Guid OrganizationId { get; set; }
     public Organization Organization { get; set; } = null!;
     public UserRole Role { get; set; }
+    public List<TermsAcceptance> TermsAcceptances { get; set; } = new();
+}
+
+/// <summary>A user agreed to one version of the terms. Rows are only ever added, so the
+/// record of an earlier version stays when the terms change.</summary>
+public class TermsAcceptance
+{
+    public Guid Id { get; set; }
+    public Guid UserId { get; set; }
+    public string Version { get; set; } = null!;
+    public DateTime AcceptedAt { get; set; }
 }
 
 public class Subscription

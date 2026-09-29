@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using PermitTorch.Api.Data;
+using PermitTorch.Api.Features.Account;
 using PermitTorch.Api.Features.Auth;
 using PermitTorch.Api.Features.Shared;
 
@@ -11,7 +12,8 @@ public static class LeadsEndpoints
 
     public static IEndpointRouteBuilder MapLeadsEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var group = endpoints.MapGroup("/api/leads").RequireAuthorization("User");
+        var group = endpoints.MapGroup("/api/leads").RequireAuthorization("User")
+            .AddEndpointFilter<TermsAcceptedFilter>();
         group.MapGet("", GetLeads);
         group.MapGet("/{id:guid}", GetLead);
         group.MapGet("/export.csv", ExportCsv);

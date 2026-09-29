@@ -19,7 +19,7 @@ const NEEDS_ATTENTION =
 
 const me = (plan: AccountMe["plan"]): AccountMe => ({
   id: "u1", email: "a@b.c", role: "MEMBER", organizationName: "Org", plan,
-  digestFrequency: "NONE", hasLiveSubscription: plan !== null,
+  digestFrequency: "NONE", hasLiveSubscription: plan !== null, termsAccepted: true,
 });
 
 // Advances fake time step by step so each awaited poll resolves before the next timer.

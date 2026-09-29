@@ -55,6 +55,7 @@ export async function unsaveLead(id: string): Promise<void> {
 export async function getAccountMarkets(): Promise<Market[]> { return [...mockAccountMarkets]; }
 export async function getAccountMe(): Promise<AccountMe> { return mockAccountForRole(); }
 export async function updateEmailPreferences(_frequency: DigestFrequency): Promise<void> { /* mock no-op */ }
+export async function acceptTerms(_version: string): Promise<void> { /* mock no-op */ }
 // Mock mode accepts the sample-lead form as a no-op success.
 export async function submitSampleLeadRequest(_input: { name: string; email: string; company: string; marketSlug: string }): Promise<void> {}
 export async function createCheckout(_plan: PlanTier, _marketSlugs: string[]): Promise<{ url: string }> { return { url: "#" }; }

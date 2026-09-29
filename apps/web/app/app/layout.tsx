@@ -8,6 +8,7 @@ import { BrandMark } from "@/components/app/brand";
 import { isUnauthorized } from "@/components/app/session-digest";
 import { SessionRecoveryCard, UnavailableCard } from "@/components/app/session-recovery";
 import { Sidebar } from "@/components/app/sidebar";
+import { TermsGate } from "@/components/app/terms-gate";
 import { TopBar } from "@/components/app/top-bar";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -54,6 +55,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   }
 
   const { me, markets } = shell;
+  // No page is rendered before the user agrees: every one of them shows or leads to lead data.
+  if (!me.termsAccepted) {
+    return (
+      <TooltipProvider>
+        <StateShell><TermsGate /></StateShell>
+      </TooltipProvider>
+    );
+  }
+
   return (
     <TooltipProvider>
       <AnalyticsIdentity userId={me.id} />

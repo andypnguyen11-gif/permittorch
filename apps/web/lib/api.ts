@@ -204,6 +204,12 @@ export async function updateEmailPreferences(frequency: DigestFrequency, token: 
   );
 }
 
+// The API records the agreement only when `version` is the one it holds as current (409 otherwise).
+export async function acceptTerms(version: string, token: string): Promise<void> {
+  if (isMock()) return (await fixtures()).acceptTerms(version);
+  return apiFetch<void>("/api/account/terms", { method: "POST", body: JSON.stringify({ version }) }, token);
+}
+
 export async function submitSampleLeadRequest(
   input: { name: string; email: string; company: string; marketSlug: string },
 ): Promise<void> {

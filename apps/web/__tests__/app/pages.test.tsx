@@ -26,7 +26,7 @@ beforeAll(() => vi.stubEnv("NEXT_PUBLIC_API_MOCK", "1"));
 
 const NO_PLAN: AccountMe = {
   id: "u-new", email: "new@example.com", role: "MEMBER", organizationName: "New Co", plan: null,
-  digestFrequency: "NONE", hasLiveSubscription: false,
+  digestFrequency: "NONE", hasLiveSubscription: false, termsAccepted: true,
 };
 const NO_COUNTS = {
   FIRE_SPRINKLER: 0, FIRE_ALARM: 0, FIRE_SUPPRESSION: 0, KITCHEN_SUPPRESSION: 0,

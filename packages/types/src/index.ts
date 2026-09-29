@@ -59,6 +59,8 @@ export interface AccountMe {
   organizationName: string; plan: PlanTier | null; digestFrequency: DigestFrequency;
   /** A Stripe subscription still exists (incl. unpaid/paused/incomplete): use the billing portal, not checkout. */
   hasLiveSubscription: boolean;
+  /** False until the user agrees to the current terms. The API serves no leads before that. */
+  termsAccepted: boolean;
 }
 export interface AdminSource {
   id: string; name: string; city: string; state: string; active: boolean;

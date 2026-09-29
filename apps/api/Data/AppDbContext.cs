@@ -15,6 +15,7 @@ public class AppDbContext : DbContext
     public DbSet<ScraperRun> ScraperRuns => Set<ScraperRun>();
     public DbSet<Organization> Organizations => Set<Organization>();
     public DbSet<AppUser> AppUsers => Set<AppUser>();
+    public DbSet<TermsAcceptance> TermsAcceptances => Set<TermsAcceptance>();
     public DbSet<Subscription> Subscriptions => Set<Subscription>();
     public DbSet<SubscriptionMarket> SubscriptionMarkets => Set<SubscriptionMarket>();
     public DbSet<SavedLead> SavedLeads => Set<SavedLead>();
@@ -73,6 +74,12 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<AppUser>(e =>
         {
             e.HasIndex(u => u.FirebaseUid).IsUnique();
+            e.HasMany(u => u.TermsAcceptances).WithOne().HasForeignKey(a => a.UserId);
+        });
+
+        modelBuilder.Entity<TermsAcceptance>(e =>
+        {
+            e.HasIndex(a => new { a.UserId, a.Version }).IsUnique();
         });
 
         modelBuilder.Entity<SubscriptionMarket>(e =>

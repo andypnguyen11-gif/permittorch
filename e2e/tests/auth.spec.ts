@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { signIn, USERS } from "../helpers/auth";
+import { agreeToTerms, signIn, USERS } from "../helpers/auth";
 import { requireFirebaseSignup, requireUsers } from "../helpers/env";
 import { deleteFirebaseUserByEmail } from "../helpers/firebase-admin";
 
@@ -25,6 +25,9 @@ test.describe("sign-up (creates a real Firebase account)", () => {
     created.push(email);
     await signUp(page, "/signup", email);
     await page.waitForURL("**/app/leads", { timeout: 30_000 });
+    // A new account sees no page of the app before it agrees to the terms.
+    await expect(page.getByRole("button", { name: "Account menu" })).toBeHidden();
+    await agreeToTerms(page);
     await expect(page.getByRole("heading", { level: 1, name: "Leads" })).toBeVisible();
     // A brand-new account has no subscription, so no market data is visible.
     await expect(page.getByText("No leads match these filters")).toBeVisible();
@@ -35,6 +38,7 @@ test.describe("sign-up (creates a real Firebase account)", () => {
     created.push(email);
     await signUp(page, "/signup?plan=TERRITORY", email);
     await page.waitForURL("**/app/account?plan=TERRITORY", { timeout: 30_000 });
+    await agreeToTerms(page);
     await expect(page.getByRole("radio", { name: "Territory" })).toBeChecked();
   });
 });

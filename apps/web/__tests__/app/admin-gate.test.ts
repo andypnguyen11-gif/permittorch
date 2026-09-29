@@ -14,6 +14,7 @@ import { SESSION_EXPIRED_DIGEST } from "@/components/app/session-digest";
 const me = (role: AccountMe["role"]): AccountMe => ({
   id: "u1", email: "x@y.com", role, organizationName: "Org", plan: "PRO", digestFrequency: "DAILY",
   hasLiveSubscription: true,
+  termsAccepted: true,
 });
 
 beforeEach(() => vi.clearAllMocks());

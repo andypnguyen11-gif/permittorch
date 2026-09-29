@@ -19,6 +19,7 @@ vi.mock("@/components/app/get-token", () => ({ getApiToken: () => getApiToken() 
 import AppLayout from "@/app/app/layout";
 import * as api from "@/lib/api";
 import { sessionExpiredError } from "@/components/app/session-digest";
+import { mockAccountMe } from "@/lib/fixtures/account";
 
 beforeAll(() => vi.stubEnv("NEXT_PUBLIC_API_MOCK", "1"));
 afterEach(() => vi.restoreAllMocks());
@@ -66,6 +67,15 @@ describe("/app layout failure handling", () => {
     expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
     expect(screen.queryByText("page content")).not.toBeInTheDocument();
     expect(redirect).not.toHaveBeenCalled();
+  });
+
+  it("shows the agreement screen, and no page, until the user agrees to the terms", async () => {
+    vi.spyOn(api, "getAccountMe").mockResolvedValue({ ...mockAccountMe, termsAccepted: false });
+    await renderLayout();
+    expect(screen.getByRole("heading", { level: 1, name: "Agree to the terms to see your leads" })).toBeInTheDocument();
+    expect(screen.queryByText("page content")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Account menu" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Leads" })).not.toBeInTheDocument();
   });
 
   it("renders the error shell when the API is unreachable", async () => {

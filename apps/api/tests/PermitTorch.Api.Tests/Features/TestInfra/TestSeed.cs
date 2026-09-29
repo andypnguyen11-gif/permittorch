@@ -55,8 +55,10 @@ public static class TestSeed
         };
     }
 
+    /// <summary>The user has agreed to the current terms unless the test says otherwise,
+    /// because the API serves no leads before that.</summary>
     public static (Organization Org, AppUser User, EmailPreference Pref) User(
-        string firebaseUid, string email, UserRole role = UserRole.Member)
+        string firebaseUid, string email, UserRole role = UserRole.Member, bool acceptedTerms = true)
     {
         var org = new Organization { Id = Guid.NewGuid(), Name = email };
         var user = new AppUser
@@ -64,9 +66,17 @@ public static class TestSeed
             Id = Guid.NewGuid(), FirebaseUid = firebaseUid, Email = email,
             OrganizationId = org.Id, Role = role,
         };
+        if (acceptedTerms) user.TermsAcceptances.Add(TermsAcceptance(user));
         var pref = new EmailPreference { Id = Guid.NewGuid(), UserId = user.Id, Frequency = DigestFrequency.None };
         return (org, user, pref);
     }
+
+    public static TermsAcceptance TermsAcceptance(AppUser user, string? version = null) => new()
+    {
+        Id = Guid.NewGuid(), UserId = user.Id,
+        Version = version ?? PermitTorch.Api.Features.Account.Terms.CurrentVersion,
+        AcceptedAt = DateTime.UtcNow,
+    };
 
     public static Subscription Subscription(Organization org, PlanTier plan, string status, params Market[] markets)
     {
