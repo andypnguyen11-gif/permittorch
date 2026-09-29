@@ -1664,6 +1664,8 @@ Columns:
 * Contractor
 * Source URL
 
+> **Amendment (2026-09-29, owner decision):** after the columns above, the export also carries the applicant and, for the owner, the contractor and the applicant, the phone number, email address and licence number that the permit record itself publishes.
+
 ---
 
 # 56. Market Access
