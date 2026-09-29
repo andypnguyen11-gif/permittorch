@@ -74,7 +74,8 @@ public static class PermitNormalizer
             Longitude: raw.Address?.Longitude,
             FiledDate: filedDate,
             IssuedDate: ParseUtcDate(raw.IssuedDate),
-            EstimatedValue: raw.ProjectValue,     // already decimal? — no string parsing
+            // A zero is what a portal writes where the filer entered no value.
+            EstimatedValue: raw.ProjectValue is > 0m ? raw.ProjectValue : null,
             SquareFootage: null,                  // never emitted by this provider; field kept for future providers
             OwnerName: FirstNonBlank(raw.Owner?.Name, raw.Owner?.Company),
             ContractorName: FirstNonBlank(raw.Contractor?.Name, raw.Contractor?.Company),

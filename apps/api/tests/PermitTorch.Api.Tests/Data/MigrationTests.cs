@@ -85,7 +85,7 @@ public class MigrationTests : IAsyncLifetime
             {
                 "InitialCreate", "AddCategoryOverridden", "AddPermitDetailFields", "AddPermitRecordLink",
                 "MovePermitNamesToTheirRoles", "AddParticipantContact",
-                "RemovePlaceholderOwnersAndTestPermit",
+                "RemovePlaceholderOwnersAndTestPermit", "ClearProjectValuesOfZero",
             },
             applied.Select(m => m[(m.IndexOf('_') + 1)..]).ToArray());
     }
@@ -446,5 +446,67 @@ public class MigrationTests : IAsyncLifetime
         Assert.Equal(3, await db.PermitParticipants.CountAsync());
         Assert.Equal(3, await db.SavedLeads.CountAsync());
         Assert.False(await db.FireOpportunities.AnyAsync(o => o.Id == leadIds["test"]));
+    }
+
+    // Portals write a zero where the filer entered no project value. The scraper stopped sending
+    // zeros in build 0.1.16; the ones already stored are cleared, on every source.
+    [Fact]
+    public async Task Project_values_of_zero_or_less_are_cleared_and_real_values_are_kept()
+    {
+        await using var db = CreateContext();
+        var migrator = db.GetInfrastructure().GetRequiredService<IMigrator>();
+        await migrator.MigrateAsync("RemovePlaceholderOwnersAndTestPermit");
+
+        var marketId = Guid.NewGuid();
+        await db.Database.ExecuteSqlAsync($"""
+            INSERT INTO markets (id, name, city, state, slug, active)
+            VALUES ({marketId}, 'Anywhere', 'Anywhere', 'NY', 'anywhere-ny', true);
+            """);
+        var sources = new Dictionary<string, Guid>();
+        foreach (var jurisdiction in new[] { "nyc-dobnow-permits", "columbus-building-permits" })
+        {
+            sources[jurisdiction] = Guid.NewGuid();
+            await db.Database.ExecuteSqlAsync($"""
+                INSERT INTO sources (id, market_id, name, city, state, portal_type, source_url,
+                                     jurisdiction, active, records_last_run, health_status)
+                VALUES ({sources[jurisdiction]}, {marketId}, {jurisdiction}, 'Anywhere', 'NY', 'socrata',
+                        'https://example.gov', {jurisdiction}, true, 0, 0);
+                """);
+        }
+
+        var rows = new (string Key, string Source, decimal? Value)[]
+        {
+            ("zero", "nyc-dobnow-permits", 0m),
+            ("zero-elsewhere", "columbus-building-permits", 0.00m),
+            ("negative", "columbus-building-permits", -1m),
+            ("small", "nyc-dobnow-permits", 0.5m),
+            ("real", "columbus-building-permits", 250_000m),
+            ("none", "nyc-dobnow-permits", null),
+        };
+        var ids = rows.ToDictionary(r => r.Key, _ => Guid.NewGuid());
+        var stamped = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc);
+        foreach (var row in rows)
+        {
+            var id = ids[row.Key];
+            await db.Database.ExecuteSqlAsync($"""
+                INSERT INTO permits (id, source_id, external_id, status, city, state, estimated_value,
+                                     source_url, fingerprint, first_seen_at, last_seen_at,
+                                     created_at, updated_at)
+                VALUES ({id}, {sources[row.Source]}, {id.ToString()}, 1, 'Anywhere', 'NY', {row.Value},
+                        'https://example.gov', {id.ToString()}, {stamped}, {stamped}, {stamped}, {stamped});
+                """);
+        }
+
+        await migrator.MigrateAsync();
+
+        var permits = await db.Permits.AsNoTracking().ToDictionaryAsync(p => p.Id);
+        Assert.Null(permits[ids["zero"]].EstimatedValue);
+        Assert.Null(permits[ids["zero-elsewhere"]].EstimatedValue);
+        Assert.Null(permits[ids["negative"]].EstimatedValue);
+        Assert.Equal(0.5m, permits[ids["small"]].EstimatedValue);
+        Assert.Equal(250_000m, permits[ids["real"]].EstimatedValue);
+        Assert.Null(permits[ids["none"]].EstimatedValue);
+        // Nothing else on the permit changes: the record itself did not.
+        Assert.All(permits.Values, p => Assert.Equal(stamped, p.UpdatedAt));
     }
 }
