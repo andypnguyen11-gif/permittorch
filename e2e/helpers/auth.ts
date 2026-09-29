@@ -40,7 +40,7 @@ export async function signIn(page: Page, user: TestUser): Promise<void> {
 }
 
 const termsGate = (page: Page) =>
-  page.getByRole("heading", { level: 1, name: "Agree to the terms to see your leads" });
+  page.getByRole("heading", { level: 1, name: "Agree to the terms to continue" });
 
 /**
  * Agrees on the agreement screen that a new account gets in place of the app
@@ -56,7 +56,7 @@ export async function agreeToTerms(page: Page): Promise<void> {
 
 /** For a seeded user, who is asked only on the first sign-in after the terms change. */
 export async function agreeToTermsIfAsked(page: Page): Promise<void> {
-  const leads = page.getByRole("heading", { level: 1, name: "Leads" });
+  const leads = page.getByRole("heading", { level: 1, name: "Leads", exact: true });
   await expect(termsGate(page).or(leads)).toBeVisible();
   if (await termsGate(page).isVisible()) await agreeToTerms(page);
 }

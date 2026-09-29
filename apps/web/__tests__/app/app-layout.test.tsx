@@ -72,7 +72,7 @@ describe("/app layout failure handling", () => {
   it("shows the agreement screen, and no page, until the user agrees to the terms", async () => {
     vi.spyOn(api, "getAccountMe").mockResolvedValue({ ...mockAccountMe, termsAccepted: false });
     await renderLayout();
-    expect(screen.getByRole("heading", { level: 1, name: "Agree to the terms to see your leads" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Agree to the terms to continue" })).toBeInTheDocument();
     expect(screen.queryByText("page content")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Account menu" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Leads" })).not.toBeInTheDocument();

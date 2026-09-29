@@ -57,7 +57,7 @@ export function TermsGate() {
   return (
     <section aria-labelledby="terms-gate-title" className="rounded-xl border border-border bg-white p-6 sm:p-8">
       <h1 id="terms-gate-title" className="text-xl font-semibold tracking-tight text-stone-900">
-        Agree to the terms to see your leads
+        Agree to the terms to continue
       </h1>
       <p className="mt-2 text-sm text-stone-600">
         Leads can show the phone number or email address of a person named on a permit. Before you
