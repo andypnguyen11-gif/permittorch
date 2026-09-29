@@ -31,11 +31,12 @@ public class RemovalServiceTests(PostgresFixture fixture)
 
     private async Task<(Permit Permit, FireOpportunity Lead)> SeedAsync(string city = "Mesa",
         string? owner = null, string? applicant = null, string? contractor = null, string? business = null,
-        string? phone = null, string? email = null, ParticipantRole contactRole = ParticipantRole.Owner)
+        string? phone = null, string? email = null, ParticipantRole contactRole = ParticipantRole.Owner,
+        string? permitNumber = null)
     {
         var market = TestSeed.Market(city, "AZ");
         var source = TestSeed.Source(market, DateTime.UtcNow);
-        var permit = TestSeed.Permit(source, contractorName: contractor);
+        var permit = TestSeed.Permit(source, contractorName: contractor, permitNumber: permitNumber);
         permit.OwnerName = owner;
         permit.ApplicantName = applicant;
         permit.BusinessName = business;
@@ -129,6 +130,23 @@ public class RemovalServiceTests(PostgresFixture fixture)
         Assert.Equal(RemovalProblem.None, problem);
         Assert.Equal(1, removal!.RecordsAffected);
         Assert.Null((await PermitAsync(permit.Id))!.Participants.Single().Email);
+    }
+
+    [Fact]
+    public async Task An_email_holding_a_pattern_character_matches_only_itself()
+    {
+        var tag = Guid.NewGuid().ToString("N")[..8];
+        var email = $"jane_doe.{tag}@example.com";
+        var lookalike = $"janeXdoe.{tag}@example.com";
+        var (target, _) = await SeedAsync(owner: Unique("Owner"), email: email);
+        var (other, _) = await SeedAsync(city: "Austin", owner: Unique("Owner"), email: lookalike);
+
+        var (problem, removal) = await MakeAsync(RemovalKind.Email, email);
+
+        Assert.Equal(RemovalProblem.None, problem);
+        Assert.Equal(1, removal!.RecordsAffected);
+        Assert.Null((await PermitAsync(target.Id))!.Participants.Single().Email);
+        Assert.NotNull((await PermitAsync(other.Id))!.Participants.Single().Email);
     }
 
     // ---- a name ---------------------------------------------------------------------------
@@ -404,6 +422,69 @@ public class RemovalServiceTests(PostgresFixture fixture)
 
         await using var check = fixture.CreateContext();
         Assert.False(await check.Permits.AnyAsync(p => p.SourceId == permit.SourceId && p.ExternalId == permit.ExternalId));
+    }
+
+    [Fact]
+    public async Task A_record_that_returns_under_a_new_external_id_with_the_same_fingerprint_is_swept_away()
+    {
+        var permitNumber = $"BLD-{Guid.NewGuid():N}"[..12];
+        var (permit, _) = await SeedAsync(owner: Unique("Owner"), permitNumber: permitNumber);
+        var started = DateTime.UtcNow.AddSeconds(-1);
+        await MakeAsync(RemovalKind.Record, value: null, permitId: permit.Id);
+        var newId = Guid.NewGuid();
+        await using (var db = fixture.CreateContext())
+        {
+            // What an import that read the list before the removal was made, and that assigned
+            // the record a new external id, would do. Same source, fingerprint, address and
+            // permit number as the removed record: the list's own rule says this is it.
+            db.Add(new Permit
+            {
+                Id = newId, SourceId = permit.SourceId, ExternalId = Guid.NewGuid().ToString("N"),
+                City = permit.City, State = permit.State, SourceUrl = permit.SourceUrl,
+                Address = permit.Address, PermitNumber = permitNumber,
+                Fingerprint = permit.Fingerprint, Status = PermitStatusKind.Active,
+                FirstSeenAt = DateTime.UtcNow, LastSeenAt = DateTime.UtcNow,
+                CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = fixture.CreateContext())
+            await Service(db).SweepAsync(started, None);
+
+        await using var check = fixture.CreateContext();
+        Assert.False(await check.Permits.AnyAsync(p => p.Id == newId));
+    }
+
+    [Fact]
+    public async Task A_permit_with_the_same_fingerprint_but_a_different_permit_number_is_not_swept_away()
+    {
+        var permitNumber = $"BLD-{Guid.NewGuid():N}"[..12];
+        var (permit, _) = await SeedAsync(owner: Unique("Owner"), permitNumber: permitNumber);
+        var started = DateTime.UtcNow.AddSeconds(-1);
+        await MakeAsync(RemovalKind.Record, value: null, permitId: permit.Id);
+        var newId = Guid.NewGuid();
+        await using (var db = fixture.CreateContext())
+        {
+            // Same source, fingerprint and address, but the permit numbers disagree: not the
+            // same case, so the sweep must leave it alone.
+            db.Add(new Permit
+            {
+                Id = newId, SourceId = permit.SourceId, ExternalId = Guid.NewGuid().ToString("N"),
+                City = permit.City, State = permit.State, SourceUrl = permit.SourceUrl,
+                Address = permit.Address, PermitNumber = $"{permitNumber}-DIFFERENT",
+                Fingerprint = permit.Fingerprint, Status = PermitStatusKind.Active,
+                FirstSeenAt = DateTime.UtcNow, LastSeenAt = DateTime.UtcNow,
+                CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = fixture.CreateContext())
+            await Service(db).SweepAsync(started, None);
+
+        await using var check = fixture.CreateContext();
+        Assert.True(await check.Permits.AnyAsync(p => p.Id == newId));
     }
 
     // ---- undo -----------------------------------------------------------------------------

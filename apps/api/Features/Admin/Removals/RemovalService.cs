@@ -48,9 +48,17 @@ public sealed class RemovalService(AppDbContext db, ScoringEngine scoring)
                     .Select(p => p.PermitId).Distinct().ToList();
             }
             case RemovalKind.Email:
-                return await db.PermitParticipants.AsNoTracking()
-                    .Where(p => p.Email != null && p.Email.ToLower() == key)
-                    .Select(p => p.PermitId).Distinct().ToListAsync(ct);
+            {
+                // The database is a candidate filter only, same as the name branch: the key
+                // decides. No wildcards around the pattern — a stored email is trimmed, and a
+                // whole address is what is matched.
+                var emails = await db.PermitParticipants.AsNoTracking()
+                    .Where(p => p.Email != null && EF.Functions.ILike(p.Email, LeadQueries.EscapeLike(key), @"\"))
+                    .Select(p => new { p.PermitId, p.Email })
+                    .ToListAsync(ct);
+                return emails.Where(p => RemovalKeys.Email(p.Email) == key)
+                    .Select(p => p.PermitId).Distinct().ToList();
+            }
             case RemovalKind.Name:
             {
                 // The database finds candidates; the key decides. One space in the key stands
@@ -79,6 +87,21 @@ public sealed class RemovalService(AppDbContext db, ScoringEngine scoring)
             default:
                 return [];
         }
+    }
+
+    /// <summary>A record removal's matches for the sweep: a permit stored again under a new
+    /// external id is still caught, because it can share the removed permit's source and
+    /// fingerprint without sharing its id. The database only narrows to that pair; the list's
+    /// own rule (RemovalSet.IsRemovedRecord) decides, so the rule lives in one place.</summary>
+    private async Task<List<Guid>> RecordMatchingPermitIdsAsync(Removal removal, CancellationToken ct)
+    {
+        var candidates = await db.Permits.AsNoTracking()
+            .Where(p => p.SourceId == removal.SourceId
+                && (p.ExternalId == removal.ExternalId || p.Fingerprint == removal.Fingerprint))
+            .ToListAsync(ct);
+        var set = new RemovalSet([removal]);
+        return candidates.Where(p => set.IsRemovedRecord(StoredPermit.ToNormalized(p), p.SourceId))
+            .Select(p => p.Id).ToList();
     }
 
     public async Task<List<CityCount>> CountByCityAsync(IReadOnlyCollection<Guid> permitIds, CancellationToken ct)
@@ -159,9 +182,7 @@ public sealed class RemovalService(AppDbContext db, ScoringEngine scoring)
         foreach (var removal in recent)
         {
             var permitIds = removal.Kind == RemovalKind.Record
-                ? await db.Permits.AsNoTracking()
-                    .Where(p => p.SourceId == removal.SourceId && p.ExternalId == removal.ExternalId)
-                    .Select(p => p.Id).ToListAsync(ct)
+                ? await RecordMatchingPermitIdsAsync(removal, ct)
                 : await MatchingPermitIdsAsync(removal.Kind, removal.MatchKey, ct);
             if (permitIds.Count == 0) continue;
             await CleanAsync(new RemovalSet([removal]), removal.Kind, permitIds, ct);

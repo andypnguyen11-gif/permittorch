@@ -79,7 +79,11 @@ public sealed class RemovalSet
     public bool IsRemovedEmail(string? email) =>
         RemovalKeys.Email(email) is { } key && _emails.Contains(key);
 
-    private bool IsRemovedRecord(NormalizedPermit record, Guid sourceId)
+    /// <summary>Whether the list's record rule says this record is removed: by its own id, or
+    /// by fingerprint under the rule ingestion uses for the same case (an address is required,
+    /// and the two permit numbers must not disagree). Public so the sweep can ask the same
+    /// question about a permit already stored, not copy the rule.</summary>
+    public bool IsRemovedRecord(NormalizedPermit record, Guid sourceId)
     {
         if (_records.Contains(RemovalKeys.Record(sourceId, record.ExternalId))) return true;
         if (string.IsNullOrWhiteSpace(record.Address)) return false;
