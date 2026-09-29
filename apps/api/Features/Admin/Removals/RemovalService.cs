@@ -17,20 +17,27 @@ public sealed record CityCount(string City, string State, int Permits);
 public sealed class RemovalService(AppDbContext db, ScoringEngine scoring)
 {
     public const int MinNameLength = 3;
-    public const int MaxNameLength = 200;
+    public const int MaxValueLength = 200;
     public const int MaxNoteLength = 500;
+    // Twenty digits are two phone numbers. The key holds the first ten only, so a removal
+    // entered that way would miss the second: the admin enters each number on its own.
+    private const int MinDigitsOfTwoPhones = 20;
 
     /// <summary>The key a value is compared by, or null when the value is not what its kind
     /// says. A record has no value of its own: it is chosen by its permit.</summary>
-    public static string? KeyFor(RemovalKind kind, string? value) => kind switch
+    public static string? KeyFor(RemovalKind kind, string? value)
     {
-        RemovalKind.Phone => RemovalKeys.Phone(value),
-        RemovalKind.Email => RemovalKeys.Email(PermitNormalizer.CleanEmail(value)),
-        RemovalKind.Name => RemovalKeys.Name(value) is { Length: >= MinNameLength and <= MaxNameLength } name
-            ? name
-            : null,
-        _ => null,
-    };
+        if (value?.Trim() is { Length: > MaxValueLength }) return null;
+        return kind switch
+        {
+            RemovalKind.Phone => value?.Count(char.IsAsciiDigit) >= MinDigitsOfTwoPhones
+                ? null
+                : RemovalKeys.Phone(value),
+            RemovalKind.Email => RemovalKeys.Email(PermitNormalizer.CleanEmail(value)),
+            RemovalKind.Name => RemovalKeys.Name(value) is { Length: >= MinNameLength } name ? name : null,
+            _ => null,
+        };
+    }
 
     public async Task<List<Guid>> MatchingPermitIdsAsync(RemovalKind kind, string key, CancellationToken ct)
     {
@@ -172,7 +179,8 @@ public sealed class RemovalService(AppDbContext db, ScoringEngine scoring)
     }
 
     /// <summary>Cleans again for every removal made since a moment. The import calls it at the
-    /// end of a run, so that a removal made while the run was storing records still holds.</summary>
+    /// end of a run, with a moment a week back, so that a removal made while that run or an
+    /// earlier attempt at it was storing records still holds.</summary>
     public async Task<int> SweepAsync(DateTime madeSince, CancellationToken ct)
     {
         var recent = await db.Removals.AsNoTracking()
@@ -186,9 +194,17 @@ public sealed class RemovalService(AppDbContext db, ScoringEngine scoring)
                 : await MatchingPermitIdsAsync(removal.Kind, removal.MatchKey, ct);
             if (permitIds.Count == 0) continue;
             await CleanAsync(new RemovalSet([removal]), removal.Kind, permitIds, ct);
-            await db.SaveChangesAsync(ct);
+            try
+            {
+                await db.SaveChangesAsync(ct);
+                changed += permitIds.Count;
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                // Another job rewrote one of these rows. Its work stands, and this removal is
+                // swept again by the next run.
+            }
             db.ChangeTracker.Clear();
-            changed += permitIds.Count;
         }
         return changed;
     }

@@ -14,6 +14,7 @@ public sealed record CreateRemovalRequest(
 public static class RemovalEndpoints
 {
     public const int MinSearchLength = 3;
+    public const int MaxSearchLength = 100;
     public const int MaxSearchResults = 20;
 
     public static IEndpointRouteBuilder MapRemovalEndpoints(this IEndpointRouteBuilder endpoints)
@@ -53,6 +54,8 @@ public static class RemovalEndpoints
         var text = q?.Trim() ?? "";
         if (text.Length < MinSearchLength)
             return ApiErrors.BadRequest($"q must hold at least {MinSearchLength} characters");
+        if (text.Length > MaxSearchLength)
+            return ApiErrors.BadRequest($"q must hold at most {MaxSearchLength} characters");
         if (string.IsNullOrWhiteSpace(market)) return ApiErrors.BadRequest("market is required");
 
         // The Npgsql provider's two-argument ILike translates to ESCAPE '' (no escape character

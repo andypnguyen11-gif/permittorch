@@ -199,6 +199,15 @@ public class RemovalEndpointTests(ApiFactory factory) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_search_longer_than_100_characters_is_a_bad_request()
+    {
+        var response = await _admin.GetAsync(
+            $"/api/admin/removals/records?market={_market.Slug}&q={new string('a', 101)}");
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("q must hold at most 100 characters", await ErrorOf(response));
+    }
+
+    [Fact]
     public async Task A_search_for_a_pattern_character_finds_only_what_holds_it()
     {
         var response = await _admin.GetAsync($"/api/admin/removals/records?market={_market.Slug}&q={Uri.EscapeDataString("%%%")}");

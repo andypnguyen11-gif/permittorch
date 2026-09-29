@@ -76,6 +76,11 @@ public sealed class IngestionJob : BackgroundService
     // multi-thousand-record runs (each record is already saved individually).
     private const int TrackerClearBatchSize = 100;
 
+    // The sweep looks back further than this attempt. A run that was cut short (a deploy, a
+    // restart, a failure) is tried again with a later start, and a removal made during the
+    // first attempt must still be cleaned. Runs are daily, so a week covers every retry.
+    public static readonly TimeSpan SweepLookBack = TimeSpan.FromDays(7);
+
     public async Task<ScraperRun?> RunOnceAsync(CancellationToken ct)
     {
         using var scope = _scopeFactory.CreateScope();
@@ -166,6 +171,8 @@ public sealed class IngestionJob : BackgroundService
 
         // Read again every TrackerClearBatchSize records, so a removal made during a long run
         // is obeyed within that many records. The sweep after the loop closes what is left.
+        // This first read is not guarded: if the list cannot be read, no record may be stored
+        // unfiltered, so the run fails and is tried again.
         var removals = await LoadRemovalsAsync(db, ct);
         var removedRecords = 0;
 
@@ -226,7 +233,16 @@ public sealed class IngestionJob : BackgroundService
             if (++processed % TrackerClearBatchSize == 0)
             {
                 db.ChangeTracker.Clear();
-                removals = await LoadRemovalsAsync(db, ct);
+                try
+                {
+                    removals = await LoadRemovalsAsync(db, ct);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // The list held so far still applies. The sweep covers what it lacks.
+                    _logger.LogWarning(ex, "Apify run {RunId}: could not read the removal list again; keeping the one read earlier", run.RunId);
+                    db.ChangeTracker.Clear();
+                }
             }
         }
 
@@ -235,12 +251,21 @@ public sealed class IngestionJob : BackgroundService
         if (removedRecords > 0)
             _logger.LogInformation("Apify run {RunId}: skipped {Count} records removed on request",
                 run.RunId, removedRecords);
-        // A removal made while this run was storing records may have been cleaned before the
-        // run stored the value again. Cleaning once more puts that right.
-        var swept = await new RemovalService(db, _scoringEngine).SweepAsync(ingestStart, ct);
-        if (swept > 0)
-            _logger.LogInformation("Apify run {RunId}: cleaned {Count} permits for removals made during the run",
-                run.RunId, swept);
+        // A removal made while this run, or an earlier attempt at it, was storing records may
+        // have been cleaned before the value was stored again. Cleaning once more puts that right.
+        try
+        {
+            var swept = await new RemovalService(db, _scoringEngine).SweepAsync(ingestStart - SweepLookBack, ct);
+            if (swept > 0)
+                _logger.LogInformation("Apify run {RunId}: cleaned {Count} permits for removals made in the last {Days} days",
+                    run.RunId, swept, SweepLookBack.Days);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // The records of this run are stored. A sweep that failed must not undo that: the
+            // next run sweeps the same removals again.
+            _logger.LogError(ex, "Apify run {RunId}: the sweep for removals failed; the next run sweeps again", run.RunId);
+        }
         db.ChangeTracker.Clear();
 
         foreach (var (sourceId, count) in unknownSources)

@@ -88,12 +88,21 @@ public class RemovalServiceTests(PostgresFixture fixture)
     [InlineData(RemovalKind.Name, "  ")]
     [InlineData(RemovalKind.Name, "Al")]
     [InlineData(RemovalKind.Record, "BLD-1")]
+    [InlineData(RemovalKind.Phone, "480-555-0142 / 480-555-0199")]
     public void A_value_that_is_not_what_its_kind_says_has_no_key(RemovalKind kind, string value)
         => Assert.Null(RemovalService.KeyFor(kind, value));
 
     [Fact]
+    public void A_phone_with_a_long_extension_still_has_a_key()
+        => Assert.Equal("4805550142", RemovalService.KeyFor(RemovalKind.Phone, "1-480-555-0142 x12345"));
+
+    [Fact]
     public void A_name_longer_than_200_characters_has_no_key()
         => Assert.Null(RemovalService.KeyFor(RemovalKind.Name, new string('a', 201)));
+
+    [Fact]
+    public void A_phone_value_longer_than_200_characters_has_no_key()
+        => Assert.Null(RemovalService.KeyFor(RemovalKind.Phone, "480-555-0142" + new string(' ', 188) + "x"));
 
     // ---- a phone --------------------------------------------------------------------------
 
@@ -379,6 +388,52 @@ public class RemovalServiceTests(PostgresFixture fixture)
         Assert.Null((await PermitAsync(permit.Id))!.Participants.Single().Phone);
     }
 
+    [Fact]
+    public async Task A_contractor_name_stored_again_after_its_removal_is_swept_and_the_score_holds()
+    {
+        var name = Unique("Reliable Fire Co");
+        var (permit, lead) = await SeedAsync(contractor: name);
+        var started = DateTime.UtcNow.AddSeconds(-1);
+        await using (var db = fixture.CreateContext())
+        {
+            // Score the lead as the pipeline would, so that the removal scores it again.
+            var stored = await db.FireOpportunities.Include(o => o.Permit).Include(o => o.Signals)
+                .SingleAsync(o => o.Id == lead.Id);
+            StoredScore.Replace(db, stored, new ScoringEngine(new ScoringOptions()).Score(
+                StoredPermit.ToNormalized(stored.Permit),
+                new(stored.Category, stored.Confidence, "rescore"), DateTime.UtcNow));
+            await db.SaveChangesAsync();
+        }
+        await MakeAsync(RemovalKind.Name, name);
+        var scoreAfterRemoval = (await PermitAsync(permit.Id))!.Opportunity!.LeadScore;
+        await using (var db = fixture.CreateContext())
+        {
+            // What an import that read the list before the removal was made would do.
+            var stored = await db.Permits.SingleAsync(p => p.Id == permit.Id);
+            stored.ContractorName = name;
+            stored.ContractorWithheld = false;
+            stored.ContractorWithheldIsFireTrade = false;
+            db.Add(new PermitParticipant
+            {
+                Id = Guid.NewGuid(), PermitId = permit.Id, Role = ParticipantRole.Contractor, Name = name,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = fixture.CreateContext())
+            await Service(db).SweepAsync(started, None);
+
+        var after = (await PermitAsync(permit.Id))!;
+        Assert.Null(after.ContractorName);
+        Assert.True(after.ContractorWithheld);
+        Assert.True(after.ContractorWithheldIsFireTrade);
+        Assert.Empty(after.Participants);
+        Assert.Equal(scoreAfterRemoval, after.Opportunity!.LeadScore);
+        Assert.Contains(after.Opportunity.Signals, s => s.SignalType == "FIRE_CONTRACTOR_ASSIGNED");
+        Assert.DoesNotContain(after.Opportunity.Signals, s => s.SignalType == "NO_CONTRACTOR_LISTED");
+    }
+
+    // The import passes a moment a week back; this pins what that moment means.
     [Fact]
     public async Task The_sweep_leaves_older_removals_alone()
     {

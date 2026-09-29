@@ -283,11 +283,26 @@ public class IngestionJobRemovalTests(PostgresFixture fixture)
         Assert.NotNull(await PermitAsync(otherId));
     }
 
-    // The import sweeps at the end of a run for removals made since the run began. Here the
-    // removal is dated a minute ahead, so the next run counts it as made during the run, and
-    // the phone is put back by hand, as a run that read its list too early would have done.
+    // The import sweeps at the end of every run for removals made in the last week, whatever
+    // the run's start. A run cut short before its sweep leaves a value stored after its
+    // removal; here the phone is put back by hand, as such a run would have left it.
     [Fact]
-    public async Task A_removal_made_while_a_run_stores_records_holds_after_the_run()
+    public async Task A_value_stored_again_after_its_removal_is_cleaned_by_the_next_run()
+    {
+        var sourceId = await SeedSourceAsync();
+        var recordId = $"permit-{Guid.NewGuid():N}";
+        var phone = UniquePhone();
+        await IngestAsync(Record(recordId, sourceId, applicant: new RawParty("Jane Doe", null, phone)));
+        await RemoveAsync(RemovalKind.Phone, phone);
+        await PutPhoneBackAsync(recordId, phone);
+
+        await IngestAsync(Record($"permit-{Guid.NewGuid():N}", sourceId, street: "9 Other St"));
+
+        Assert.Null((await PermitAsync(recordId))!.Participants.Single().Phone);
+    }
+
+    [Fact]
+    public async Task A_removal_older_than_the_look_back_is_not_swept()
     {
         var sourceId = await SeedSourceAsync();
         var recordId = $"permit-{Guid.NewGuid():N}";
@@ -296,14 +311,70 @@ public class IngestionJobRemovalTests(PostgresFixture fixture)
         var removal = await RemoveAsync(RemovalKind.Phone, phone);
         await using (var db = fixture.CreateContext())
         {
-            (await db.Removals.SingleAsync(r => r.Id == removal.Id)).CreatedAt = DateTime.UtcNow.AddMinutes(1);
-            var permitId = await db.Permits.Where(p => p.ExternalId == recordId).Select(p => p.Id).SingleAsync();
-            (await db.PermitParticipants.SingleAsync(p => p.PermitId == permitId)).Phone = phone;
+            (await db.Removals.SingleAsync(r => r.Id == removal.Id)).CreatedAt = DateTime.UtcNow.AddDays(-8);
             await db.SaveChangesAsync();
         }
+        await PutPhoneBackAsync(recordId, phone);
 
         await IngestAsync(Record($"permit-{Guid.NewGuid():N}", sourceId, street: "9 Other St"));
 
-        Assert.Null((await PermitAsync(recordId))!.Participants.Single().Phone);
+        Assert.Equal(phone, (await PermitAsync(recordId))!.Participants.Single().Phone);
+    }
+
+    // A sweep that fails must not fail the run whose records are stored. The failure is made
+    // in the database, by a trigger this test adds and drops, so the job runs as it does live.
+    [Fact]
+    public async Task A_sweep_that_fails_leaves_the_run_recorded_and_its_records_stored()
+    {
+        var sourceId = await SeedSourceAsync();
+        var recordId = $"permit-{Guid.NewGuid():N}";
+        var phone = UniquePhone();
+        await IngestAsync(Record(recordId, sourceId, applicant: new RawParty("Jane Doe", null, phone)));
+        await RemoveAsync(RemovalKind.Phone, phone);
+        await PutPhoneBackAsync(recordId, phone);
+        Guid participantId;
+        await using (var db = fixture.CreateContext())
+        {
+            var permitId = await db.Permits.Where(p => p.ExternalId == recordId).Select(p => p.Id).SingleAsync();
+            participantId = await db.PermitParticipants.Where(p => p.PermitId == permitId).Select(p => p.Id).SingleAsync();
+        }
+        var trigger = $"fail_sweep_{Guid.NewGuid():N}";
+        await using (var db = fixture.CreateContext())
+        {
+            // Test-only DDL: the names are made here and the id is a Guid, so nothing is injected.
+            await db.Database.ExecuteSqlRawAsync($"""
+                CREATE FUNCTION {trigger}() RETURNS trigger LANGUAGE plpgsql AS $$
+                BEGIN RAISE EXCEPTION 'sweep refused by the test'; END $$;
+                CREATE TRIGGER {trigger} BEFORE UPDATE ON permit_participants
+                FOR EACH ROW WHEN (OLD.id = '{participantId}') EXECUTE FUNCTION {trigger}();
+                """);
+        }
+        var otherId = $"permit-{Guid.NewGuid():N}";
+        ScraperRun run;
+        try
+        {
+            run = await IngestAsync(Record(otherId, sourceId, street: "9 Other St"));
+        }
+        finally
+        {
+            await using var db = fixture.CreateContext();
+            await db.Database.ExecuteSqlRawAsync($"""
+                DROP TRIGGER {trigger} ON permit_participants;
+                DROP FUNCTION {trigger}();
+                """);
+        }
+
+        Assert.NotEqual(IngestionJob.FailedRunStatus, run.Status);
+        Assert.Equal(1, run.RecordsImported);
+        Assert.NotNull(await PermitAsync(otherId));
+        Assert.Equal(phone, (await PermitAsync(recordId))!.Participants.Single().Phone);
+    }
+
+    private async Task PutPhoneBackAsync(string recordId, string phone)
+    {
+        await using var db = fixture.CreateContext();
+        var permitId = await db.Permits.Where(p => p.ExternalId == recordId).Select(p => p.Id).SingleAsync();
+        (await db.PermitParticipants.SingleAsync(p => p.PermitId == permitId)).Phone = phone;
+        await db.SaveChangesAsync();
     }
 }
