@@ -70,3 +70,16 @@ public sealed record AdminSourceDto(
 public sealed record ScraperRunSummaryDto(
     Guid Id, string ApifyRunId, string Status, DateTime StartedAt, DateTime? FinishedAt,
     int RecordsImported, int DuplicatesSkipped, int Failures, double DurationSeconds);
+
+/// <summary>A removal as the admin sees it. The key it is compared by is not sent.</summary>
+public sealed record RemovalDto(
+    Guid Id, RemovalKind Kind, string Value, string? Label, string? Note, int RecordsAffected,
+    DateTime CreatedAt);
+
+public sealed record RemovalCityDto(string City, string State, int Permits);
+
+public sealed record RemovalPreviewDto(int Permits, IReadOnlyList<RemovalCityDto> Cities);
+
+/// <summary>A permit the admin may pick to remove. It carries no name and no contact detail.</summary>
+public sealed record RemovalRecordDto(
+    Guid PermitId, string? PermitNumber, string? Address, string City, string State, DateTime? FiledDate);

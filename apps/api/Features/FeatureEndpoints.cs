@@ -1,5 +1,6 @@
 using PermitTorch.Api.Features.Account;
 using PermitTorch.Api.Features.Admin;
+using PermitTorch.Api.Features.Admin.Removals;
 using PermitTorch.Api.Features.Billing;
 using PermitTorch.Api.Features.EmailDigests;
 using PermitTorch.Api.Features.Leads;
@@ -23,6 +24,7 @@ public static class FeatureEndpoints
         endpoints.MapBillingEndpoints();
         endpoints.MapUnsubscribeEndpoints();
         endpoints.MapAdminEndpoints();
+        endpoints.MapRemovalEndpoints();
         return endpoints;
     }
 }

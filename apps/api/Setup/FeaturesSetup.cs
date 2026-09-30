@@ -72,6 +72,7 @@ public static class FeaturesSetup
         services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, SuperAdminHandler>();
         services.AddScoped<CurrentUserService>();
         services.AddScoped<EntitlementService>();
+        services.AddScoped<PermitTorch.Api.Features.Admin.Removals.RemovalService>();
 
         var webOrigin = configuration["WEB_ORIGIN"] ?? "http://localhost:3000";
         services.AddCors(o => o.AddPolicy(CorsPolicy, policy => policy

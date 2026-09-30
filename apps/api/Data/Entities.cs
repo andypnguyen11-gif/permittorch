@@ -63,6 +63,10 @@ public class Permit
     public string SourceUrl { get; set; } = null!;         // the dataset or portal home page, shared by the whole source
     public string? RecordUrl { get; set; }                 // opens this one record; null when the source has no such link
     public RecordLinkKind? RecordUrlKind { get; set; }     // what RecordUrl opens; null exactly when RecordUrl is
+    // The record names a contractor whose name was removed on request (see Removal). The
+    // score still needs to know a contractor exists, and whether it is a fire-protection firm.
+    public bool ContractorWithheld { get; set; }
+    public bool ContractorWithheldIsFireTrade { get; set; }
     public string Fingerprint { get; set; } = null!;       // sha256 of address|permit_type|filed_date|description
     public DateTime FirstSeenAt { get; set; }
     public DateTime LastSeenAt { get; set; }
@@ -83,6 +87,27 @@ public class PermitParticipant
     public string? Phone { get; set; }
     public string? Email { get; set; }
     public string? LicenseNumber { get; set; }
+}
+
+/// <summary>A person or a company asked for something to be removed. The import checks
+/// every record against these rows, so a removed value never comes back with a scrape.
+/// MatchKey is what values are compared by (RemovalKeys); Value is what the admin entered.</summary>
+public class Removal
+{
+    public Guid Id { get; set; }
+    public RemovalKind Kind { get; set; }
+    public string Value { get; set; } = null!;
+    public string MatchKey { get; set; } = null!;
+    // A record only: which permit, and what recognises it if it comes back under a new id.
+    public Guid? SourceId { get; set; }
+    public string? ExternalId { get; set; }
+    public string? PermitNumber { get; set; }
+    public string? Fingerprint { get; set; }
+    public string? Label { get; set; }                     // a record only: city and state
+    public string? Note { get; set; }
+    public int RecordsAffected { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public Guid? CreatedByUserId { get; set; }
 }
 
 public class FireOpportunity

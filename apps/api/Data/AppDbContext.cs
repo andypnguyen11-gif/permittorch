@@ -21,6 +21,7 @@ public class AppDbContext : DbContext
     public DbSet<SavedLead> SavedLeads => Set<SavedLead>();
     public DbSet<EmailPreference> EmailPreferences => Set<EmailPreference>();
     public DbSet<SampleLeadRequest> SampleLeadRequests => Set<SampleLeadRequest>();
+    public DbSet<Removal> Removals => Set<Removal>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
@@ -105,6 +106,18 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<SampleLeadRequest>(e =>
         {
             e.HasIndex(r => new { r.Email, r.MarketSlug }).IsUnique();
+        });
+
+        modelBuilder.Entity<Removal>(e =>
+        {
+            e.HasIndex(r => new { r.Kind, r.MatchKey }).IsUnique();
+            e.Property(r => r.Note).HasMaxLength(500);
+        });
+
+        modelBuilder.Entity<Permit>(e =>
+        {
+            e.Property(p => p.ContractorWithheld).HasDefaultValue(false);
+            e.Property(p => p.ContractorWithheldIsFireTrade).HasDefaultValue(false);
         });
     }
 }

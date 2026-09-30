@@ -1,4 +1,4 @@
-import type { AdminSource, Paged, ScraperRunSummary } from "@permittorch/types";
+import type { AdminSource, Paged, Removal, RemovalPreview, RemovalRecord, ScraperRunSummary } from "@permittorch/types";
 import { daysAgo, hoursAgo, minutesAgo } from "./time";
 
 export const mockAdminSources: AdminSource[] = [
@@ -66,3 +66,20 @@ export function mockAdminRuns(
     });
   return { items, total: filtered.length, page, pageSize };
 }
+
+export const mockRemovals: Removal[] = [
+  { id: "rem-001", kind: "PHONE", value: "(480) 555-0142", label: null, note: "email of 3 Oct",
+    recordsAffected: 2, createdAt: daysAgo(1) },
+  { id: "rem-002", kind: "RECORD", value: "BLD-2026-0117", label: "Mesa, AZ", note: null,
+    recordsAffected: 1, createdAt: daysAgo(3) },
+];
+
+export const mockRemovalPreview: RemovalPreview = {
+  permits: 3,
+  cities: [{ city: "Mesa", state: "AZ", permits: 2 }, { city: "Austin", state: "TX", permits: 1 }],
+};
+
+export const mockRemovalRecords: RemovalRecord[] = [
+  { permitId: "per-001", permitNumber: "BLD-2026-0117", address: "1 Main St", city: "Mesa", state: "AZ",
+    filedDate: daysAgo(12) },
+];

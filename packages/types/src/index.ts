@@ -66,6 +66,22 @@ export interface AdminSource {
   id: string; name: string; city: string; state: string; active: boolean;
   healthStatus: HealthStatus; lastSuccessfulRunAt: string | null; recordsLastRun: number;
 }
+
+export type RemovalKind = "PHONE" | "EMAIL" | "NAME" | "RECORD";
+/** Something a person asked to have removed. `label` is set for a record only: its city and state. */
+export interface Removal {
+  id: string; kind: RemovalKind; value: string; label: string | null; note: string | null;
+  recordsAffected: number; createdAt: string;
+}
+export interface RemovalPreview {
+  permits: number;
+  cities: { city: string; state: string; permits: number }[];
+}
+/** A permit the admin may pick to remove. It carries no name and no contact detail. */
+export interface RemovalRecord {
+  permitId: string; permitNumber: string | null; address: string | null;
+  city: string; state: string; filedDate: string | null;
+}
 export interface ScraperRunSummary {
   id: string; apifyRunId: string; status: string; startedAt: string; finishedAt: string | null;
   recordsImported: number; duplicatesSkipped: number; failures: number; durationSeconds: number;

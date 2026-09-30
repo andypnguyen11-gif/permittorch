@@ -11,7 +11,7 @@ namespace PermitTorch.Api.Features.Account;
 /// Changing it asks every user to agree again.</summary>
 public static class Terms
 {
-    public const string CurrentVersion = "2026-09-29.2";
+    public const string CurrentVersion = "2026-09-29.3";
     public const string NotAcceptedError = "terms_not_accepted";
 
     public static Task<bool> HasAcceptedCurrentAsync(AppDbContext db, Guid userId, CancellationToken ct) =>

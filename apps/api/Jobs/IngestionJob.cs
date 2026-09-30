@@ -12,7 +12,9 @@ using Microsoft.Extensions.Logging;
 using PermitTorch.Api.Data;
 using PermitTorch.Api.Domain.Classification;
 using PermitTorch.Api.Domain.Normalization;
+using PermitTorch.Api.Domain.Removals;
 using PermitTorch.Api.Domain.Scoring;
+using PermitTorch.Api.Features.Admin.Removals;
 using PermitTorch.Api.Infrastructure;
 using PermitTorch.Api.Infrastructure.Apify;
 
@@ -73,6 +75,11 @@ public sealed class IngestionJob : BackgroundService
     // Detach tracked entities after this many records so change detection stays bounded on
     // multi-thousand-record runs (each record is already saved individually).
     private const int TrackerClearBatchSize = 100;
+
+    // The sweep looks back further than this attempt. A run that was cut short (a deploy, a
+    // restart, a failure) is tried again with a later start, and a removal made during the
+    // first attempt must still be cleaned. Runs are daily, so a week covers every retry.
+    public static readonly TimeSpan SweepLookBack = TimeSpan.FromDays(7);
 
     public async Task<ScraperRun?> RunOnceAsync(CancellationToken ct)
     {
@@ -162,6 +169,13 @@ public sealed class IngestionJob : BackgroundService
 
         var counts = new RunCounts();
 
+        // Read again every TrackerClearBatchSize records, so a removal made during a long run
+        // is obeyed within that many records. The sweep after the loop closes what is left.
+        // This first read is not guarded: if the list cannot be read, no record may be stored
+        // unfiltered, so the run fails and is tried again.
+        var removals = await LoadRemovalsAsync(db, ct);
+        var removedRecords = 0;
+
         var recordSourceIds = new HashSet<Guid>();
         var unknownSources = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var inactiveSources = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -191,8 +205,15 @@ public sealed class IngestionJob : BackgroundService
                     continue;
                 }
 
+                if (removals.Apply(normalized, source.Id) is not { } allowed)
+                {
+                    // Removed on request: neither imported nor a failure.
+                    removedRecords++;
+                    continue;
+                }
+
                 var now = DateTime.UtcNow;
-                var (isNew, isClassified) = await UpsertRecordAsync(db, source, normalized, now,
+                var (isNew, isClassified) = await UpsertRecordAsync(db, source, allowed, now,
                     detectedAt, ct);
                 await db.SaveChangesAsync(ct);
                 // Counted only after the save succeeds so a failed record is never also "imported".
@@ -210,9 +231,41 @@ public sealed class IngestionJob : BackgroundService
             }
 
             if (++processed % TrackerClearBatchSize == 0)
+            {
                 db.ChangeTracker.Clear();
+                try
+                {
+                    removals = await LoadRemovalsAsync(db, ct);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // The list held so far still applies. The sweep covers what it lacks.
+                    _logger.LogWarning(ex, "Apify run {RunId}: could not read the removal list again; keeping the one read earlier", run.RunId);
+                    db.ChangeTracker.Clear();
+                }
+            }
         }
 
+        db.ChangeTracker.Clear();
+
+        if (removedRecords > 0)
+            _logger.LogInformation("Apify run {RunId}: skipped {Count} records removed on request",
+                run.RunId, removedRecords);
+        // A removal made while this run, or an earlier attempt at it, was storing records may
+        // have been cleaned before the value was stored again. Cleaning once more puts that right.
+        try
+        {
+            var swept = await new RemovalService(db, _scoringEngine).SweepAsync(ingestStart - SweepLookBack, ct);
+            if (swept > 0)
+                _logger.LogInformation("Apify run {RunId}: cleaned {Count} permits for removals made in the last {Days} days",
+                    run.RunId, swept, SweepLookBack.Days);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // The records of this run are stored. A sweep that failed must not undo that: the
+            // next run sweeps the same removals again.
+            _logger.LogError(ex, "Apify run {RunId}: the sweep for removals failed; the next run sweeps again", run.RunId);
+        }
         db.ChangeTracker.Clear();
 
         foreach (var (sourceId, count) in unknownSources)
@@ -316,6 +369,8 @@ public sealed class IngestionJob : BackgroundService
                 OwnerName = normalized.OwnerName,
                 ContractorName = normalized.ContractorName,
                 ApplicantName = normalized.ApplicantName,
+                ContractorWithheld = normalized.ContractorWithheld,
+                ContractorWithheldIsFireTrade = normalized.ContractorWithheldIsFireTrade,
                 RecordType = normalized.RecordType,
                 WorkType = normalized.WorkType,
                 ExpirationDate = normalized.ExpirationDate,
@@ -523,7 +578,20 @@ public sealed class IngestionJob : BackgroundService
         if (n.EstimatedValue.HasValue) permit.EstimatedValue = n.EstimatedValue;
         if (n.SquareFootage.HasValue) permit.SquareFootage = n.SquareFootage;
         if (n.OwnerName is not null) permit.OwnerName = n.OwnerName;
-        if (n.ContractorName is not null) permit.ContractorName = n.ContractorName;
+        if (n.ContractorName is not null)
+        {
+            permit.ContractorName = n.ContractorName;
+            permit.ContractorWithheld = false;
+            permit.ContractorWithheldIsFireTrade = false;
+        }
+        else if (n.ContractorWithheld)
+        {
+            // The record names a contractor whose name is removed. The one stored before is
+            // no longer who the record names, so it must not stay beside this permit.
+            permit.ContractorName = null;
+            permit.ContractorWithheld = true;
+            permit.ContractorWithheldIsFireTrade = n.ContractorWithheldIsFireTrade;
+        }
         if (n.ApplicantName is not null) permit.ApplicantName = n.ApplicantName;
         if (n.RecordType is not null) permit.RecordType = n.RecordType;
         if (n.WorkType is not null) permit.WorkType = n.WorkType;
@@ -588,6 +656,9 @@ public sealed class IngestionJob : BackgroundService
 
     private static void Increment(Dictionary<string, int> counts, string key)
         => counts[key] = counts.TryGetValue(key, out var n) ? n + 1 : 1;
+
+    private static async Task<RemovalSet> LoadRemovalsAsync(AppDbContext db, CancellationToken ct) =>
+        new(await db.Set<Removal>().AsNoTracking().ToListAsync(ct));
 
     private static readonly JsonSerializerOptions WebJson = new(JsonSerializerDefaults.Web);
 

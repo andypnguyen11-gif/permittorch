@@ -6,13 +6,14 @@
 // mock branch imports mockMarkets/mockMarketStats from ./markets (WS3-owned).
 import type {
   AccountMe, AdminSource, DigestFrequency, LeadDetail, LeadsResponse,
-  Market, Paged, PlanTier, SavedLeadItem, SavedLeadStatus, ScraperRunSummary,
+  Market, Paged, PlanTier, Removal, RemovalPreview, RemovalRecord,
+  SavedLeadItem, SavedLeadStatus, ScraperRunSummary,
 } from "@permittorch/types";
-import { ApiError, type LeadsExport, type LeadsQuery } from "@/lib/api";
+import { ApiError, type CreateRemovalInput, type LeadsExport, type LeadsQuery } from "@/lib/api";
 import { mockLeads, mockLeadsResponse, mockLeadDetail } from "./leads";
 import { mockSavedLeads } from "./saved";
 import { mockAccountForRole, mockAccountMarkets } from "./account";
-import { mockAdminSources, mockAdminRuns } from "./admin";
+import { mockAdminSources, mockAdminRuns, mockRemovals, mockRemovalPreview, mockRemovalRecords } from "./admin";
 
 // In-memory saved-leads state so optimistic UI flows work in mock dev.
 const savedState: SavedLeadItem[] = [...mockSavedLeads];
@@ -66,10 +67,20 @@ export async function setSourceActive(id: string, active: boolean): Promise<void
   const src = mockAdminSources.find((s) => s.id === id);
   if (src) src.active = active;
 }
+export async function getRemovals(): Promise<Paged<Removal>> {
+  return { items: mockRemovals, total: mockRemovals.length, page: 1, pageSize: 25 };
+}
+export async function previewRemoval(): Promise<RemovalPreview> { return mockRemovalPreview; }
+export async function searchRemovalRecords(): Promise<RemovalRecord[]> { return mockRemovalRecords; }
+export async function createRemoval(input: CreateRemovalInput): Promise<Removal> {
+  return { id: "rem-new", kind: input.kind, value: input.value ?? "BLD-2026-0117", label: null,
+    note: input.note ?? null, recordsAffected: input.confirmedCount, createdAt: new Date().toISOString() };
+}
+export async function undoRemoval(_id: string): Promise<void> { /* mock no-op */ }
 
 // Internal fixture exports for app tests.
 export { mockLeads, mockLeadDetails, mockLeadsResponse, mockLeadDetail } from "./leads";
 export { mockSavedLeads } from "./saved";
 export { mockAccountMe, mockAccountMarkets } from "./account";
-export { mockAdminSources, mockAdminRuns } from "./admin";
+export { mockAdminSources, mockAdminRuns, mockRemovals, mockRemovalPreview, mockRemovalRecords } from "./admin";
 export { mockMarkets, mockMarketStats } from "./markets";
