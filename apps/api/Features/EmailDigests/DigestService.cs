@@ -12,7 +12,7 @@ namespace PermitTorch.Api.Features.EmailDigests;
 /// instant so a crash between send and save never produces a duplicate email.
 /// Logs carry ids only — never email addresses.</summary>
 public sealed class DigestService(
-    AppDbContext db, ResendEmailClient email, UnsubscribeTokens unsubscribe,
+    AppDbContext db, EntitlementService entitlements, ResendEmailClient email, UnsubscribeTokens unsubscribe,
     IOptions<EmailOptions> options, ILogger<DigestService> logger)
 {
     /// <summary>Sample-lead nurture stops this long after the request was captured.</summary>
@@ -70,12 +70,7 @@ public sealed class DigestService(
         var user = await db.AppUsers.FirstOrDefaultAsync(u => u.Id == preference.UserId, ct);
         if (user is null) return;
 
-        var marketIds = await db.Subscriptions
-            .Where(s => s.OrganizationId == user.OrganizationId
-                && EntitlementService.EntitledStatuses.Contains(s.Status))
-            .SelectMany(s => s.Markets.Select(m => m.MarketId))
-            .Distinct()
-            .ToListAsync(ct);
+        var marketIds = await entitlements.GetEntitledMarketIdsAsync(user, ct);
         var since = preference.LastSentAt.Value;
         var leads = await db.FireOpportunities
             .Where(o => marketIds.Contains(o.Permit.Source.MarketId)

@@ -28,7 +28,7 @@ public class EntitlementServiceTests(ApiFactory factory)
         var sub = TestSeed.Subscription(org, PlanTier.Starter, status, market);
         await factory.SeedAsync(db => db.AddRange(market, org, user, pref, sub));
 
-        var marketIds = await WithServiceAsync(s => s.GetEntitledMarketIdsAsync(org.Id, CancellationToken.None));
+        var marketIds = await WithServiceAsync(s => s.GetEntitledMarketIdsAsync(user, CancellationToken.None));
 
         Assert.Equal(entitled, marketIds.Contains(market.Id));
     }
@@ -39,9 +39,9 @@ public class EntitlementServiceTests(ApiFactory factory)
         var (org, user, pref) = TestSeed.User($"user_{Guid.NewGuid():N}", "none@example.com");
         await factory.SeedAsync(db => db.AddRange(org, user, pref));
 
-        Assert.Empty(await WithServiceAsync(s => s.GetEntitledMarketIdsAsync(org.Id, CancellationToken.None)));
-        Assert.Null(await WithServiceAsync(s => s.GetEntitledPlanAsync(org.Id, CancellationToken.None)));
-        Assert.Null(await WithServiceAsync(s => s.GetDisplayPlanAsync(org.Id, CancellationToken.None)));
+        Assert.Empty(await WithServiceAsync(s => s.GetEntitledMarketIdsAsync(user, CancellationToken.None)));
+        Assert.Null(await WithServiceAsync(s => s.GetEntitledPlanAsync(user, CancellationToken.None)));
+        Assert.Null(await WithServiceAsync(s => s.GetDisplayPlanAsync(user, CancellationToken.None)));
     }
 
     [Fact]
@@ -52,7 +52,7 @@ public class EntitlementServiceTests(ApiFactory factory)
         var sub = TestSeed.Subscription(org, PlanTier.Territory, "active", markets);
         await factory.SeedAsync(db => { db.AddRange(markets); db.AddRange(org, user, pref, sub); });
 
-        var marketIds = await WithServiceAsync(s => s.GetEntitledMarketIdsAsync(org.Id, CancellationToken.None));
+        var marketIds = await WithServiceAsync(s => s.GetEntitledMarketIdsAsync(user, CancellationToken.None));
 
         Assert.Equal(3, marketIds.Count);
         Assert.All(markets, m => Assert.Contains(m.Id, marketIds));
@@ -65,7 +65,40 @@ public class EntitlementServiceTests(ApiFactory factory)
         var sub = TestSeed.Subscription(org, PlanTier.Pro, "past_due");
         await factory.SeedAsync(db => db.AddRange(org, user, pref, sub));
 
-        Assert.Null(await WithServiceAsync(s => s.GetEntitledPlanAsync(org.Id, CancellationToken.None)));
-        Assert.Equal(PlanTier.Pro, await WithServiceAsync(s => s.GetDisplayPlanAsync(org.Id, CancellationToken.None)));
+        Assert.Null(await WithServiceAsync(s => s.GetEntitledPlanAsync(user, CancellationToken.None)));
+        Assert.Equal(PlanTier.Pro, await WithServiceAsync(s => s.GetDisplayPlanAsync(user, CancellationToken.None)));
+    }
+
+    [Fact]
+    public async Task Super_admin_is_entitled_to_every_market_without_a_subscription()
+    {
+        var markets = new[] { TestSeed.Market("Omaha", "NE"), TestSeed.Market("Boise", "ID") };
+        var (org, user, pref) = TestSeed.User($"user_{Guid.NewGuid():N}", "staff@example.com", UserRole.SuperAdmin);
+        await factory.SeedAsync(db => { db.AddRange(markets); db.AddRange(org, user, pref); });
+
+        var marketIds = await WithServiceAsync(s => s.GetEntitledMarketIdsAsync(user, CancellationToken.None));
+
+        Assert.All(markets, m => Assert.Contains(m.Id, marketIds));
+    }
+
+    [Fact]
+    public async Task Super_admin_counts_as_territory_plan_but_shows_no_plan()
+    {
+        var (org, user, pref) = TestSeed.User($"user_{Guid.NewGuid():N}", "staff2@example.com", UserRole.SuperAdmin);
+        await factory.SeedAsync(db => db.AddRange(org, user, pref));
+
+        Assert.Equal(PlanTier.Territory, await WithServiceAsync(s => s.GetEntitledPlanAsync(user, CancellationToken.None)));
+        Assert.Null(await WithServiceAsync(s => s.GetDisplayPlanAsync(user, CancellationToken.None)));
+    }
+
+    [Fact]
+    public async Task Customer_admin_without_subscription_is_entitled_to_nothing()
+    {
+        var market = TestSeed.Market("Tulsa", "OK");
+        var (org, user, pref) = TestSeed.User($"user_{Guid.NewGuid():N}", "orgadmin@example.com", UserRole.Admin);
+        await factory.SeedAsync(db => db.AddRange(market, org, user, pref));
+
+        Assert.Empty(await WithServiceAsync(s => s.GetEntitledMarketIdsAsync(user, CancellationToken.None)));
+        Assert.Null(await WithServiceAsync(s => s.GetEntitledPlanAsync(user, CancellationToken.None)));
     }
 }

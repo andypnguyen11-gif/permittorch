@@ -86,6 +86,23 @@ public class AccountEndpointTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task Account_markets_lists_every_market_for_a_super_admin()
+    {
+        var one = TestSeed.Market("Fresno", "CA");
+        var two = TestSeed.Market("Toledo", "OH");
+        var sub = $"user_{Guid.NewGuid():N}";
+        var (org, user, pref) = TestSeed.User(sub, $"{sub}@example.com", UserRole.SuperAdmin);
+        await factory.SeedAsync(db => db.AddRange(one, two, org, user, pref));
+
+        var markets = JsonSerializer.Deserialize<List<MarketDto>>(
+            await factory.CreateClientFor(sub, user.Email).GetStringAsync("/api/account/markets"),
+            ApiJson.Options)!;
+
+        Assert.Contains(markets, m => m.Slug == one.Slug);
+        Assert.Contains(markets, m => m.Slug == two.Slug);
+    }
+
+    [Fact]
     public async Task Put_email_preferences_upserts_frequency()
     {
         var sub = $"user_{Guid.NewGuid():N}";
