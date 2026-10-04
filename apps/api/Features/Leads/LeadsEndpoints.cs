@@ -30,7 +30,7 @@ public static class LeadsEndpoints
             return ApiErrors.BadRequest(error);
 
         var user = await currentUser.RequireAsync(http.User, ct);
-        var marketIds = await entitlements.GetEntitledMarketIdsAsync(user.OrganizationId, ct);
+        var marketIds = await entitlements.GetEntitledMarketIdsAsync(user, ct);
         var nowUtc = DateTime.UtcNow;
 
         var query = LeadQueries.ApplyFilters(
@@ -54,7 +54,7 @@ public static class LeadsEndpoints
         EntitlementService entitlements, CancellationToken ct)
     {
         var user = await currentUser.RequireAsync(http.User, ct);
-        var marketIds = await entitlements.GetEntitledMarketIdsAsync(user.OrganizationId, ct);
+        var marketIds = await entitlements.GetEntitledMarketIdsAsync(user, ct);
         var nowUtc = DateTime.UtcNow;
 
         var found = await LeadQueries.ForEntitledMarkets(db, marketIds)
@@ -108,11 +108,11 @@ public static class LeadsEndpoints
             return ApiErrors.BadRequest(error);
 
         var user = await currentUser.RequireAsync(http.User, ct);
-        var plan = await entitlements.GetEntitledPlanAsync(user.OrganizationId, ct);
+        var plan = await entitlements.GetEntitledPlanAsync(user, ct);
         if (plan is not (PlanTier.Pro or PlanTier.Territory))
             return ApiErrors.Forbidden("CSV export requires the Pro or Territory plan");
 
-        var marketIds = await entitlements.GetEntitledMarketIdsAsync(user.OrganizationId, ct);
+        var marketIds = await entitlements.GetEntitledMarketIdsAsync(user, ct);
         var nowUtc = DateTime.UtcNow;
         var rows = await LeadQueries.OrderForFeed(
                 LeadQueries.ApplyFilters(LeadQueries.ForEntitledMarkets(db, marketIds), filters, nowUtc))

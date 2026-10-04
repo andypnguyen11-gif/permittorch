@@ -30,7 +30,7 @@ public static class SavedLeadsEndpoints
         EntitlementService entitlements, CancellationToken ct)
     {
         var user = await currentUser.RequireAsync(http.User, ct);
-        var marketIds = await entitlements.GetEntitledMarketIdsAsync(user.OrganizationId, ct);
+        var marketIds = await entitlements.GetEntitledMarketIdsAsync(user, ct);
         var nowUtc = DateTime.UtcNow;
 
         var saved = await db.SavedLeads
@@ -59,7 +59,7 @@ public static class SavedLeadsEndpoints
         if (body.FireOpportunityId is not { } fireOpportunityId)
             return ApiErrors.BadRequest("fireOpportunityId is required");
         var user = await currentUser.RequireAsync(http.User, ct);
-        var marketIds = await entitlements.GetEntitledMarketIdsAsync(user.OrganizationId, ct);
+        var marketIds = await entitlements.GetEntitledMarketIdsAsync(user, ct);
 
         var row = await LeadQueries.ForEntitledMarkets(db, marketIds)
             .Where(o => o.Id == fireOpportunityId)
@@ -96,7 +96,7 @@ public static class SavedLeadsEndpoints
         var savedLead = await db.SavedLeads.FirstOrDefaultAsync(s => s.Id == id && s.UserId == user.Id, ct);
         if (savedLead is null) return ApiErrors.NotFound("Saved lead not found");
 
-        var marketIds = await entitlements.GetEntitledMarketIdsAsync(user.OrganizationId, ct);
+        var marketIds = await entitlements.GetEntitledMarketIdsAsync(user, ct);
         var row = await LeadQueries.ForEntitledMarkets(db, marketIds)
             .Where(o => o.Id == savedLead.FireOpportunityId)
             .Select(LeadQueries.ToRow)

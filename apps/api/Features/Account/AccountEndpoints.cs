@@ -26,7 +26,7 @@ public static class AccountEndpoints
         EntitlementService entitlements, CancellationToken ct)
     {
         var user = await currentUser.RequireAsync(http.User, ct);
-        var plan = await entitlements.GetDisplayPlanAsync(user.OrganizationId, ct);
+        var plan = await entitlements.GetDisplayPlanAsync(user, ct);
         var frequency = await db.EmailPreferences
             .Where(p => p.UserId == user.Id)
             .Select(p => (DigestFrequency?)p.Frequency)
@@ -74,7 +74,7 @@ public static class AccountEndpoints
         EntitlementService entitlements, CancellationToken ct)
     {
         var user = await currentUser.RequireAsync(http.User, ct);
-        var marketIds = await entitlements.GetEntitledMarketIdsAsync(user.OrganizationId, ct);
+        var marketIds = await entitlements.GetEntitledMarketIdsAsync(user, ct);
         var markets = await db.Markets
             .Where(m => marketIds.Contains(m.Id))
             .OrderBy(m => m.Name)

@@ -52,7 +52,7 @@ public class DigestServiceTests(ApiFactory factory)
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         resend ??= new RecordingResend();
-        var service = new DigestService(db, resend, Tokens,
+        var service = new DigestService(db, new PermitTorch.Api.Features.Auth.EntitlementService(db), resend, Tokens,
             Microsoft.Extensions.Options.Options.Create(EmailOptions), logger ?? NullLogger<DigestService>.Instance);
         await service.RunOnceAsync(now ?? Now, CancellationToken.None);
         return resend;
@@ -90,6 +90,26 @@ public class DigestServiceTests(ApiFactory factory)
         Assert.Contains("https://web.test/app/leads", sent.Html);
         var stored = await factory.QueryAsync(db => db.EmailPreferences.SingleAsync(p => p.Id == pref.Id));
         Assert.Equal(Now, stored.LastSentAt);
+    }
+
+    [Fact]
+    public async Task Super_admin_without_subscription_gets_digest_leads_from_every_market()
+    {
+        var market = TestSeed.Market("Staffton");
+        var source = TestSeed.Source(market, Now);
+        var permit = TestSeed.Permit(source);
+        // Every market is in scope for staff, so this lead must outrank anything other tests seed.
+        var opportunity = TestSeed.Opportunity(permit, 100, firstDetectedAt: Now.AddMinutes(-1));
+        var sub = $"user_{Guid.NewGuid():N}";
+        var (org, user, pref) = TestSeed.User(sub, $"{sub}@example.com", UserRole.SuperAdmin);
+        pref.Frequency = DigestFrequency.Daily;
+        pref.LastSentAt = Now.Date.AddDays(-1).AddHours(12).AddMinutes(5);
+        await factory.SeedAsync(db => db.AddRange(market, source, permit, opportunity, org, user, pref));
+
+        var resend = await RunOnceAsync();
+
+        var sent = Assert.Single(resend.Sent, s => s.To == user.Email);
+        Assert.Contains("Staffton", sent.Html);
     }
 
     [Fact]
