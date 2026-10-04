@@ -43,6 +43,7 @@ Service settings are applied through the Railway API or the dashboard. They are 
 - `EMAIL_FROM=leads@permittorch.dev` (placeholder until Resend is set up)
 - `RAILWAY_DOCKERFILE_PATH=apps/api/Dockerfile`
 - Secrets and IDs: `FIREBASE_PROJECT_ID`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_TERRITORY`, `EMAIL_UNSUBSCRIBE_SECRET`, `APIFY_TOKEN`, `APIFY_TASK_ID`.
+- `STRIPE_MANAGED_PAYMENTS=true`: Checkout Sessions make Stripe the merchant of record (Stripe Managed Payments: Stripe collects and remits sales tax, handles fraud, disputes and receipts, for 3.5% on top of processing). Any other value, or unset, sends a plain checkout. Turn it on only once Managed Payments is enabled for the account in the Dashboard (Settings → Managed Payments).
 - **Deliberately unset:**
   - `RESEND_API_KEY`: digests are skipped until it is set.
   - `SENTRY_DSN`: Sentry stays off until it is set.
@@ -61,16 +62,16 @@ Service settings are applied through the Railway API or the dashboard. They are 
 
 **Setting a secret without echoing it.** `railway variable set NAME --stdin --service api` reads the value from stdin. Omit `--skip-deploys` to redeploy right away. Never paste secret values on the command line or into logs. `railway variable list --json/--kv` prints raw values, so do not share its output.
 
-## Stripe webhook
+## Stripe
 
-- **Endpoint:** `we_1UK6Vb2ObeZMEPuNk4U6pVNV` (TEST mode, account `acct_1TuG0M2ObeZMEPuN`), URL `https://api.permittorch.com/api/webhooks/stripe`.
-- **Events:** `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`. These are the three the API handles. It re-fetches the subscription on every subscription event.
-- **Signing secret:** stored in `STRIPE_WEBHOOK_SECRET` on `api`.
-- **Unsigned or wrongly signed requests** return 400.
-- **At go-live (live mode):**
-  1. Create the live products and prices with the same lookup keys.
-  2. Create a live-mode endpoint with the same URL and events.
-  3. Set the live `STRIPE_SECRET_KEY` (use a restricted `rk_live_…` key), `STRIPE_WEBHOOK_SECRET` and `STRIPE_PRICE_*`.
+Account **Permit Torch** `acct_1UMrlV72kpazdRcy` (an individual, Texas; created 2026-10-04). The earlier objects on the mobile app's account (`acct_1TuG0M2ObeZMEPuN`) are no longer used.
+
+- **Products and prices** carry lookup keys `permittorch_starter_monthly`, `permittorch_pro_monthly`, `permittorch_territory_monthly` ($49, $129, $249 a month, tax exclusive) and the Managed Payments tax code `txcd_10701400` (Website Information Services, business use). They exist in test mode and in live mode with different ids; the ids go in `STRIPE_PRICE_*`.
+- **Customer portal** (the default configuration in each mode): cancel at period end, update the payment method, name, email and address, see invoices. Plan switching is off, because the API attaches markets to a subscription from the checkout metadata and a portal plan change would carry none.
+- **Webhook endpoint:** URL `https://api.permittorch.com/api/webhooks/stripe`, one endpoint per mode. Test mode `we_1UMs1S72kpazdRcyhX8ljhp2`; the live-mode endpoint id is in the operator's notes. Events: `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, the three the API handles. It re-fetches the subscription on every subscription event.
+- **Signing secret:** stored in `STRIPE_WEBHOOK_SECRET` on `api`. Unsigned or wrongly signed requests return 400.
+- **Switching production between modes:** set `STRIPE_SECRET_KEY` (a restricted key of that mode), `STRIPE_WEBHOOK_SECRET` (that mode's endpoint) and the three `STRIPE_PRICE_*` together, in one `railway variable set`, so the API never runs with keys from one mode and prices from the other.
+- **Restricted key permissions** for `STRIPE_SECRET_KEY`: Checkout Sessions write, Customers write, Subscriptions read, Customer portal write. Nothing else.
 
 ## Forwarded headers (rate limiting)
 
@@ -185,8 +186,8 @@ Each `railway variable set` below redeploys the service unless you pass `--skip-
 
 | Secret | How |
 | --- | --- |
-| `STRIPE_WEBHOOK_SECRET` | Stripe Dashboard → Developers → Webhooks → endpoint `we_1UK6Vb2ObeZMEPuNk4U6pVNV` → **Roll secret**. Choose an overlap window, then set the new value with `--stdin` on `api`. |
-| `STRIPE_SECRET_KEY` | Create a new restricted key (Checkout Sessions, Customers, Subscriptions, Billing Portal, Prices), set it on `api`, verify checkout, then revoke the old key. |
+| `STRIPE_WEBHOOK_SECRET` | Stripe Dashboard → Developers → Webhooks → the endpoint of the mode in use → **Roll secret**. Choose an overlap window, then set the new value with `--stdin` on `api`. |
+| `STRIPE_SECRET_KEY` | Create a new restricted key (Checkout Sessions write, Customers write, Subscriptions read, Customer portal write), set it on `api`, verify checkout, then revoke the old key. |
 | `AUTH_COOKIE_SIGNATURE_KEY_*` | Set `PREVIOUS` to the current `CURRENT` value, then set `CURRENT` to a new `openssl rand -base64 48` (both on `web`). Existing sessions stay valid. Drop the old `PREVIOUS` after the session lifetime. |
 | `FIREBASE_PRIVATE_KEY` / `FIREBASE_CLIENT_EMAIL` | GCP IAM → service account `firebase-adminsdk-fbsvc@permittorch-app.iam.gserviceaccount.com` → new key. Set it on `web` (one line, `\n`-escaped), confirm login, then delete the old key. |
 | `EMAIL_UNSUBSCRIBE_SECRET` | Set a new random value on `api`. **This invalidates the unsubscribe links in already-sent emails**, so rotate only on compromise. |
@@ -216,7 +217,7 @@ curl -s -o /dev/null -w "%{http_code} %{redirect_url}\n" https://www.permittorch
 1. **Firebase console** (https://console.firebase.google.com/project/permittorch-app/authentication):
    - Click **Get started**, then under **Sign-in method** enable **Email/Password** and **Google**.
    - Under **Settings → Authorized domains**, add `permittorch.com` and `www.permittorch.com`.
-2. **Stripe key:** replace `STRIPE_SECRET_KEY` on `api` (currently a full `sk_test_…` key) with a restricted `rk_test_…` key. Also disable plan switching in the Billing Portal settings.
+2. **Stripe:** done 2026-10-04 (see the Stripe section). Still manual: the business description under Settings → Business details, and the Managed Payments terms under Settings → Managed Payments.
 3. **Resend:** verify a sending domain, then set `RESEND_API_KEY` and a real `EMAIL_FROM` on `api`.
 4. **Sentry and PostHog:** set `SENTRY_DSN` (api) and `NEXT_PUBLIC_SENTRY_DSN` + `NEXT_PUBLIC_POSTHOG_KEY` (web; a web rebuild follows automatically).
 5. **Browser smoke pass:** sign up → `/app/leads` locked → `/pricing` → test card `4242 4242 4242 4242` → leads visible. Stripe → Webhooks → the endpoint should show a 200.

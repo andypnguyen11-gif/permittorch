@@ -125,6 +125,7 @@ public static class FeaturesSetup
             o.PricePro = configuration["STRIPE_PRICE_PRO"] ?? "";
             o.PriceTerritory = configuration["STRIPE_PRICE_TERRITORY"] ?? "";
             o.WebOrigin = configuration["WEB_ORIGIN"] ?? "http://localhost:3000";
+            o.ManagedPayments = string.Equals(configuration["STRIPE_MANAGED_PAYMENTS"], "true", StringComparison.OrdinalIgnoreCase);
         });
         services.AddSingleton<StripeGateway>();
         services.AddScoped<StripeWebhookProcessor>();

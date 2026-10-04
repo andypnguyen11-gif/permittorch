@@ -26,7 +26,21 @@ public class StripeGateway(IOptions<BillingOptions> options)
         Dictionary<string, string> metadata, string successUrl, string cancelUrl, int? trialPeriodDays,
         CancellationToken ct)
     {
-        var session = await new SessionService(Client).CreateAsync(new SessionCreateOptions
+        var session = await new SessionService(Client).CreateAsync(
+            BuildCheckoutSessionOptions(customerId, priceId, metadata, successUrl, cancelUrl, trialPeriodDays,
+                options.Value.ManagedPayments),
+            cancellationToken: ct);
+        return session.Url;
+    }
+
+    /// <summary>The Checkout Session request, built without a network call so tests can inspect it.
+    /// With <paramref name="managedPayments"/> Stripe is the merchant of record: it collects and
+    /// remits sales tax, handles fraud and disputes, and emails receipts (Stripe Managed Payments).
+    /// Tax, payment-method and invoice settings are then Stripe's to control, so none are sent.</summary>
+    public static SessionCreateOptions BuildCheckoutSessionOptions(string customerId, string priceId,
+        Dictionary<string, string> metadata, string successUrl, string cancelUrl, int? trialPeriodDays,
+        bool managedPayments) =>
+        new()
         {
             Mode = "subscription",
             Customer = customerId,
@@ -40,9 +54,8 @@ public class StripeGateway(IOptions<BillingOptions> options)
             SuccessUrl = successUrl,
             CancelUrl = cancelUrl,
             IntegrationIdentifier = NewIntegrationIdentifier(),
-        }, cancellationToken: ct);
-        return session.Url;
-    }
+            ManagedPayments = managedPayments ? new SessionManagedPaymentsOptions { Enabled = true } : null,
+        };
 
     /// <summary>The org's recent Checkout Sessions (newest first), used by the double-checkout
     /// guard: an open session can be resumed, a just-completed one means the webhook is pending.</summary>
