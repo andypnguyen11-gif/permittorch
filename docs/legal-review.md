@@ -19,8 +19,9 @@ Send these first. They decide most of the answers.
 5. **Who sees it.** Signed-in, paying subscribers, for the markets on their plan. Contact details are never on a public page.
 6. **What customers can do with it.** Read it on screen and download it as a CSV file, up to 5,000 leads at a time.
 7. **What the company itself does not do.** It does not call, text or email the people on permits.
-8. **Where the company is.** Fill in: state of formation, state of operation, and whether any customer or any person in the data is outside the United States.
-9. **What the terms say today.** No guarantee of accuracy; no resale or sharing of exported data outside the customer's organisation. Nothing on how customers may contact people, and nothing on a person asking to be removed.
+8. **Where the company is.** No company has been formed (owner, 2026-09-29). The owner runs PermitTorch as an individual, as a personal project, from Houston, Texas, and has not decided whether to form an LLC. Texas is in the Fifth Circuit. Still to fill in: whether any customer or any person in the data is outside the United States.
+9. **What the terms say today.** Rewritten on 2026-09-29 without a lawyer's review, now at version 2026-09-29.3, the version live on the terms and privacy pages. The terms say that a lead is no consent to contact anyone, that the customer answers for calls, texts and email and must follow the calling and email laws, that the data is not for credit, insurance, employment or housing decisions, that an account can be suspended over a complaint, and that the customer covers claims that arise from their use. Since version 2026-09-29.2 they name Texas law and the state or federal courts in Harris County. They have no arbitration clause. The privacy policy has a section for people named on permits and promises removal within 30 days of a request. Every user must agree on a screen before seeing a lead, and the agreement is stored with its version and time. Before 2026-09-29 the pages said nothing on how customers may contact people or on removal.
+10. **How customers pay.** Billing goes through Stripe. Stripe Managed Payments is on, so Stripe, not PermitTorch, is the merchant of record at checkout. Prices are tax-exclusive: sales tax is added on top of the listed price. Checkout offers one free 7-day trial per organisation; an organisation that has subscribed before gets no second trial. The terms and privacy pages were not changed for any of this.
 
 ## Questions to ask
 
@@ -63,6 +64,10 @@ Ask for a yes, no or "it depends on" for each, and for the wording to add where 
 - A screenshot of one lead page with contact details, and one exported CSV file.
 - The list of markets and sources: `docs/superpowers/plans/2026-08-19-permittorch-mvp/scraper-source-registry.json`.
 - The decisions on contact details: section 08 of `docs/decisions-2026-09.md`.
+
+## Research done ahead of the review
+
+A first pass through the statutes and regulations, and through the case law for questions 1, 2, 8, 9, 17 and 21, is in `docs/legal-research.md`, with twelve further questions (17 to 28). Give it to the lawyer with this brief. It records what the law and the courts say, not whether the product complies.
 
 ## After the review
 
