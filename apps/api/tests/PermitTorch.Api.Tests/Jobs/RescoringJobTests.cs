@@ -28,7 +28,7 @@ public class RescoringJobTests
     private async Task<Guid> SeedScoredOpportunityAsync(DateTime filedDate, DateTime scoredAt,
         FireCategory category = FireCategory.GeneralFireProtection, bool overridden = false,
         string description = "Fire protection work", DateTime? issuedDate = null,
-        string contractorName = "Summit General Contractors", DateTime? inspectionDate = null,
+        string? contractorName = "Summit General Contractors", DateTime? inspectionDate = null,
         string? recordType = null, bool scoreWithoutContractor = false)
     {
         await using var db = _fixture.CreateContext();
@@ -62,6 +62,8 @@ public class RescoringJobTests
             permit.SourceUrl, permit.Fingerprint,
             RecordType: recordType, InspectionDate: inspectionDate);
         var score = Engine.Score(normalized, classification, scoredAt);
+        // ContractorStatus is deliberately left null: the row looks like one stored by a release
+        // that did not know the status, which is what the rescore has to repair.
         var opportunity = new FireOpportunity
         {
             Id = Guid.NewGuid(), PermitId = permit.Id, Category = classification.Category,
@@ -261,5 +263,44 @@ public class RescoringJobTests
         Assert.Contains(afterSignals, s => s.SignalType == "FIRE_CONTRACTOR_ASSIGNED");
         Assert.Equal(Math.Clamp(afterSignals.Sum(s => s.Weight), 0, 100), after.LeadScore);
         Assert.True(after.LeadScore < before.LeadScore || before.LeadScore == 0);
+        Assert.Equal(ContractorStatus.FireContractorNamed, after.ContractorStatus);
+    }
+
+    [Fact]
+    public async Task RescoreOnce_WritesTheContractorStatus_EvenWhenScoreSignalsAndReasonAreUnchanged()
+    {
+        var now = DateTime.UtcNow;
+        // An inspection with no contractor: nothing about its score moves between releases, so
+        // the "unchanged, skip" shortcut is the only thing that could leave its status null.
+        var id = await SeedScoredOpportunityAsync(now.AddDays(-10), scoredAt: now.AddDays(-1),
+            category: FireCategory.FireInspection, contractorName: null, recordType: "inspection",
+            inspectionDate: now.AddDays(-10));
+        var (before, _) = await LoadAsync(id);
+        Assert.Null(before.ContractorStatus);
+        var (job, sp) = BuildJob();
+        await using var _ = sp;
+
+        await job.RescoreOnceAsync(now, CancellationToken.None);
+
+        var (after, _) = await LoadAsync(id);
+        Assert.Equal(before.LeadScore, after.LeadScore);
+        Assert.Equal(before.Reason, after.Reason);
+        Assert.Equal(ContractorStatus.NotApplicable, after.ContractorStatus);
+    }
+
+    [Fact]
+    public async Task RescoreOnce_FullPass_WritesTheContractorStatus_OnLeadsOutsideTheWindow()
+    {
+        var now = DateTime.UtcNow;
+        var id = await SeedScoredOpportunityAsync(now.AddDays(-150), scoredAt: now.AddDays(-1),
+            contractorName: "Summit General Contractors");
+        var (job, sp) = BuildJob();
+        await using var _ = sp;
+
+        await job.RescoreOnceAsync(now, CancellationToken.None);
+        Assert.Null((await LoadAsync(id)).Opportunity.ContractorStatus);
+
+        await job.RescoreOnceAsync(now, CancellationToken.None, fullPass: true);
+        Assert.Equal(ContractorStatus.OtherContractorNamed, (await LoadAsync(id)).Opportunity.ContractorStatus);
     }
 }

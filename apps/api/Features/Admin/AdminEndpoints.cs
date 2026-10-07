@@ -104,6 +104,7 @@ public static class AdminEndpoints
         opportunity.CategoryOverridden = true;
         opportunity.LeadScore = result.Score;
         opportunity.Reason = result.Reason;
+        opportunity.ContractorStatus = result.ContractorStatus;
         opportunity.LastUpdatedAt = now;
 
         // One SaveChangesAsync is already atomic (EF wraps it in a transaction): signal

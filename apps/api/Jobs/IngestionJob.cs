@@ -443,6 +443,7 @@ public sealed class IngestionJob : BackgroundService
         opportunity.Confidence = classification.Confidence;
         opportunity.LeadScore = scoreResult.Score;
         opportunity.Reason = scoreResult.Reason;
+        opportunity.ContractorStatus = scoreResult.ContractorStatus;
         opportunity.LastUpdatedAt = now;
 
         foreach (var signal in scoreResult.Signals)

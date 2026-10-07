@@ -2,6 +2,7 @@ using System.Net;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using PermitTorch.Api.Data;
+using PermitTorch.Api.Domain.Scoring;
 using PermitTorch.Api.Tests.Features.TestInfra;
 
 namespace PermitTorch.Api.Tests.Features.Admin;
@@ -130,10 +131,12 @@ public class AdminEndpointTests(ApiFactory factory) : IAsyncLifetime
         (await PatchCategory(_opportunity.Id, "FIRE_SPRINKLER")).EnsureSuccessStatusCode();
 
         var stored = await factory.QueryAsync(db => db.FireOpportunities.Include(o => o.Signals)
-            .SingleAsync(o => o.Id == _opportunity.Id));
+            .Include(o => o.Permit).SingleAsync(o => o.Id == _opportunity.Id));
         Assert.True(stored.CategoryOverridden);
         Assert.Equal(FireCategory.FireSprinkler, stored.Category);
         Assert.Equal(1.0m, stored.Confidence);
+        Assert.Equal(ScoringEngine.ContractorStatusOf(StoredPermit.ToNormalized(stored.Permit)),
+            stored.ContractorStatus);
         Assert.DoesNotContain(stored.Signals, s => s.SignalType == "STALE_SIGNAL");
         Assert.Contains(stored.Signals, s => s.SignalType == "BASE_SCORE" && s.Weight == 30);
         Assert.Contains(stored.Signals, s => s.SignalType == "FIRE_SPRINKLER_SCOPE");

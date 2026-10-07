@@ -57,6 +57,7 @@ public class AppDbContext : DbContext
                 .HasForeignKey<FireOpportunity>(o => o.PermitId);
             e.HasMany(o => o.Signals).WithOne().HasForeignKey(s => s.FireOpportunityId);
             e.Property(o => o.CategoryOverridden).HasDefaultValue(false);
+            e.HasIndex(o => o.ContractorStatus);   // the lead feed can exclude a status
         });
 
         modelBuilder.Entity<ScraperRun>(e =>

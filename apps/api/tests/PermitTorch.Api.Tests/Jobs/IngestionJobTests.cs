@@ -187,12 +187,46 @@ public class IngestionJobTests
         Assert.Equal(0.95m, opportunity.Confidence);
         Assert.Equal(100, opportunity.LeadScore);
         Assert.False(string.IsNullOrWhiteSpace(opportunity.Reason));
+        Assert.Equal(ContractorStatus.NoContractorListed, opportunity.ContractorStatus);
 
         var signals = await db.Set<LeadSignal>()
             .Where(s => s.FireOpportunityId == opportunity.Id).ToListAsync();
         Assert.Contains(signals, s => s.SignalType == "FIRE_SPRINKLER_SCOPE" && s.Weight == 25);
         Assert.Contains(signals, s => s.SignalType == "NO_CONTRACTOR_LISTED" && s.Weight == 10);
         Assert.Contains(signals, s => s.SignalType == "BASE_SCORE" && s.Weight == 30);
+    }
+
+    [Fact]
+    public async Task RunOnce_StoresTheContractorStatus_AndUpdatesItWhenTheRecordChanges()
+    {
+        var sourceId = $"src-{Guid.NewGuid():N}";
+        await SeedSourceAsync(sourceId);
+        var recordId = $"ext-{Guid.NewGuid():N}";
+        // First seen with the GC on it; a later scrape names the sprinkler contractor.
+        var withGc = Record(recordId, sourceId, fireSystemType: "fire_sprinkler",
+            contractorName: "Summit General Contractors");
+        var withFireFirm = Record(recordId, sourceId, fireSystemType: "fire_sprinkler",
+            contractorName: "Reliable Fire Co");
+
+        var (firstJob, firstSp) = BuildJob(new FakePermitSourceProvider(
+            Run($"run-{Guid.NewGuid():N}", new[] { withGc }, Stat(sourceId))));
+        await using var _ = firstSp;
+        await firstJob.RunOnceAsync(CancellationToken.None);
+        await using (var db = _fixture.CreateContext())
+        {
+            var first = await db.Set<FireOpportunity>().SingleAsync(o => o.Permit.ExternalId == recordId);
+            Assert.Equal(ContractorStatus.OtherContractorNamed, first.ContractorStatus);
+        }
+
+        var (secondJob, secondSp) = BuildJob(new FakePermitSourceProvider(
+            Run($"run-{Guid.NewGuid():N}", new[] { withFireFirm }, Stat(sourceId))));
+        await using var __ = secondSp;
+        await secondJob.RunOnceAsync(CancellationToken.None);
+        await using (var db = _fixture.CreateContext())
+        {
+            var second = await db.Set<FireOpportunity>().SingleAsync(o => o.Permit.ExternalId == recordId);
+            Assert.Equal(ContractorStatus.FireContractorNamed, second.ContractorStatus);
+        }
     }
 
     [Fact]
