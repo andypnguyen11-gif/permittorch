@@ -10,7 +10,7 @@ export const metadata: Metadata = { title: "Alerts" };
 
 const CONTENTS = [
   "New fire-protection opportunities in your markets since the last digest",
-  "Hot leads (score 90+) called out first, with score and project value",
+  "Permits whose record says the fire work is still ahead come first, newest first",
   "A one-line “why this matters” for each lead",
   "A link back to the full lead list",
 ];

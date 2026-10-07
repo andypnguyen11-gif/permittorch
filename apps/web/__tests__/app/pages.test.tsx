@@ -54,6 +54,14 @@ describe("/app/alerts", () => {
     expect(screen.getByRole("radio", { name: /Daily/ })).toBeChecked();
     expect(screen.getByText("john@davisfireprotection.com")).toBeInTheDocument();
   });
+
+  it("says the digest leads with permits whose fire work is still ahead", async () => {
+    render(await AlertsPage());
+    expect(
+      screen.getByText("Permits whose record says the fire work is still ahead come first, newest first"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/score 90\+/)).not.toBeInTheDocument();
+  });
 });
 
 describe("/app/account", () => {

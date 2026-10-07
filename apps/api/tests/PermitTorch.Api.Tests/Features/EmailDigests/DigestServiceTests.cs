@@ -60,12 +60,13 @@ public class DigestServiceTests(ApiFactory factory)
 
     private async Task<(Market Market, AppUser User, EmailPreference Pref)> SeedSubscriberAsync(
         DigestFrequency frequency, DateTime? lastSentAt, int score = 90, DateTime? detectedAt = null,
-        Guid? userId = null)
+        Guid? userId = null, LeadStanding? standing = null)
     {
         var market = TestSeed.Market("Digestville");
         var source = TestSeed.Source(market, Now);
         var permit = TestSeed.Permit(source);
         var opportunity = TestSeed.Opportunity(permit, score, firstDetectedAt: detectedAt ?? Now.AddHours(-3));
+        opportunity.Standing = standing;
         var sub = $"user_{Guid.NewGuid():N}";
         var (org, user, pref) = TestSeed.User(sub, $"{sub}@example.com");
         if (userId is { } id) { user.Id = id; pref.UserId = id; }
@@ -98,8 +99,12 @@ public class DigestServiceTests(ApiFactory factory)
         var market = TestSeed.Market("Staffton");
         var source = TestSeed.Source(market, Now);
         var permit = TestSeed.Permit(source);
-        // Every market is in scope for staff, so this lead must outrank anything other tests seed.
+        // Every market is in scope for staff, so this lead must outrank anything other tests seed:
+        // open fire work with the freshest activity date of any test.
         var opportunity = TestSeed.Opportunity(permit, 100, firstDetectedAt: Now.AddMinutes(-1));
+        opportunity.Standing = LeadStanding.FireWorkAhead;
+        opportunity.LastActivityOn = DateTime.UtcNow.Date.AddDays(1);
+        opportunity.ContractorStatus = ContractorStatus.OtherContractorNamed;
         var sub = $"user_{Guid.NewGuid():N}";
         var (org, user, pref) = TestSeed.User(sub, $"{sub}@example.com", UserRole.SuperAdmin);
         pref.Frequency = DigestFrequency.Daily;
@@ -113,18 +118,53 @@ public class DigestServiceTests(ApiFactory factory)
     }
 
     [Fact]
-    public async Task Not_due_none_and_low_score_users_are_skipped()
+    public async Task Not_due_none_and_no_open_lead_users_are_skipped()
     {
         var (_, sentToday, _) = await SeedSubscriberAsync(DigestFrequency.Daily, Now.Date.AddHours(12).AddMinutes(1));
         var (_, off, _) = await SeedSubscriberAsync(DigestFrequency.None, null);
-        var (_, lowScore, _) = await SeedSubscriberAsync(DigestFrequency.Daily,
-            Now.Date.AddDays(-1).AddHours(12).AddMinutes(5), score: 65);
+        var (_, onlyNamed, _) = await SeedSubscriberAsync(DigestFrequency.Daily,
+            Now.Date.AddDays(-1).AddHours(12).AddMinutes(5), score: 95, standing: LeadStanding.FireWorkPermitContractorNamed);
 
         var resend = await RunOnceAsync();
 
         Assert.DoesNotContain(resend.Sent, s => s.To == sentToday.Email);
         Assert.DoesNotContain(resend.Sent, s => s.To == off.Email);
-        Assert.DoesNotContain(resend.Sent, s => s.To == lowScore.Email);   // no ≥70 leads → skip + log
+        Assert.DoesNotContain(resend.Sent, s => s.To == onlyNamed.Email);   // nothing open → skip + log
+    }
+
+    [Fact]
+    public async Task Digest_OrdersByStandingThenFreshness_AndSkipsNamedAndHidden()
+    {
+        var market = TestSeed.Market("Callfirst");
+        var source = TestSeed.Source(market, Now);
+        FireOpportunity Lead(string description, int score, LeadStanding standing, out Permit permit)
+        {
+            permit = TestSeed.Permit(source, description: description);
+            var lead = TestSeed.Opportunity(permit, score, firstDetectedAt: Now.AddHours(-3));
+            lead.Standing = standing;
+            lead.LastActivityOn = Now.Date;
+            return lead;
+        }
+        var ahead = Lead("Tenant improvement, deferred fire sprinklers", 60, LeadStanding.FireWorkAhead, out var p1);
+        var mentioned = Lead("Renovation with new fire alarm devices", 100, LeadStanding.FireWorkMentioned, out var p2);
+        var named = Lead("Sprinkler filing naming the installer", 100, LeadStanding.FireWorkPermitContractorNamed, out var p3);
+        var hidden = Lead("Lawn sprinkler system", 100, LeadStanding.NotFireWork, out var p4);
+        var sub = $"user_{Guid.NewGuid():N}";
+        var (org, user, pref) = TestSeed.User(sub, $"{sub}@example.com");
+        pref.Frequency = DigestFrequency.Daily;
+        pref.LastSentAt = Now.Date.AddDays(-1).AddHours(12).AddMinutes(5);
+        var subscription = TestSeed.Subscription(org, PlanTier.Pro, "active", market);
+        await factory.SeedAsync(db => db.AddRange(market, source, p1, p2, p3, p4, ahead, mentioned, named, hidden,
+            org, user, pref, subscription));
+
+        var resend = await RunOnceAsync();
+
+        var sent = Assert.Single(resend.Sent, s => s.To == user.Email);
+        var aheadAt = sent.Html.IndexOf("deferred fire sprinklers", StringComparison.Ordinal);
+        var mentionedAt = sent.Html.IndexOf("new fire alarm devices", StringComparison.Ordinal);
+        Assert.True(aheadAt >= 0 && mentionedAt > aheadAt, "open fire work comes first, whatever its score");
+        Assert.DoesNotContain("naming the installer", sent.Html);
+        Assert.DoesNotContain("Lawn sprinkler", sent.Html);
     }
 
     [Fact]
