@@ -76,3 +76,12 @@ describe("/app/leads page (mock API)", () => {
     spy.mockRestore();
   });
 });
+
+describe("/app/leads page fire-contractor exclusion", () => {
+  it("hides the leads whose permit names a fire contractor when the URL asks for it", async () => {
+    await renderPage({ excludeContractorStatus: "FIRE_CONTRACTOR_NAMED" });
+    expect(screen.getByText("Showing 1 to 20 of 20 results")).toBeInTheDocument();
+    expect(screen.queryByText("Fire contractor on permit")).not.toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Hide leads with a fire contractor already on the permit" })).toBeChecked();
+  });
+});

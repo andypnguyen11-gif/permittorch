@@ -223,3 +223,33 @@ describe("lib/api", () => {
     expect(new Headers(init.headers).get("Authorization")).toBe("Bearer tok_123");
   });
 });
+
+describe("lib/api excludeContractorStatus", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    vi.stubEnv("NEXT_PUBLIC_API_MOCK", "0");
+    vi.stubEnv("NEXT_PUBLIC_API_URL", "http://api.test");
+  });
+
+  it("sends the exclusion on the leads request", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(fixtureLeads));
+    vi.stubGlobal("fetch", fetchMock);
+    const api = await import("@/lib/api");
+    await api.getLeads({ market: "houston-tx", excludeContractorStatus: "FIRE_CONTRACTOR_NAMED" }, "tok_123");
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://api.test/api/leads?market=houston-tx&excludeContractorStatus=FIRE_CONTRACTOR_NAMED");
+  });
+
+  it("sends the exclusion on the CSV export", async () => {
+    const fetchMock = vi.fn(async () => new Response("Score,Address,City\r\n", {
+      status: 200, headers: { "Content-Type": "text/csv" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const api = await import("@/lib/api");
+    await api.exportLeadsCsv({ minScore: 80, excludeContractorStatus: "FIRE_CONTRACTOR_NAMED" }, "tok_123");
+    const [url] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("http://api.test/api/leads/export.csv?minScore=80&excludeContractorStatus=FIRE_CONTRACTOR_NAMED");
+  });
+});

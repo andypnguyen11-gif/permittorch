@@ -140,3 +140,21 @@ describe("LeadTable compact", () => {
     expect(screen.queryByText("Large commercial build-out in west Houston.")).not.toBeInTheDocument();
   });
 });
+
+describe("LeadTable contractor status", () => {
+  it("badges a lead whose permit names a fire contractor, in full and compact layouts", () => {
+    const { rerender } = render(<LeadTable leads={[lead({ contractorStatus: "FIRE_CONTRACTOR_NAMED" })]} />);
+    expect(screen.getByText("Fire contractor on permit")).toBeInTheDocument();
+    rerender(<LeadTable leads={[lead({ contractorStatus: "FIRE_CONTRACTOR_NAMED" })]} compact />);
+    expect(screen.getByText("Fire contractor on permit")).toBeInTheDocument();
+  });
+
+  it("shows no contractor badge for other statuses or an unassessed lead", () => {
+    const { rerender } = render(<LeadTable leads={[lead({ contractorStatus: null })]} />);
+    expect(screen.queryByText("Fire contractor on permit")).not.toBeInTheDocument();
+    rerender(<LeadTable leads={[lead({ contractorStatus: "NO_CONTRACTOR_LISTED" })]} />);
+    expect(screen.queryByText("Fire contractor on permit")).not.toBeInTheDocument();
+    rerender(<LeadTable leads={[lead({ contractorStatus: "OTHER_CONTRACTOR_NAMED" })]} />);
+    expect(screen.queryByText("Fire contractor on permit")).not.toBeInTheDocument();
+  });
+});

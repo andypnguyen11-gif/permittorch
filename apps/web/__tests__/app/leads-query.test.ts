@@ -41,3 +41,19 @@ describe("parseLeadsSearchParams bounds", () => {
     expect(parseLeadsSearchParams({ q: "   " })).toEqual({});
   });
 });
+
+describe("excludeContractorStatus", () => {
+  it("parses a known contractor status and drops an unknown one", () => {
+    expect(parseLeadsSearchParams({ excludeContractorStatus: "FIRE_CONTRACTOR_NAMED" }))
+      .toEqual({ excludeContractorStatus: "FIRE_CONTRACTOR_NAMED" });
+    expect(parseLeadsSearchParams({ excludeContractorStatus: "AWARDED" })).toEqual({});
+    expect(parseLeadsSearchParams({ excludeContractorStatus: "" })).toEqual({});
+  });
+
+  it("round-trips through the URL alongside the other filters", () => {
+    const search = buildLeadsSearch({ category: "FIRE_ALARM", excludeContractorStatus: "FIRE_CONTRACTOR_NAMED", page: 2 });
+    expect(search).toBe("?category=FIRE_ALARM&excludeContractorStatus=FIRE_CONTRACTOR_NAMED&page=2");
+    expect(parseLeadsSearchParams(Object.fromEntries(new URLSearchParams(search))))
+      .toEqual({ category: "FIRE_ALARM", excludeContractorStatus: "FIRE_CONTRACTOR_NAMED", page: 2 });
+  });
+});

@@ -1,6 +1,7 @@
 import type {
   AccountMe,
   AdminSource,
+  ContractorStatus,
   DigestFrequency,
   FireCategory,
   LeadDetail,
@@ -29,7 +30,10 @@ export class ApiError extends Error {
 
 export interface LeadsQuery {
   market?: string; category?: FireCategory; minScore?: number;
-  maxAgeDays?: number; status?: PermitStatus; q?: string; page?: number; pageSize?: number;
+  maxAgeDays?: number; status?: PermitStatus; q?: string;
+  /** Leaves out leads whose contractor status is this value; a null status is never excluded. */
+  excludeContractorStatus?: ContractorStatus;
+  page?: number; pageSize?: number;
 }
 
 function isMock(): boolean {
@@ -93,6 +97,7 @@ export async function getLeads(params: LeadsQuery, token: string): Promise<Leads
     maxAgeDays: params.maxAgeDays,
     status: params.status,
     q: params.q,
+    excludeContractorStatus: params.excludeContractorStatus,
     page: params.page,
     pageSize: params.pageSize,
   });
@@ -112,6 +117,7 @@ export async function exportLeadsCsv(params: LeadsQuery, token: string): Promise
     maxAgeDays: params.maxAgeDays,
     status: params.status,
     q: params.q,
+    excludeContractorStatus: params.excludeContractorStatus,
   });
   const base = resolveApiBaseUrl({
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,

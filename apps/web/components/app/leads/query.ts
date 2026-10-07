@@ -1,5 +1,5 @@
 import type { LeadsQuery } from "@/lib/api";
-import type { FireCategory, PermitStatus } from "@permittorch/types";
+import type { ContractorStatus, FireCategory, PermitStatus } from "@permittorch/types";
 
 export const FIRE_CATEGORIES: FireCategory[] = [
   "FIRE_SPRINKLER", "FIRE_ALARM", "FIRE_SUPPRESSION", "KITCHEN_SUPPRESSION",
@@ -7,6 +7,9 @@ export const FIRE_CATEGORIES: FireCategory[] = [
 ];
 export const PERMIT_STATUSES: PermitStatus[] = [
   "NEW", "ACTIVE", "INSPECTION", "FAILED", "CLOSED", "UNKNOWN",
+];
+export const CONTRACTOR_STATUSES: ContractorStatus[] = [
+  "NOT_APPLICABLE", "NO_CONTRACTOR_LISTED", "OTHER_CONTRACTOR_NAMED", "FIRE_CONTRACTOR_NAMED",
 ];
 
 export const STATUS_LABELS: Record<PermitStatus, string> = {
@@ -46,6 +49,10 @@ export function parseLeadsSearchParams(sp: SP): LeadsQuery {
   }
   const q = first(sp.q)?.trim().slice(0, MAX_Q_LENGTH);
   if (q) query.q = q;
+  const exclude = first(sp.excludeContractorStatus);
+  if (exclude && (CONTRACTOR_STATUSES as string[]).includes(exclude)) {
+    query.excludeContractorStatus = exclude as ContractorStatus;
+  }
   const page = int(first(sp.page), 1, 10_000);
   if (page !== undefined) query.page = page;
   return query;
@@ -59,6 +66,7 @@ export function buildLeadsSearch(query: LeadsQuery): string {
   if (query.maxAgeDays != null) params.set("maxAgeDays", String(query.maxAgeDays));
   if (query.status) params.set("status", query.status);
   if (query.q) params.set("q", query.q);
+  if (query.excludeContractorStatus) params.set("excludeContractorStatus", query.excludeContractorStatus);
   if (query.page != null && query.page > 1) params.set("page", String(query.page));
   const s = params.toString();
   return s ? `?${s}` : "";
