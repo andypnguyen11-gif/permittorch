@@ -180,6 +180,8 @@ Every lead a run touches is scored again as it is ingested, from the permit's me
 
 The daily rescoring pass only revisits leads with a date inside the last 91 days. After a deploy that changes scoring rules or weights, set `Rescoring__FullPassOnStartup=true` on `api`. The next start rescores every lead once. Remove the variable afterwards, or every restart repeats the full pass.
 
+The contractor-status release needs this pass: it changed two weights and added `contractor_status`, which every existing lead holds as null until the pass reaches it. While the pass runs, the feed shows those leads as not yet assessed and the `excludeContractorStatus` filter leaves them in.
+
 ## Rotating secrets
 
 Each `railway variable set` below redeploys the service unless you pass `--skip-deploys`.

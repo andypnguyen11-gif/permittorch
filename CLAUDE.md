@@ -62,6 +62,8 @@ Build with **scalability, maintainability, and security** in mind — in the spe
 
 - Data freshness is a feature: never present stale data as current; surface "Updated N ago" honestly.
 - No duplicate leads may reach users — dedupe on `source_id + external_id` with fingerprint fallback.
+- A fire permit that already names a fire-protection contractor is usually an awarded job, not a lead. The score penalises it heavily and the lead carries a `ContractorStatus`; never tune the engine back toward ranking such permits first.
+- Say what the record shows, never what it implies: "a fire-protection contractor is on this permit", not "job awarded"; "no contractor listed", not "job unassigned". A null status means not yet assessed, never any one value.
 - SEO pages are only generated for markets with real data — no thin programmatic pages.
 - Respect the MVP non-goals (PRD §5, §64): no CRM, no mobile app, no customer-facing API, no contact enrichment, no AI chatbot.
 - Contact details come only from the permit record itself (owner decision, 2026-09-28): a party's phone, email and licence number as the government record publishes them, shown to signed-in subscribers only and never on a public page. Never look a party up anywhere else.
