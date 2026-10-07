@@ -172,19 +172,19 @@ public class ScoringEngineContractorStatusTests
     // ---- the one-sentence reason -----------------------------------------------------------
 
     [Fact]
-    public void The_reason_says_when_a_fire_contractor_is_already_on_the_permit()
+    public void The_reason_says_when_a_fire_contractor_is_on_the_permit()
     {
-        var result = Score(Permit(contractorName: "PAR FIRE PROTECTION LLC", filedDate: Now.AddHours(-24)));
-        Assert.Equal(
-            "Explicit fire sprinkler scope and filed within the last 72 hours. A fire-protection contractor is already on this permit.",
-            result.Reason);
+        var result = Score(Permit(contractorName: "PAR FIRE PROTECTION LLC", description: "Riser relocation for the sprinkler system",
+            filedDate: Now.AddHours(-24)));
+        Assert.Equal("A fire-protection contractor is on this permit. Filed Oct 5, 2026.", result.Reason);
     }
 
     [Fact]
-    public void The_reason_is_unchanged_when_no_fire_contractor_is_named()
+    public void The_reason_quotes_the_record_when_no_contractor_is_named()
     {
-        var result = Score(Permit(contractorName: null, filedDate: Now.AddHours(-24)));
-        Assert.Equal("Explicit fire sprinkler scope, filed within the last 72 hours, and no contractor listed yet.",
+        var result = Score(Permit(contractorName: null, description: "Riser relocation for the sprinkler system",
+            filedDate: Now.AddHours(-24)));
+        Assert.Equal("No contractor listed. The record mentions \"riser relocation for the sprinkler system\". Filed Oct 5, 2026.",
             result.Reason);
     }
 }

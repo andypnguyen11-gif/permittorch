@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text.RegularExpressions;
 using PermitTorch.Api.Data;
@@ -30,8 +31,10 @@ public class ScoringOptions
 }
 
 // LOCKED shapes — master plan §5.
+// Standing and LastActivityOn are trailing so the locked positional shape above is unchanged.
 public record ScoreResult(int Score, IReadOnlyList<ScoredSignal> Signals, string Reason,
-    ContractorStatus ContractorStatus);
+    ContractorStatus ContractorStatus,
+    LeadStanding Standing = LeadStanding.FireWorkMentioned, DateTime? LastActivityOn = null);
 public record ScoredSignal(string SignalType, string Description, int Weight);
 
 // LOCKED entry point — master plan §5. Deterministic; no LLM in the scoring path.
@@ -107,7 +110,9 @@ public class ScoringEngine
         switch (contractorStatus)
         {
             case ContractorStatus.FireContractorNamed:
-                AddSignal(signals, "FIRE_CONTRACTOR_ASSIGNED", FireContractorDescription);
+                AddSignal(signals, "FIRE_CONTRACTOR_ASSIGNED", permit.Scope == PermitScope.FireWorkPermit
+                    ? FireWorkPermitContractorDescription
+                    : FireContractorDescription);
                 break;
             case ContractorStatus.OtherContractorNamed:
                 AddSignal(signals, "OTHER_CONTRACTOR_LISTED",
@@ -125,13 +130,45 @@ public class ScoringEngine
             AddSignal(signals, "CLOSED_PERMIT", "Permit is closed");
 
         var score = Math.Clamp(signals.Sum(s => s.Weight), 0, 100);
-        return new ScoreResult(score, signals, BuildReason(signals, contractorStatus), contractorStatus);
+        var reading = FireWorkReader.Read(permit.Description, permit.Scope);
+        var standing = StandingOf(permit, classification, contractorStatus, reading);
+        var activity = LatestActivityWithKind(permit, nowUtc);
+        return new ScoreResult(score, signals,
+            BuildReason(standing, contractorStatus, reading, classification.Category, permit, activity),
+            contractorStatus, standing, activity?.Date.Date);
     }
 
+    // Precedence: what the record says outright (unless an admin set the category) beats status,
+    // status beats the kind of record, and only then does who is named decide.
+    private static LeadStanding StandingOf(NormalizedPermit permit, ClassificationResult classification,
+        ContractorStatus contractorStatus, FireWorkReading reading)
+    {
+        var manual = string.Equals(classification.MatchedRule, ManualRule, StringComparison.Ordinal);
+        if (reading.Verdict == FireWorkVerdict.NotFireWork && !manual) return LeadStanding.NotFireWork;
+        if (permit.Status == PermitStatusKind.Closed) return LeadStanding.Closed;
+        if (permit.IsInspection || permit.IsViolation) return LeadStanding.InspectionOrViolation;
+        if (permit.Scope == PermitScope.FireWorkPermit)
+            return contractorStatus == ContractorStatus.FireContractorNamed
+                ? LeadStanding.FireWorkPermitContractorNamed
+                : LeadStanding.FireWorkPermitNoContractor;
+        if (contractorStatus == ContractorStatus.FireContractorNamed) return LeadStanding.FireFirmNamed;
+        return reading.Verdict == FireWorkVerdict.Ahead ? LeadStanding.FireWorkAhead : LeadStanding.FireWorkMentioned;
+    }
+
+    // The rule name admin reclassification passes in; ingestion and rescoring pass it on for a
+    // category an admin has set.
+    public const string ManualRule = "manual";
+
     private const string FireContractorDescription = "A fire-protection contractor is already on this permit";
+    private const string FireWorkPermitContractorDescription = "This fire-work permit names a contractor";
 
     public static ContractorStatus ContractorStatusOf(NormalizedPermit permit)
     {
+        // On a permit that is the fire work itself, whoever is named does that work, whatever the
+        // name looks like (NYC sprinkler filings name the licensed plumber).
+        if (permit.Scope == PermitScope.FireWorkPermit
+            && (!string.IsNullOrWhiteSpace(permit.ContractorName) || permit.ContractorWithheld))
+            return ContractorStatus.FireContractorNamed;
         if (!string.IsNullOrWhiteSpace(permit.ContractorName))
         {
             return IsFireTrade(permit.ContractorName)
@@ -185,33 +222,65 @@ public class ScoringEngine
             signals.Add(new ScoredSignal(signalType, description, weight));
     }
 
-    // The positive signals make the sentence. A fire contractor on the permit is the one
-    // negative that changes what a salesperson should do, so it is said in a second sentence.
-    private static string BuildReason(IReadOnlyList<ScoredSignal> signals, ContractorStatus contractorStatus)
+    private sealed record Activity(DateTime Date, string Kind);
+
+    // The latest filed, issued or inspection date that has already happened; on a tie the earlier
+    // kind in that order is named.
+    private static Activity? LatestActivityWithKind(NormalizedPermit permit, DateTime nowUtc)
     {
-        var top = signals
-            .Where(s => s.Weight > 0 && s.SignalType != BaseScoreSignalType)
-            .OrderByDescending(s => s.Weight)
-            .ThenBy(s => s.SignalType, StringComparer.Ordinal)
-            .Take(3)
-            .Select(s => s.Description)
-            .ToList();
-
-        var sentence = "Fire-protection related permit activity.";
-        if (top.Count > 0)
+        Activity? latest = null;
+        foreach (var (date, kind) in new[] { (permit.FiledDate, "Filed"), (permit.IssuedDate, "Issued"), (permit.InspectionDate, "Inspected") })
         {
-            var parts = new List<string> { top[0] };
-            parts.AddRange(top.Skip(1).Select(d => char.ToLowerInvariant(d[0]) + d[1..]));
-            sentence = parts.Count switch
-            {
-                1 => $"{parts[0]}.",
-                2 => $"{parts[0]} and {parts[1]}.",
-                _ => $"{parts[0]}, {parts[1]}, and {parts[2]}.",
-            };
+            if (date is { } d && d <= nowUtc && (latest is null || d > latest.Date))
+                latest = new Activity(d, kind);
         }
+        return latest;
+    }
 
-        return contractorStatus == ContractorStatus.FireContractorNamed
-            ? $"{sentence} {FireContractorDescription}."
-            : sentence;
+    // Says what the record shows, in the record's own words where it has them. Never a party's
+    // name (names can be removed on request) and never a relative date (reasons are stored).
+    private static string BuildReason(LeadStanding standing, ContractorStatus contractorStatus,
+        FireWorkReading reading, FireCategory category, NormalizedPermit permit, Activity? activity)
+    {
+        if (standing == LeadStanding.NotFireWork) return "The record describes no fire-protection work.";
+
+        var who = contractorStatus == ContractorStatus.OtherContractorNamed
+            ? "A contractor is listed; no fire-protection firm named."
+            : "No contractor listed.";
+        var opening = standing switch
+        {
+            LeadStanding.FireWorkAhead => $"{who} The record says \"{reading.Quote}\".",
+            LeadStanding.FireWorkMentioned => reading.Quote is null ? who : $"{who} The record mentions \"{reading.Quote}\".",
+            LeadStanding.FireWorkPermitNoContractor => $"This is the {PermitKind(category)} permit, and it names no contractor.",
+            LeadStanding.FireWorkPermitContractorNamed => $"This is the {PermitKind(category)} permit, and it names a contractor.",
+            LeadStanding.InspectionOrViolation => permit.IsViolation
+                ? "This is a fire code violation record."
+                : "This is a fire inspection record.",
+            LeadStanding.FireFirmNamed => "A fire-protection contractor is on this permit.",
+            _ => "The permit is closed.",
+        };
+
+        var parts = new List<string> { opening };
+        if (activity is not null)
+            parts.Add($"{activity.Kind} {activity.Date.ToString("MMM d, yyyy", CultureInfo.InvariantCulture)}.");
+        if (permit.EstimatedValue is { } value)
+            parts.Add($"{FormatValue(value)} declared value.");
+        return string.Join(" ", parts);
+    }
+
+    private static string PermitKind(FireCategory category) => category switch
+    {
+        FireCategory.FireSprinkler => "fire-sprinkler",
+        FireCategory.FireAlarm => "fire-alarm",
+        FireCategory.FireSuppression or FireCategory.KitchenSuppression => "fire-suppression",
+        _ => "fire-protection",
+    };
+
+    private static string FormatValue(decimal value)
+    {
+        if (value < 1_000m) return "$" + Math.Round(value, MidpointRounding.AwayFromZero).ToString("0", CultureInfo.InvariantCulture);
+        if (value < 1_000_000m)
+            return "$" + Math.Round(value / 1_000m, MidpointRounding.AwayFromZero).ToString("0", CultureInfo.InvariantCulture) + "K";
+        return "$" + Math.Round(value / 1_000_000m, 1, MidpointRounding.AwayFromZero).ToString("0.0", CultureInfo.InvariantCulture) + "M";
     }
 }

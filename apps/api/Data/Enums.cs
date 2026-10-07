@@ -21,3 +21,12 @@ public enum RecordLinkKind { Page, Rest, Data }
 // named contractor does that work) or a building permit that only mentions it. Resolved from the
 // city's own permit type by the provider; null on permits stored before it was known.
 public enum PermitScope { FireWorkPermit, BuildingPermit }
+// Where a lead stands in "who should a contractor call first today", best first. The feed sorts on
+// it before freshness. Building permits whose record says the fire work is still ahead lead; a
+// permit that is the fire work itself ranks below them, as it is normally pulled by the installer.
+// NotFireWork: the record describes no fire-protection work, and the lead is hidden.
+public enum LeadStanding
+{
+    FireWorkAhead, FireWorkMentioned, FireWorkPermitNoContractor, InspectionOrViolation,
+    FireWorkPermitContractorNamed, FireFirmNamed, Closed, NotFireWork,
+}

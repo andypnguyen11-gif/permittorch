@@ -47,7 +47,7 @@ public class ScoringEngineTests
         Assert.Equal("BASE_SCORE", baseSignal.SignalType);
         Assert.Equal("Baseline for a classified fire-protection permit", baseSignal.Description);
         Assert.Equal(30, baseSignal.Weight);
-        Assert.Equal("Fire-protection related permit activity.", result.Reason);
+        Assert.Equal("The record describes no fire-protection work.", result.Reason);
     }
 
     [Fact]
@@ -189,7 +189,7 @@ public class ScoringEngineTests
     }
 
     [Fact]
-    public void Reason_IsOneSentenceFromTopSignals()
+    public void Reason_QuotesTheRecord_WhenItMentionsFireWork()
     {
         var permit = Permit(
             description: "New commercial building with NFPA 13 sprinkler system",
@@ -198,24 +198,20 @@ public class ScoringEngineTests
 
         var result = DefaultEngine().Score(permit, Sprinkler(), Now);
 
-        // Top 3 by weight desc, ties by SignalType ordinal:
-        // FIRE_SPRINKLER_SCOPE (25) before NEW_COMMERCIAL_BUILD (25), then PERMIT_RECENT (15)
-        // ahead of NO_CONTRACTOR_LISTED (10).
         Assert.Equal(
-            "Explicit fire sprinkler scope, new commercial construction, and filed within the last 72 hours.",
+            "No contractor listed. The record mentions \"new commercial building with nfpa 13 sprinkler system\". Filed Aug 18, 2026.",
             result.Reason);
     }
 
     [Fact]
-    public void Reason_HandlesSingleAndDoubleSignalCounts()
+    public void Reason_SaysWhenTheRecordDescribesNoFireWork()
     {
-        var single = DefaultEngine().Score(
+        var undated = DefaultEngine().Score(
             Permit(description: "Fire lane restriping", contractorName: null), General(), Now);
-        Assert.Equal("No contractor listed yet.", single.Reason);
+        Assert.Equal("The record describes no fire-protection work.", undated.Reason);
 
-        var doublePermit = Permit(description: "Fire lane restriping", contractorName: null,
-            filedDate: Now.AddHours(-24));
-        var two = DefaultEngine().Score(doublePermit, General(), Now);
-        Assert.Equal("Filed within the last 72 hours and no contractor listed yet.", two.Reason);
+        var dated = DefaultEngine().Score(
+            Permit(description: "Fire lane restriping", contractorName: null, filedDate: Now.AddHours(-24)), General(), Now);
+        Assert.Equal("The record describes no fire-protection work.", dated.Reason);
     }
 }
