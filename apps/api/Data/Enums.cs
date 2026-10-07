@@ -9,6 +9,11 @@ public enum SavedLeadStatus { Saved, Contacted }
 public enum DigestFrequency { None, Daily, Weekly }
 public enum RemovalKind { Phone, Email, Name, Record }
 public enum PermitStatusKind { New, Active, Inspection, Failed, Closed, Unknown }
+// Who the record names as contractor, read from the permit itself. FireContractorNamed means the
+// fire work on this permit is most likely awarded; OtherContractorNamed (usually the GC) means
+// the fire sub is not visible yet. NotApplicable: an inspection or violation with no name, which
+// says nothing. Stored null on leads not yet scored by a release that knows the status.
+public enum ContractorStatus { NotApplicable, NoContractorListed, OtherContractorNamed, FireContractorNamed }
 // What a permit's record link opens: the city's own page for the record, the ArcGIS attribute
 // listing for the row, or the open-data API's answer for the row.
 public enum RecordLinkKind { Page, Rest, Data }
