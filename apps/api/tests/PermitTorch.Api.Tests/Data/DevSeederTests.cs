@@ -145,6 +145,7 @@ public class DevSeederTests : IAsyncLifetime
             Assert.Equal(Math.Clamp(o.Signals.Sum(s => s.Weight), 0, 100), o.LeadScore);
             Assert.InRange(o.LeadScore, 0, 100);
             Assert.False(string.IsNullOrWhiteSpace(o.Reason));
+            Assert.Equal(ScoringEngine.ContractorStatusOf(StoredPermit.ToNormalized(o.Permit)), o.ContractorStatus);
             Assert.Equal(DateTimeKind.Utc, o.FirstDetectedAt.Kind);
             Assert.Equal(DateTimeKind.Utc, o.Permit.FiledDate!.Value.Kind);
         }
@@ -174,10 +175,13 @@ public class DevSeederTests : IAsyncLifetime
         await SeedAsync(Config(DevFlags()));
         await using (var db = CreateContext())
         {
-            // Samples seeded before record links existed.
+            // Samples seeded before record links existed, by a release that did not know who
+            // the contractor was.
             await db.Permits.ExecuteUpdateAsync(s => s
                 .SetProperty(p => p.RecordUrl, (string?)null)
                 .SetProperty(p => p.RecordUrlKind, (RecordLinkKind?)null));
+            await db.FireOpportunities.ExecuteUpdateAsync(s => s
+                .SetProperty(o => o.ContractorStatus, (ContractorStatus?)null));
         }
 
         await using (var db = CreateContext())
@@ -185,12 +189,13 @@ public class DevSeederTests : IAsyncLifetime
                 new StringWriter());
 
         await using var check = CreateContext();
-        var permits = await check.Permits.Include(p => p.Source).ToListAsync();
+        var permits = await check.Permits.Include(p => p.Source).Include(p => p.Opportunity).ToListAsync();
         Assert.All(permits, p =>
         {
             Assert.Equal(p.Source.SourceUrl, p.SourceUrl);
             Assert.EndsWith($"/records/{p.ExternalId}", p.RecordUrl);
             Assert.Equal(RecordLinkKind.Page, p.RecordUrlKind);
+            Assert.Equal(ScoringEngine.ContractorStatusOf(StoredPermit.ToNormalized(p)), p.Opportunity!.ContractorStatus);
         });
     }
 

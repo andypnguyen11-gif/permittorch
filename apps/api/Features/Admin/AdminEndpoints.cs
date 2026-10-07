@@ -87,23 +87,10 @@ public static class AdminEndpoints
         var result = scoring.Score(StoredPermit.ToNormalized(opportunity.Permit),
             new ClassificationResult(category, 1.0m, "manual"), now);
 
-        db.RemoveRange(opportunity.Signals);
-        foreach (var signal in result.Signals)
-        {
-            db.Add(new LeadSignal
-            {
-                Id = Guid.NewGuid(),
-                FireOpportunityId = opportunity.Id,
-                SignalType = signal.SignalType,
-                Description = signal.Description,
-                Weight = signal.Weight,
-            });
-        }
+        StoredScore.Replace(db, opportunity, result);
         opportunity.Category = category;
         opportunity.Confidence = 1.0m;
         opportunity.CategoryOverridden = true;
-        opportunity.LeadScore = result.Score;
-        opportunity.Reason = result.Reason;
         opportunity.LastUpdatedAt = now;
 
         // One SaveChangesAsync is already atomic (EF wraps it in a transaction): signal

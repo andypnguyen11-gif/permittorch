@@ -22,14 +22,16 @@ public class ScoringOptions
         ["HIGH_PROJECT_VALUE"] = 10,
         ["LARGE_SQUARE_FOOTAGE"] = 10,
         ["NO_CONTRACTOR_LISTED"] = 10,
-        ["FIRE_CONTRACTOR_ASSIGNED"] = -25,
+        ["OTHER_CONTRACTOR_LISTED"] = 15,
+        ["FIRE_CONTRACTOR_ASSIGNED"] = -50,
         ["OLD_PERMIT"] = -20,
         ["CLOSED_PERMIT"] = -30,
     };
 }
 
 // LOCKED shapes — master plan §5.
-public record ScoreResult(int Score, IReadOnlyList<ScoredSignal> Signals, string Reason);
+public record ScoreResult(int Score, IReadOnlyList<ScoredSignal> Signals, string Reason,
+    ContractorStatus ContractorStatus);
 public record ScoredSignal(string SignalType, string Description, int Weight);
 
 // LOCKED entry point — master plan §5. Deterministic; no LLM in the scoring path.
@@ -96,26 +98,24 @@ public class ScoringEngine
         if (permit.SquareFootage is > 20_000)
             AddSignal(signals, "LARGE_SQUARE_FOOTAGE", "Large square footage (over 20,000 sqft)");
 
-        // Inspections and violations never carry a contractor, so its absence says nothing.
-        // A contractor whose name was removed on request is still on the permit: it earns no
-        // "no contractor" points, and a fire-protection firm keeps the job marked as awarded.
-        if (string.IsNullOrWhiteSpace(permit.ContractorName))
+        // Who is on the permit decides whether the fire work is still open. A fire-protection
+        // firm means it is most likely awarded. Any other firm (usually the GC) means the fire
+        // sub is not visible yet, the best state for a lead. Inspections and violations never
+        // carry a contractor, so its absence says nothing. A contractor whose name was removed
+        // on request is still on the permit and scores exactly as the shown name would.
+        var contractorStatus = ContractorStatusOf(permit);
+        switch (contractorStatus)
         {
-            if (permit.ContractorWithheld)
-            {
-                if (permit.ContractorWithheldIsFireTrade)
-                    AddSignal(signals, "FIRE_CONTRACTOR_ASSIGNED",
-                        "A fire-protection contractor is already on this permit");
-            }
-            else if (!permit.IsInspection && !permit.IsViolation)
-            {
+            case ContractorStatus.FireContractorNamed:
+                AddSignal(signals, "FIRE_CONTRACTOR_ASSIGNED", FireContractorDescription);
+                break;
+            case ContractorStatus.OtherContractorNamed:
+                AddSignal(signals, "OTHER_CONTRACTOR_LISTED",
+                    "A contractor is listed who is not a fire-protection firm");
+                break;
+            case ContractorStatus.NoContractorListed:
                 AddSignal(signals, "NO_CONTRACTOR_LISTED", "No contractor listed yet");
-            }
-        }
-        else if (IsFireTrade(permit.ContractorName))
-        {
-            AddSignal(signals, "FIRE_CONTRACTOR_ASSIGNED",
-                "A fire-protection contractor is already on this permit");
+                break;
         }
 
         if (LatestActivity(permit, nowUtc) is { } latest && latest < nowUtc - OldAfter)
@@ -125,7 +125,28 @@ public class ScoringEngine
             AddSignal(signals, "CLOSED_PERMIT", "Permit is closed");
 
         var score = Math.Clamp(signals.Sum(s => s.Weight), 0, 100);
-        return new ScoreResult(score, signals, BuildReason(signals));
+        return new ScoreResult(score, signals, BuildReason(signals, contractorStatus), contractorStatus);
+    }
+
+    private const string FireContractorDescription = "A fire-protection contractor is already on this permit";
+
+    public static ContractorStatus ContractorStatusOf(NormalizedPermit permit)
+    {
+        if (!string.IsNullOrWhiteSpace(permit.ContractorName))
+        {
+            return IsFireTrade(permit.ContractorName)
+                ? ContractorStatus.FireContractorNamed
+                : ContractorStatus.OtherContractorNamed;
+        }
+        if (permit.ContractorWithheld)
+        {
+            return permit.ContractorWithheldIsFireTrade
+                ? ContractorStatus.FireContractorNamed
+                : ContractorStatus.OtherContractorNamed;
+        }
+        return permit.IsInspection || permit.IsViolation
+            ? ContractorStatus.NotApplicable
+            : ContractorStatus.NoContractorListed;
     }
 
     // The most specific recent event wins the wording. Dates in the future are not activity.
@@ -164,7 +185,9 @@ public class ScoringEngine
             signals.Add(new ScoredSignal(signalType, description, weight));
     }
 
-    private static string BuildReason(IReadOnlyList<ScoredSignal> signals)
+    // The positive signals make the sentence. A fire contractor on the permit is the one
+    // negative that changes what a salesperson should do, so it is said in a second sentence.
+    private static string BuildReason(IReadOnlyList<ScoredSignal> signals, ContractorStatus contractorStatus)
     {
         var top = signals
             .Where(s => s.Weight > 0 && s.SignalType != BaseScoreSignalType)
@@ -174,16 +197,21 @@ public class ScoringEngine
             .Select(s => s.Description)
             .ToList();
 
-        if (top.Count == 0) return "Fire-protection related permit activity.";
-
-        var parts = new List<string> { top[0] };
-        parts.AddRange(top.Skip(1).Select(d => char.ToLowerInvariant(d[0]) + d[1..]));
-
-        return parts.Count switch
+        var sentence = "Fire-protection related permit activity.";
+        if (top.Count > 0)
         {
-            1 => $"{parts[0]}.",
-            2 => $"{parts[0]} and {parts[1]}.",
-            _ => $"{parts[0]}, {parts[1]}, and {parts[2]}.",
-        };
+            var parts = new List<string> { top[0] };
+            parts.AddRange(top.Skip(1).Select(d => char.ToLowerInvariant(d[0]) + d[1..]));
+            sentence = parts.Count switch
+            {
+                1 => $"{parts[0]}.",
+                2 => $"{parts[0]} and {parts[1]}.",
+                _ => $"{parts[0]}, {parts[1]}, and {parts[2]}.",
+            };
+        }
+
+        return contractorStatus == ContractorStatus.FireContractorNamed
+            ? $"{sentence} {FireContractorDescription}."
+            : sentence;
     }
 }

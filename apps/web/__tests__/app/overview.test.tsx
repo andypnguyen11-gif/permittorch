@@ -23,7 +23,7 @@ const DAY = 86_400_000;
 const lead = (o: Partial<LeadSummary>): LeadSummary => ({
   id: "x", score: 50, title: "t", address: null, city: "Houston", state: "TX",
   category: "FIRE_ALARM", permitType: null, status: "NEW", filedDate: null,
-  estimatedValue: null, reason: "r", isNew: false, ...o,
+  estimatedValue: null, reason: "r", isNew: false, contractorStatus: null, ...o,
 });
 
 describe("computeOverviewStats", () => {
@@ -87,7 +87,7 @@ describe("/app overview page", () => {
     expect(screen.getByTestId("stat-avg")).toHaveTextContent("across all 25 leads");
     expect(screen.getByTestId("sparkline-scope")).toHaveTextContent("across all 25 leads");
     const rows = screen.getAllByTestId("score-badge").map((b) => b.textContent);
-    expect(rows).toEqual(["100", "100", "100", "95", "90"]);
+    expect(rows).toEqual(["100", "100", "100", "100", "95"]);
     expect(screen.getByRole("region", { name: "Source health" })).toBeInTheDocument();
     expect(screen.getByText("Next digest: tomorrow morning")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: /permit filings per day/ })).toBeInTheDocument();

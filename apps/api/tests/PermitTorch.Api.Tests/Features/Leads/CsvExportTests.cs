@@ -13,6 +13,7 @@ public class CsvExportTests(ApiFactory factory)
         var source = TestSeed.Source(market, DateTime.UtcNow);
         var permit = TestSeed.Permit(source, contractorName: "Bravo Fire, Inc.");
         var opportunity = TestSeed.Opportunity(permit, 92);
+        opportunity.ContractorStatus = ContractorStatus.FireContractorNamed;
         var sub = $"user_{Guid.NewGuid():N}";
         var (org, user, pref) = TestSeed.User(sub, $"{sub}@example.com");
         var subscription = TestSeed.Subscription(org, plan, "active", market);
@@ -34,9 +35,26 @@ public class CsvExportTests(ApiFactory factory)
         var csv = await response.Content.ReadAsStringAsync();
         var lines = csv.TrimEnd().Split("\r\n");
         Assert.StartsWith("Score,Address,City,PermitType,FireCategory", lines[0]);
+        Assert.EndsWith(",ContractorStatus", lines[0]);
         Assert.Equal(2, lines.Length);
         Assert.Contains("\"Bravo Fire, Inc.\"", lines[1]);
         Assert.Contains("FIRE_SPRINKLER", lines[1]);
+    }
+
+    [Fact]
+    public async Task Export_honours_the_contractor_status_exclusion()
+    {
+        var (client, market) = await SeedUserAsync(PlanTier.Pro);
+
+        var csv = await client.GetStringAsync(
+            $"/api/leads/export.csv?market={market.Slug}&excludeContractorStatus=FIRE_CONTRACTOR_NAMED");
+        Assert.Single(csv.TrimEnd().Split("\r\n"));   // header only: the one lead names a fire firm
+
+        var kept = await client.GetStringAsync(
+            $"/api/leads/export.csv?market={market.Slug}&excludeContractorStatus=NO_CONTRACTOR_LISTED");
+        var lines = kept.TrimEnd().Split("\r\n");
+        Assert.Equal(2, lines.Length);
+        Assert.EndsWith(",FIRE_CONTRACTOR_NAMED", lines[1]);
     }
 
     [Fact]
@@ -107,13 +125,14 @@ public class CsvExportTests(ApiFactory factory)
 
         var lines = csv.TrimEnd().Split("\r\n");
         Assert.EndsWith(
-            ",Applicant,OwnerPhone,OwnerEmail,ContractorPhone,ContractorEmail,ContractorLicense,ApplicantPhone,ApplicantEmail,ApplicantLicense",
+            ",Applicant,OwnerPhone,OwnerEmail,ContractorPhone,ContractorEmail,ContractorLicense,ApplicantPhone,ApplicantEmail,ApplicantLicense,ContractorStatus",
             lines[0]);
         Assert.Equal(3, lines.Length);
+        // These leads were seeded without a contractor status, so the last cell is blank.
         var withContact = Assert.Single(lines, l => l.Contains("Reliable Fire Co"));
-        Assert.EndsWith(",Pat Example,,,(480) 555-0142,office@example.com,000000,480-555-0177,,", withContact);
+        Assert.EndsWith(",Pat Example,,,(480) 555-0142,office@example.com,000000,480-555-0177,,,", withContact);
         var without = Assert.Single(lines, l => l.Contains("No Contact Fire"));
-        Assert.EndsWith(",,,,,,,,,", without);
+        Assert.EndsWith(",,,,,,,,,,", without);
     }
 
     [Fact]

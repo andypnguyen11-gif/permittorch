@@ -45,6 +45,8 @@ public class LeadsEndpointTests(ApiFactory factory) : IAsyncLifetime
         var foreignPermit = TestSeed.Permit(otherSource, description: "Sprinkler retrofit");
 
         _hot = TestSeed.Opportunity(hotPermit, 95, FireCategory.FireSprinkler);
+        _hot.ContractorStatus = ContractorStatus.FireContractorNamed;
+        // _old keeps a null status: a row scored before the status existed.
         _old = TestSeed.Opportunity(oldPermit, 75, FireCategory.FireAlarm, DateTime.UtcNow.AddDays(-5));
         _foreign = TestSeed.Opportunity(foreignPermit, 99, FireCategory.FireSprinkler);
 
@@ -116,6 +118,23 @@ public class LeadsEndpointTests(ApiFactory factory) : IAsyncLifetime
         Assert.Equal("New warehouse fire sprinkler installation", item.GetProperty("title").GetString());
         Assert.Equal("Fire Sprinkler", item.GetProperty("permitType").GetString());
         Assert.Equal("New commercial construction with sprinkler scope", item.GetProperty("reason").GetString());
+        Assert.Equal("FIRE_CONTRACTOR_NAMED", item.GetProperty("contractorStatus").GetString());
+
+        var notYetAssessed = (await GetLeadsAsync("?category=FIRE_ALARM")).GetProperty("items")[0];
+        Assert.Equal(JsonValueKind.Null, notYetAssessed.GetProperty("contractorStatus").ValueKind);
+    }
+
+    [Fact]
+    public async Task Excluding_a_contractor_status_hides_only_leads_that_have_it()
+    {
+        // A lead not yet assessed (null) is never excluded, so the feed cannot empty out while
+        // a release's full rescore is still running.
+        Assert.Equal([_old.Id.ToString()],
+            Ids(await GetLeadsAsync("?excludeContractorStatus=FIRE_CONTRACTOR_NAMED")));
+        Assert.Equal(2, Ids(await GetLeadsAsync("?excludeContractorStatus=NO_CONTRACTOR_LISTED")).Count);
+
+        var bad = await _client.GetAsync("/api/leads?excludeContractorStatus=AWARDED");
+        Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
     }
 
     [Fact]
@@ -145,6 +164,7 @@ public class LeadsEndpointTests(ApiFactory factory) : IAsyncLifetime
         var detail = JsonSerializer.Deserialize<JsonElement>(await response.Content.ReadAsStringAsync());
         Assert.Equal(_hot.Id.ToString(), detail.GetProperty("id").GetString());
         Assert.Equal(0.9m, detail.GetProperty("confidence").GetDecimal());
+        Assert.Equal("FIRE_CONTRACTOR_NAMED", detail.GetProperty("contractorStatus").GetString());
         Assert.Equal("FP-2026-001234", detail.GetProperty("permit").GetProperty("permitNumber").GetString());
         Assert.Equal("Warehouse Owner LLC", detail.GetProperty("permit").GetProperty("ownerName").GetString());
         Assert.Equal(JsonValueKind.Array, detail.GetProperty("signals").ValueKind);

@@ -255,6 +255,7 @@ public class RemovalServiceTests(PostgresFixture fixture)
         Assert.True(after.ContractorWithheld);
         Assert.True(after.ContractorWithheldIsFireTrade);
         Assert.Equal(before, after.Opportunity!.LeadScore);
+        Assert.Equal(ContractorStatus.FireContractorNamed, after.Opportunity.ContractorStatus);
         Assert.Contains(after.Opportunity.Signals, s => s.SignalType == "FIRE_CONTRACTOR_ASSIGNED");
         Assert.DoesNotContain(after.Opportunity.Signals, s => s.SignalType == "NO_CONTRACTOR_LISTED");
         Assert.Equal(after.Opportunity.LeadScore,

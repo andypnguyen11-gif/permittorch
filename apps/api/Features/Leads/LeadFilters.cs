@@ -7,13 +7,18 @@ namespace PermitTorch.Api.Features.Leads;
 /// All user input is whitelisted here at the API boundary (PRD §58, CLAUDE.md).</summary>
 public sealed record LeadFilters(
     string? MarketSlug, FireCategory? Category, int? MinScore, int? MaxAgeDays,
-    PermitStatusKind? Status, string? Q, int Page, int PageSize)
+    PermitStatusKind? Status, string? Q,
+    // An exclusion, because the one thing a salesperson asks for is to hide the leads that
+    // already name a fire contractor. A lead whose status is not yet known is never excluded.
+    ContractorStatus? ExcludeContractorStatus,
+    int Page, int PageSize)
 {
     /// <summary>Deep OFFSET pagination is a cheap DoS; nobody pages past this in a lead feed.</summary>
     public const int MaxPage = 10_000;
 
     public static bool TryParse(string? market, string? category, int? minScore, int? maxAgeDays,
-        string? status, string? q, int? page, int? pageSize, out LeadFilters filters, out string error)
+        string? status, string? q, string? excludeContractorStatus, int? page, int? pageSize,
+        out LeadFilters filters, out string error)
     {
         filters = null!;
         error = "";
@@ -32,6 +37,17 @@ public sealed record LeadFilters(
             parsedStatus = value;
         }
 
+        ContractorStatus? parsedExclude = null;
+        if (!string.IsNullOrWhiteSpace(excludeContractorStatus))
+        {
+            if (!Wire.TryParse<ContractorStatus>(excludeContractorStatus, out var value))
+            {
+                error = "Unknown excludeContractorStatus";
+                return false;
+            }
+            parsedExclude = value;
+        }
+
         if (minScore is < 0 or > 100) { error = "minScore must be between 0 and 100"; return false; }
         if (maxAgeDays is < 0 or > 3650) { error = "maxAgeDays must be between 0 and 3650"; return false; }
 
@@ -47,7 +63,7 @@ public sealed record LeadFilters(
         if (trimmedQ is { Length: > 200 }) { error = "q must be at most 200 characters"; return false; }
 
         filters = new LeadFilters(trimmedMarket, parsedCategory, minScore, maxAgeDays,
-            parsedStatus, trimmedQ, parsedPage, parsedPageSize);
+            parsedStatus, trimmedQ, parsedExclude, parsedPage, parsedPageSize);
         return true;
     }
 }

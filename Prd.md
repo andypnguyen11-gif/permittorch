@@ -552,7 +552,8 @@ Example signals:
 | Project value >$500K        |            +10 |
 | Large square footage        |            +10 |
 | Contractor not listed       |            +10 |
-| Fire contractor already on the permit | -25 |
+| A contractor who is not a fire-protection firm is listed (usually the GC; the fire sub is not visible yet) | +15 |
+| Fire contractor already on the permit | -50 |
 | Old permit                  |            -20 |
 | Closed permit               |            -30 |
 

@@ -22,6 +22,7 @@ const lead: LeadSummary = {
   category, permitType: "Fire Protection", status,
   filedDate: "2026-08-01T00:00:00Z", estimatedValue: 250000,
   reason: "New commercial build with sprinkler scope", isNew: true,
+  contractorStatus: "OTHER_CONTRACTOR_NAMED",
 };
 
 const signal: LeadSignal = {

@@ -116,25 +116,15 @@ public sealed class RescoringJob : BackgroundService
                     new ClassificationResult(opportunity.Category, opportunity.Confidence,
                         opportunity.CategoryOverridden ? "manual" : "rescore"),
                     nowUtc);
+                // The status is part of the comparison: an inspection's numbers never move
+                // between releases, so without it a null status would be skipped forever.
                 if (SameSignals(opportunity.Signals, result.Signals)
                     && opportunity.LeadScore == result.Score
-                    && opportunity.Reason == result.Reason)
+                    && opportunity.Reason == result.Reason
+                    && opportunity.ContractorStatus == result.ContractorStatus)
                     continue;
 
-                db.RemoveRange(opportunity.Signals);
-                foreach (var signal in result.Signals)
-                {
-                    db.Add(new LeadSignal
-                    {
-                        Id = Guid.NewGuid(),
-                        FireOpportunityId = opportunity.Id,
-                        SignalType = signal.SignalType,
-                        Description = signal.Description,
-                        Weight = signal.Weight,
-                    });
-                }
-                opportunity.LeadScore = result.Score;
-                opportunity.Reason = result.Reason;
+                StoredScore.Replace(db, opportunity, result);
                 // LastUpdatedAt is deliberately untouched: a time-based rescore is not new permit
                 // activity and must not make a lead look fresher than its data.
                 batchChanged++;

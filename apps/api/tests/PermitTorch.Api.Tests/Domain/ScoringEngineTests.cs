@@ -20,10 +20,12 @@ public class ScoringEngineTests
         DateTime? filedDate = null,
         decimal? estimatedValue = null,
         int? squareFootage = null,
-        string? contractorName = "Summit General Contractors")  // not a fire trade: no contractor signal either way
+        string? contractorName = "Summit General Contractors",  // not a fire trade: earns OTHER_CONTRACTOR_LISTED
+        string? recordType = "permit")
         => new("ext-1", "houston-tx", null, permitType, description, status, null,
             "100 Main St", "Houston", "TX", null, null, null, filedDate, null,
-            estimatedValue, squareFootage, null, contractorName, "https://example.gov/p/1", "fp");
+            estimatedValue, squareFootage, null, contractorName, "https://example.gov/p/1", "fp",
+            RecordType: recordType);
 
     private static ClassificationResult Sprinkler()
         => new(FireCategory.FireSprinkler, 0.95m, "sprinkler|nfpa 13");
@@ -36,7 +38,8 @@ public class ScoringEngineTests
     [Fact]
     public void Score_StartsAtBase30_ForBareClassifiedPermit()
     {
-        var permit = Permit(description: "Fire lane restriping"); // no signal conditions met
+        // No signal conditions met: an inspection with no contractor says nothing about one.
+        var permit = Permit(description: "Fire lane restriping", contractorName: null, recordType: "inspection");
         var result = DefaultEngine().Score(permit, General(), Now);
 
         Assert.Equal(30, result.Score);
@@ -101,8 +104,9 @@ public class ScoringEngineTests
 
         var result = DefaultEngine().Score(permit, classification, Now);
 
-        // 30 + 20 (alarm) + 20 (failed) = 70; within 0..100 so exact traceability holds
-        Assert.Equal(70, result.Score);
+        // 30 + 20 (alarm) + 20 (failed) + 15 (non-fire contractor) = 85; within 0..100 so
+        // exact traceability holds
+        Assert.Equal(85, result.Score);
         Assert.Equal(result.Score, result.Signals.Sum(s => s.Weight));
         Assert.Equal("BASE_SCORE", result.Signals[0].SignalType);
     }
@@ -167,7 +171,7 @@ public class ScoringEngineTests
 
         var signal = Assert.Single(result.Signals, s => s.SignalType == "FIRE_ALARM_SCOPE");
         Assert.Equal(5, signal.Weight);
-        Assert.Equal(35, result.Score);
+        Assert.Equal(50, result.Score); // 30 + 5 + 15 (non-fire contractor)
     }
 
     [Fact]
@@ -189,12 +193,14 @@ public class ScoringEngineTests
     {
         var permit = Permit(
             description: "New commercial building with NFPA 13 sprinkler system",
-            filedDate: Now.AddHours(-24));
+            filedDate: Now.AddHours(-24),
+            contractorName: null);
 
         var result = DefaultEngine().Score(permit, Sprinkler(), Now);
 
         // Top 3 by weight desc, ties by SignalType ordinal:
-        // FIRE_SPRINKLER_SCOPE (25) before NEW_COMMERCIAL_BUILD (25), then PERMIT_RECENT (15).
+        // FIRE_SPRINKLER_SCOPE (25) before NEW_COMMERCIAL_BUILD (25), then PERMIT_RECENT (15)
+        // ahead of NO_CONTRACTOR_LISTED (10).
         Assert.Equal(
             "Explicit fire sprinkler scope, new commercial construction, and filed within the last 72 hours.",
             result.Reason);

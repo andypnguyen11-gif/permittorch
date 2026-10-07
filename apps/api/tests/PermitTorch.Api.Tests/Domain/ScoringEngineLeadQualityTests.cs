@@ -63,10 +63,10 @@ public class ScoringEngineLeadQualityTests
         var result = Engine().Score(Permit(contractorName: contractor), Sprinkler(), Now);
 
         var signal = Assert.Single(result.Signals, s => s.SignalType == "FIRE_CONTRACTOR_ASSIGNED");
-        Assert.Equal(-25, signal.Weight);
+        Assert.Equal(-50, signal.Weight);
         Assert.Equal("A fire-protection contractor is already on this permit", signal.Description);
-        // 30 base + 25 sprinkler scope - 25 assigned
-        Assert.Equal(30, result.Score);
+        // 30 base + 25 sprinkler scope - 50 assigned
+        Assert.Equal(5, result.Score);
         Assert.Equal(result.Score, result.Signals.Sum(s => s.Weight));
     }
 
@@ -92,7 +92,9 @@ public class ScoringEngineLeadQualityTests
 
         Assert.False(Has(result, "FIRE_CONTRACTOR_ASSIGNED"));
         Assert.False(Has(result, "NO_CONTRACTOR_LISTED"));
-        Assert.Equal(55, result.Score);
+        Assert.True(Has(result, "OTHER_CONTRACTOR_LISTED"));
+        // 30 base + 25 sprinkler scope + 15 non-fire contractor
+        Assert.Equal(70, result.Score);
     }
 
     [Fact]
@@ -282,8 +284,8 @@ public class ScoringEngineLeadQualityTests
         var result = Engine().Score(permit, classification, Now);
 
         Assert.Equal(FireCategory.FireSprinkler, classification.Category);
-        // 30 base + 25 new build wording + 25 sprinkler + 10 value - 25 contractor assigned
-        Assert.Equal(65, result.Score);
+        // 30 base + 25 new build wording + 25 sprinkler + 10 value - 50 contractor assigned
+        Assert.Equal(40, result.Score);
         Assert.Equal(result.Score, result.Signals.Sum(s => s.Weight));
     }
 }

@@ -135,6 +135,7 @@ public static class DevSeeder
             AddSignals(db, opp, score);
             opp.LeadScore = score.Score;
             opp.Reason = score.Reason;
+            opp.ContractorStatus = score.ContractorStatus;
             opp.FirstDetectedAt = filed;
             opp.LastUpdatedAt = nowUtc;
         }
@@ -489,6 +490,7 @@ public static class DevSeeder
             {
                 Id = G(l.N), PermitId = permit.Id, Category = l.Category,
                 LeadScore = score.Score, Confidence = l.Confidence, Reason = score.Reason,
+                ContractorStatus = score.ContractorStatus,
                 FirstDetectedAt = filed, LastUpdatedAt = nowUtc,
             };
             db.FireOpportunities.Add(opp);
