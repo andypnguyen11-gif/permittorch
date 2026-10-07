@@ -32,7 +32,10 @@ public record NormalizedPermit(string ExternalId, string Jurisdiction, string? P
     PartyContact? ContractorContact = null,
     // The record names a contractor whose name was removed on request. The name is gone; what
     // the score needs to know about it is kept. Neither is personal data.
-    bool ContractorWithheld = false, bool ContractorWithheldIsFireTrade = false)
+    bool ContractorWithheld = false, bool ContractorWithheldIsFireTrade = false,
+    // Whether this permit is the fire work itself, as the provider read it from the city's own
+    // permit type. Null when the source is unknown.
+    PermitScope? Scope = null)
 {
     public bool IsInspection => IsRecordType("inspection");
     public bool IsViolation => IsRecordType("violation");
@@ -96,7 +99,8 @@ public static class PermitNormalizer
             OwnerContact: Contact(raw.Owner?.Phone, raw.Owner?.Email, licenseNumber: null),
             ApplicantContact: Contact(raw.Applicant?.Phone, raw.Applicant?.Email, licenseNumber: null),
             ContractorContact: Contact(raw.Contractor?.Phone, raw.Contractor?.Email,
-                raw.Contractor?.LicenseNumber));
+                raw.Contractor?.LicenseNumber),
+            Scope: SourcePermitTypes.Resolve(raw.Source?.SourceId, raw.Description));
     }
 
     private const int MaxPhoneLength = 50;

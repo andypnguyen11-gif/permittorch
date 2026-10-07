@@ -1,0 +1,20 @@
+{
+  "allFireWork": [
+    "nyc-dobnow-permits", "sf-fire-permits", "sf-fire-inspections", "sf-fire-violations",
+    "detroit-bseed-fire-alarm-permits", "sacramento-fire-permits-current", "sacramento-fire-permits-archive",
+    "virginia-beach-fire-permits", "cosprings-fire-permits", "omaha-fire-permits", "atlanta-fire-permits",
+    "tulsa-fire-permits", "seattle-trade-permits", "kcmo-issued-permits"
+  ],
+  "fireWorkTypes": {
+    "philly-permits": ["Fire Suppression Permit"],
+    "boston-building-permits": ["Electrical Fire Alarms", "Fire Alarm", "Fire Protection/Sprinkler"],
+    "miami-building-permits": ["ELECTRICAL FOR FIRE ALARM", "EXISTING FIRE ALARM SYSTEM", "NEW FIRE ALARM SYSTEM",
+      "EXISTING FIRE SPRINKLER SYSTEM", "NEW FIRE SPRINKLER SYSTEM", "FIRE PUMP", "JOCKEY PUMP", "STANDPIPE",
+      "FIRE DEPARTMENT CONNECTION", "HOOD FIRE SUPPRESSION SYSTEM - MECHANICAL", "WATER SUPPLY / FIRELINE"],
+    "portland-bds-permits": ["Fire Systems Permit"],
+    "charlotte-accela-permits": ["Fire"],
+    "louisville-construction-permits": ["Range Hood Suppression"],
+    "austin-construction-permits": ["Fireline"],
+    "sanantonio-permits": ["New Sprinkler Installation", "Fire pump TOPS", "Fire alarm power"]
+  }
+}

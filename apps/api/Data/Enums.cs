@@ -17,3 +17,7 @@ public enum ContractorStatus { NotApplicable, NoContractorListed, OtherContracto
 // What a permit's record link opens: the city's own page for the record, the ArcGIS attribute
 // listing for the row, or the open-data API's answer for the row.
 public enum RecordLinkKind { Page, Rest, Data }
+// Whether the permit itself is the fire work (a sprinkler, alarm or suppression permit, whose
+// named contractor does that work) or a building permit that only mentions it. Resolved from the
+// city's own permit type by the provider; null on permits stored before it was known.
+public enum PermitScope { FireWorkPermit, BuildingPermit }

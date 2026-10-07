@@ -54,6 +54,19 @@ public class PermitNormalizerTests
             ScrapedAt: "2026-08-20T15:51:00.227Z");
 
     [Fact]
+    public void Normalize_SetsScopeFromSourceAndDescription()
+    {
+        var fireWork = PermitNormalizer.Normalize(Raw(
+            source: new RawSource("nyc-dobnow-permits", "New York, NY", "socrata", "https://data.cityofnewyork.us")));
+        var building = PermitNormalizer.Normalize(Raw(
+            description: "Tenant improvement. Deferred fire sprinklers. | COM",
+            source: new RawSource("mesa-building-permits", "Mesa, AZ", "socrata", "https://data.mesaaz.gov")));
+
+        Assert.Equal(PermitScope.FireWorkPermit, fireWork.Scope);
+        Assert.Equal(PermitScope.BuildingPermit, building.Scope);
+    }
+
+    [Fact]
     public void Normalize_MapsAllFields_ForFullRecord()
     {
         var normalized = PermitNormalizer.Normalize(Raw(
