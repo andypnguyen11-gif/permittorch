@@ -7,11 +7,13 @@ namespace PermitTorch.Api.Features.Leads;
 
 /// <summary>The one and only place lead queries are scoped and filtered.
 /// ForEntitledMarkets is the entitlement wall (master §2): every consumer
-/// (feed, detail, CSV, saved-lead save, digests) starts from it.</summary>
+/// (feed, detail, CSV, saved-lead save, digests) starts from it. A lead whose record describes
+/// no fire-protection work is hidden here, so no consumer can show it.</summary>
 public static class LeadQueries
 {
     public static IQueryable<FireOpportunity> ForEntitledMarkets(AppDbContext db, IReadOnlyList<Guid> marketIds) =>
-        db.FireOpportunities.Where(o => marketIds.Contains(o.Permit.Source.MarketId));
+        db.FireOpportunities.Where(o => marketIds.Contains(o.Permit.Source.MarketId)
+            && (o.Standing == null || o.Standing != LeadStanding.NotFireWork));
 
     public static IQueryable<FireOpportunity> ApplyFilters(
         IQueryable<FireOpportunity> query, LeadFilters filters, DateTime nowUtc)
@@ -47,8 +49,20 @@ public static class LeadQueries
         return query;
     }
 
+    // "Who should a contractor call first today": where the lead stands (open fire work first),
+    // then freshness, then a named general contractor before nobody listed, then project value.
+    // The score only breaks ties after that. A lead not yet scored by this release goes after
+    // every assessed one; unknown dates and values go last within their group.
     public static IOrderedQueryable<FireOpportunity> OrderForFeed(IQueryable<FireOpportunity> query) =>
-        query.OrderByDescending(o => o.LeadScore).ThenByDescending(o => o.FirstDetectedAt);
+        query.OrderBy(o => o.Standing == null ? (int)LeadStanding.NotFireWork : (int)o.Standing)
+            .ThenBy(o => o.LastActivityOn == null)
+            .ThenByDescending(o => o.LastActivityOn)
+            .ThenBy(o => o.ContractorStatus == ContractorStatus.OtherContractorNamed ? 0 : 1)
+            .ThenBy(o => o.Permit.EstimatedValue == null)
+            .ThenByDescending(o => o.Permit.EstimatedValue)
+            .ThenByDescending(o => o.LeadScore)
+            .ThenByDescending(o => o.FirstDetectedAt)
+            .ThenBy(o => o.Id);
 
     public static readonly Expression<Func<FireOpportunity, LeadRow>> ToRow = o => new LeadRow(
         o.Id, o.LeadScore, o.Category, o.Reason, o.FirstDetectedAt,

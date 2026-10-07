@@ -38,7 +38,8 @@ public static class MarketsEndpoints
 
         var since = DateTime.UtcNow.AddDays(-30);
         var counts = await db.FireOpportunities
-            .Where(o => o.Permit.Source.Market.Active && o.FirstDetectedAt >= since)
+            .Where(o => o.Permit.Source.Market.Active && o.FirstDetectedAt >= since
+                && (o.Standing == null || o.Standing != LeadStanding.NotFireWork))
             .GroupBy(o => new { o.Permit.Source.MarketId, o.Category })
             .Select(g => new { g.Key.MarketId, g.Key.Category, Count = g.Count() })
             .ToListAsync(ct);
@@ -72,7 +73,8 @@ public static class MarketsEndpoints
 
         var since = DateTime.UtcNow.AddDays(-30);
         var counts = await db.FireOpportunities
-            .Where(o => o.Permit.Source.MarketId == market.Id && o.FirstDetectedAt >= since)
+            .Where(o => o.Permit.Source.MarketId == market.Id && o.FirstDetectedAt >= since
+                && (o.Standing == null || o.Standing != LeadStanding.NotFireWork))
             .GroupBy(o => o.Category)
             .Select(g => new { Category = g.Key, Count = g.Count() })
             .ToListAsync(ct);
