@@ -228,6 +228,31 @@ public class IngestionJobTests
     }
 
     [Fact]
+    public async Task RunOnce_RescrapeWithoutDescription_KeepsTheStoredScope()
+    {
+        await GetOrSeedSourceAsync("philly-permits");
+        var recordId = $"philly-permits:{Guid.NewGuid():N}";
+        var first = Record(recordId, "philly-permits",
+            description: "Relocate sprinkler heads | Fire Suppression Permit | Addition and/or Alterations",
+            fireSystemType: "fire_sprinkler", contractorName: "B M CONSULTING SERVICES INC");
+        var again = Record(recordId, "philly-permits", description: null,
+            fireSystemType: "fire_sprinkler", contractorName: "B M CONSULTING SERVICES INC");
+        foreach (var record in new[] { first, again })
+        {
+            var (job, sp) = BuildJob(new FakePermitSourceProvider(
+                Run($"run-{Guid.NewGuid():N}", new[] { record }, Stat("philly-permits"))));
+            await using var _ = sp;
+            await job.RunOnceAsync(CancellationToken.None);
+        }
+
+        await using var db = _fixture.CreateContext();
+        var permit = await db.Set<Permit>().SingleAsync(p => p.ExternalId == recordId);
+        var opportunity = await db.Set<FireOpportunity>().SingleAsync(o => o.PermitId == permit.Id);
+        Assert.Equal(PermitScope.FireWorkPermit, permit.Scope);
+        Assert.Equal(LeadStanding.FireWorkPermitContractorNamed, opportunity.Standing);
+    }
+
+    [Fact]
     public async Task RunOnce_MesaDeferred_IsStoredAhead_WithLastActivity()
     {
         await GetOrSeedSourceAsync("mesa-building-permits");
