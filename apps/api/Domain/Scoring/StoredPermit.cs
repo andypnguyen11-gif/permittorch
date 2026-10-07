@@ -19,5 +19,5 @@ public static class StoredPermit
         InspectionDate: p.InspectionDate, BusinessName: p.BusinessName, PropertyType: p.PropertyType,
         RecordUrl: p.RecordUrl, RecordUrlKind: p.RecordUrlKind, ApplicantName: p.ApplicantName,
         ContractorWithheld: p.ContractorWithheld,
-        ContractorWithheldIsFireTrade: p.ContractorWithheldIsFireTrade);
+        ContractorWithheldIsFireTrade: p.ContractorWithheldIsFireTrade, Scope: p.Scope);
 }

@@ -68,6 +68,16 @@ public class IngestionJobTests
         return source;
     }
 
+    // A real scraper source id is unique in the database and shared across tests: reuse it.
+    private async Task GetOrSeedSourceAsync(string scraperSourceId)
+    {
+        await using (var db = _fixture.CreateContext())
+        {
+            if (await db.Sources.AnyAsync(s => s.Jurisdiction == scraperSourceId)) return;
+        }
+        await SeedSourceAsync(scraperSourceId);
+    }
+
     private (IngestionJob Job, ServiceProvider Services) BuildJob(IPermitSourceProvider provider)
     {
         var services = new ServiceCollection();
@@ -194,6 +204,52 @@ public class IngestionJobTests
         Assert.Contains(signals, s => s.SignalType == "FIRE_SPRINKLER_SCOPE" && s.Weight == 25);
         Assert.Contains(signals, s => s.SignalType == "NO_CONTRACTOR_LISTED" && s.Weight == 10);
         Assert.Contains(signals, s => s.SignalType == "BASE_SCORE" && s.Weight == 30);
+    }
+
+    [Fact]
+    public async Task RunOnce_FireSuppressionPermitNamingContractor_IsStoredAsFireWorkPermit()
+    {
+        await GetOrSeedSourceAsync("philly-permits");
+        var record = Record($"philly-permits:{Guid.NewGuid():N}", "philly-permits",
+            description: "FOR THE INSTALLATION OF 91 NEW PENDENT SPRINKLERS | Fire Suppression Permit | New Construction",
+            fireSystemType: "fire_sprinkler", contractorName: "B M CONSULTING SERVICES INC");
+        var (job, sp) = BuildJob(new FakePermitSourceProvider(
+            Run($"run-{Guid.NewGuid():N}", new[] { record }, Stat("philly-permits"))));
+        await using var _ = sp;
+
+        await job.RunOnceAsync(CancellationToken.None);
+
+        await using var db = _fixture.CreateContext();
+        var permit = await db.Set<Permit>().SingleAsync(p => p.ExternalId == record.RecordId);
+        var opportunity = await db.Set<FireOpportunity>().SingleAsync(o => o.PermitId == permit.Id);
+        Assert.Equal(PermitScope.FireWorkPermit, permit.Scope);
+        Assert.Equal(LeadStanding.FireWorkPermitContractorNamed, opportunity.Standing);
+        Assert.Equal(ContractorStatus.FireContractorNamed, opportunity.ContractorStatus);
+    }
+
+    [Fact]
+    public async Task RunOnce_MesaDeferred_IsStoredAhead_WithLastActivity()
+    {
+        await GetOrSeedSourceAsync("mesa-building-permits");
+        var filed = DateTime.UtcNow.Date.AddDays(-2).AddHours(15);
+        var record = Record($"mesa-building-permits:{Guid.NewGuid():N}", "mesa-building-permits",
+            description: "Tenant improvement of existing suite. New plumbing fixtures. Deferred fire sprinklers. Results in CofO. | COM",
+            fireSystemType: "fire_sprinkler", contractorName: "GEROLD CONSTRUCTION LLC",
+            applicationDate: filed.ToString("o"));
+        var (job, sp) = BuildJob(new FakePermitSourceProvider(
+            Run($"run-{Guid.NewGuid():N}", new[] { record }, Stat("mesa-building-permits"))));
+        await using var _ = sp;
+
+        await job.RunOnceAsync(CancellationToken.None);
+
+        await using var db = _fixture.CreateContext();
+        var permit = await db.Set<Permit>().SingleAsync(p => p.ExternalId == record.RecordId);
+        var opportunity = await db.Set<FireOpportunity>().SingleAsync(o => o.PermitId == permit.Id);
+        Assert.Equal(PermitScope.BuildingPermit, permit.Scope);
+        Assert.Equal(LeadStanding.FireWorkAhead, opportunity.Standing);
+        Assert.Equal(filed.Date, opportunity.LastActivityOn);
+        Assert.StartsWith("A contractor is listed; no fire-protection firm named. The record says \"deferred fire sprinklers\".",
+            opportunity.Reason);
     }
 
     [Fact]

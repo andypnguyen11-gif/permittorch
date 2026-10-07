@@ -371,6 +371,7 @@ public sealed class IngestionJob : BackgroundService
                 ApplicantName = normalized.ApplicantName,
                 ContractorWithheld = normalized.ContractorWithheld,
                 ContractorWithheldIsFireTrade = normalized.ContractorWithheldIsFireTrade,
+                Scope = normalized.Scope,
                 RecordType = normalized.RecordType,
                 WorkType = normalized.WorkType,
                 ExpirationDate = normalized.ExpirationDate,
@@ -444,6 +445,8 @@ public sealed class IngestionJob : BackgroundService
         opportunity.LeadScore = scoreResult.Score;
         opportunity.Reason = scoreResult.Reason;
         opportunity.ContractorStatus = scoreResult.ContractorStatus;
+        opportunity.Standing = scoreResult.Standing;
+        opportunity.LastActivityOn = scoreResult.LastActivityOn;
         opportunity.LastUpdatedAt = now;
 
         foreach (var signal in scoreResult.Signals)
@@ -598,6 +601,7 @@ public sealed class IngestionJob : BackgroundService
         if (n.WorkType is not null) permit.WorkType = n.WorkType;
         if (n.ExpirationDate.HasValue) permit.ExpirationDate = n.ExpirationDate;
         if (n.InspectionDate.HasValue) permit.InspectionDate = n.InspectionDate;
+        if (n.Scope.HasValue) permit.Scope = n.Scope;
         if (n.BusinessName is not null) permit.BusinessName = n.BusinessName;
         if (n.PropertyType is not null) permit.PropertyType = n.PropertyType;
         if (!string.IsNullOrEmpty(n.SourceUrl)) permit.SourceUrl = n.SourceUrl;

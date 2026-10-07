@@ -86,9 +86,26 @@ public class MigrationTests : IAsyncLifetime
                 "InitialCreate", "AddCategoryOverridden", "AddPermitDetailFields", "AddPermitRecordLink",
                 "MovePermitNamesToTheirRoles", "AddParticipantContact",
                 "RemovePlaceholderOwnersAndTestPermit", "ClearProjectValuesOfZero",
-                "AddTermsAcceptances", "AddRemovals", "AddContractorStatus",
+                "AddTermsAcceptances", "AddRemovals", "AddContractorStatus", "AddLeadStanding",
             },
             applied.Select(m => m[(m.IndexOf('_') + 1)..]).ToArray());
+    }
+
+    // Nullable on purpose: a lead or permit stored before this release reads as not yet assessed
+    // until the full rescore fills it, never as whichever value happens to be zero.
+    [Theory]
+    [InlineData("fire_opportunities", "standing", "integer")]
+    [InlineData("fire_opportunities", "last_activity_on", "timestamp with time zone")]
+    [InlineData("permits", "scope", "integer")]
+    public async Task Lead_standing_columns_are_nullable_with_no_default(string table, string column, string type)
+    {
+        await using var db = CreateContext();
+        await db.Database.MigrateAsync();
+
+        var shape = await db.Database
+            .SqlQuery<string>($"SELECT data_type || ':' || is_nullable || ':' || coalesce(column_default, '') AS \"Value\" FROM information_schema.columns WHERE table_name = {table} AND column_name = {column}")
+            .SingleAsync();
+        Assert.Equal($"{type}:YES:", shape);
     }
 
     // Nullable on purpose: a lead scored before the status existed must read as not yet

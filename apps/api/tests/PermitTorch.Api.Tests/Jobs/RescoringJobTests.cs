@@ -29,9 +29,11 @@ public class RescoringJobTests
         FireCategory category = FireCategory.GeneralFireProtection, bool overridden = false,
         string description = "Fire protection work", DateTime? issuedDate = null,
         string? contractorName = "Summit General Contractors", DateTime? inspectionDate = null,
-        string? recordType = null, bool scoreWithoutContractor = false)
+        string? recordType = null, bool scoreWithoutContractor = false, string? jurisdiction = null)
     {
         await using var db = _fixture.CreateContext();
+        // A real scraper source id is unique in the database and shared across tests: reuse it.
+        var existing = jurisdiction is null ? null : await db.Sources.SingleOrDefaultAsync(s => s.Jurisdiction == jurisdiction);
         var market = new Market
         {
             Id = Guid.NewGuid(), Name = "Tulsa", City = "Tulsa", State = "OK",
@@ -40,9 +42,10 @@ public class RescoringJobTests
         var source = new Source
         {
             Id = Guid.NewGuid(), MarketId = market.Id, Name = "Tulsa Fire", City = "Tulsa", State = "OK",
-            PortalType = "energov", SourceUrl = "https://example.test", Jurisdiction = $"j-{Guid.NewGuid():N}",
+            PortalType = "energov", SourceUrl = "https://example.test", Jurisdiction = jurisdiction ?? $"j-{Guid.NewGuid():N}",
             Active = true, HealthStatus = HealthStatus.Healthy,
         };
+        if (existing is not null) source = existing;
         var permit = new Permit
         {
             Id = Guid.NewGuid(), SourceId = source.Id, ExternalId = $"ext-{Guid.NewGuid():N}",
@@ -70,7 +73,8 @@ public class RescoringJobTests
             Confidence = classification.Confidence, LeadScore = score.Score, Reason = score.Reason,
             CategoryOverridden = overridden, FirstDetectedAt = scoredAt, LastUpdatedAt = scoredAt,
         };
-        db.AddRange(market, source, permit, opportunity);
+        if (existing is null) db.AddRange(market, source);
+        db.AddRange(permit, opportunity);
         foreach (var s in score.Signals)
         {
             db.Add(new LeadSignal
@@ -100,6 +104,44 @@ public class RescoringJobTests
         var signals = await db.Set<LeadSignal>().AsNoTracking()
             .Where(s => s.FireOpportunityId == id).ToArrayAsync();
         return (o, signals);
+    }
+
+    [Fact]
+    public async Task FullPass_BackfillsScopeAndStanding()
+    {
+        var now = DateTime.UtcNow;
+        var id = await SeedScoredOpportunityAsync(now.AddDays(-3), scoredAt: now.AddDays(-1),
+            category: FireCategory.FireSprinkler, jurisdiction: "philly-permits",
+            description: "FOR THE INSTALLATION OF 91 NEW PENDENT SPRINKLERS | Fire Suppression Permit | Addition and/or Alterations",
+            contractorName: "B M CONSULTING SERVICES INC");
+        var (job, sp) = BuildJob();
+        await using var _ = sp;
+
+        var changed = await job.RescoreOnceAsync(now, CancellationToken.None, fullPass: true);
+
+        Assert.True(changed >= 1);
+        await using var db = _fixture.CreateContext();
+        var stored = await db.Set<FireOpportunity>().Include(o => o.Permit).AsNoTracking().SingleAsync(o => o.Id == id);
+        Assert.Equal(PermitScope.FireWorkPermit, stored.Permit.Scope);
+        Assert.Equal(LeadStanding.FireWorkPermitContractorNamed, stored.Standing);
+        Assert.Equal(ContractorStatus.FireContractorNamed, stored.ContractorStatus);
+        Assert.Equal(now.AddDays(-3).Date, stored.LastActivityOn);
+    }
+
+    [Fact]
+    public async Task FullPass_HidesLawnSprinkler()
+    {
+        var now = DateTime.UtcNow;
+        var id = await SeedScoredOpportunityAsync(now.AddDays(-3), scoredAt: now.AddDays(-1),
+            category: FireCategory.FireSprinkler, jurisdiction: "miami-building-permits",
+            description: "NEW CONSTRUCTION | LAWN SPRINKLER SYSTEM", contractorName: "GREEN LAWNS INC");
+        var (job, sp) = BuildJob();
+        await using var _ = sp;
+
+        await job.RescoreOnceAsync(now, CancellationToken.None, fullPass: true);
+
+        var (stored, _) = await LoadAsync(id);
+        Assert.Equal(LeadStanding.NotFireWork, stored.Standing);
     }
 
     [Fact]
