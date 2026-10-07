@@ -207,3 +207,18 @@ describe("/app/leads/[id] page (mock API)", () => {
     spy.mockRestore();
   });
 });
+
+describe("/app/leads/[id] contractor status", () => {
+  it("badges the header when the permit names a fire contractor", async () => {
+    // lead-011 carries FIRE_CONTRACTOR_NAMED in the fixtures.
+    await renderPage("lead-011");
+    const header = screen.getByRole("heading", { level: 1 }).closest("div")!;
+    expect(within(header).getByText("Fire contractor on permit")).toBeInTheDocument();
+  });
+
+  it("shows no contractor badge when no fire contractor is on the permit", async () => {
+    // lead-001 has NO_CONTRACTOR_LISTED.
+    await renderPage("lead-001");
+    expect(screen.queryByText("Fire contractor on permit")).not.toBeInTheDocument();
+  });
+});

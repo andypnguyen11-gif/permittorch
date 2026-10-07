@@ -55,3 +55,35 @@ describe("FilterBar", () => {
     expect(push).toHaveBeenCalledWith("/app/leads?market=houston-tx&q=warehouse");
   });
 });
+
+describe("FilterBar fire-contractor checkbox", () => {
+  const LABEL = "Hide leads with a fire contractor already on the permit";
+
+  it("maps the checkbox to excludeContractorStatus and resets the page", () => {
+    expect(nextSearchFor({ page: 3 }, "contractor", "FIRE_CONTRACTOR_NAMED"))
+      .toBe("?excludeContractorStatus=FIRE_CONTRACTOR_NAMED");
+    expect(nextSearchFor({ excludeContractorStatus: "FIRE_CONTRACTOR_NAMED", minScore: 80 }, "contractor", "all"))
+      .toBe("?minScore=80");
+  });
+
+  it("reflects the URL state and pushes the exclusion when checked", () => {
+    push.mockClear();
+    const { rerender } = render(<FilterBar query={{ market: "houston-tx" }} />);
+    const box = screen.getByRole("checkbox", { name: LABEL });
+    expect(box).not.toBeChecked();
+    fireEvent.click(box);
+    expect(push).toHaveBeenCalledWith("/app/leads?market=houston-tx&excludeContractorStatus=FIRE_CONTRACTOR_NAMED");
+
+    rerender(<FilterBar query={{ market: "houston-tx", excludeContractorStatus: "FIRE_CONTRACTOR_NAMED" }} />);
+    expect(screen.getByRole("checkbox", { name: LABEL })).toBeChecked();
+    fireEvent.click(screen.getByRole("checkbox", { name: LABEL }));
+    expect(push).toHaveBeenLastCalledWith("/app/leads?market=houston-tx");
+  });
+
+  it("counts as an active filter that Clear filters removes", () => {
+    push.mockClear();
+    render(<FilterBar query={{ q: "warehouse", excludeContractorStatus: "FIRE_CONTRACTOR_NAMED" }} />);
+    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(push).toHaveBeenCalledWith("/app/leads?q=warehouse");
+  });
+});

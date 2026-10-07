@@ -6,6 +6,7 @@ import { getApiToken } from "@/components/app/get-token";
 import { handleApiError } from "@/components/app/api-errors";
 import { ScoreBadge } from "@/components/app/score-badge";
 import { CategoryChip } from "@/components/app/category-chip";
+import { ContractorStatusBadge } from "@/components/app/contractor-status-badge";
 import { SectionCard } from "@/components/app/section-card";
 import { SignalList } from "@/components/app/lead-detail/signal-list";
 import { SaveButton } from "@/components/app/lead-detail/save-button";
@@ -94,6 +95,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-bold tracking-tight">{lead.title}</h1>
               {lead.isNew && <Badge className="bg-orange-100 text-orange-700">New</Badge>}
+              <ContractorStatusBadge status={lead.contractorStatus} />
             </div>
             <p className="flex items-center gap-1.5 text-sm text-stone-500">
               <MapPin className="size-4 shrink-0 text-stone-400" aria-hidden />

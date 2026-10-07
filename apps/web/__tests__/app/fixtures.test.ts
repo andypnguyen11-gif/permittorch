@@ -337,3 +337,19 @@ describe("fixtures index (lib/api.ts mock contract)", () => {
     await expect(fixtures.createBillingPortal()).resolves.toEqual({ url: "#" });
   });
 });
+
+describe("mockLeadsResponse excludeContractorStatus", () => {
+  it("drops only the leads whose permit names a fire contractor, keeping every other status", () => {
+    const all = mockLeadsResponse({ pageSize: 100 }).items;
+    const named = all.filter((l) => l.contractorStatus === "FIRE_CONTRACTOR_NAMED");
+    expect(named.length).toBeGreaterThan(0);
+
+    const res = mockLeadsResponse({ excludeContractorStatus: "FIRE_CONTRACTOR_NAMED", pageSize: 100 });
+    expect(res.total).toBe(all.length - named.length);
+    expect(res.items.some((l) => l.contractorStatus === "FIRE_CONTRACTOR_NAMED")).toBe(false);
+    // Other statuses, including those the engine has not assessed, stay visible.
+    expect(res.items.some((l) => l.contractorStatus === "OTHER_CONTRACTOR_NAMED")).toBe(true);
+    expect(res.items.some((l) => l.contractorStatus === "NOT_APPLICABLE")).toBe(true);
+    expect(res.items.some((l) => l.contractorStatus === "NO_CONTRACTOR_LISTED")).toBe(true);
+  });
+});

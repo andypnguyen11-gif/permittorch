@@ -9,6 +9,7 @@ import { useApiToken } from "@/components/app/use-api-token";
 import { reportMutationError } from "@/components/app/sign-out";
 import { ScoreBadge } from "@/components/app/score-badge";
 import { CategoryIcon } from "@/components/app/category-chip";
+import { ContractorStatusBadge } from "@/components/app/contractor-status-badge";
 import { EmptyState } from "@/components/app/leads/lead-table";
 import { formatRelative, formatValueShort } from "@/components/app/format";
 import { Badge } from "@/components/ui/badge";
@@ -127,7 +128,10 @@ export function SavedList({ initialItems }: { initialItems: SavedLeadItem[] }) {
                 <p className="truncate text-sm text-stone-500">
                   {item.lead.address ?? "Address unavailable"} · {item.lead.city}, {item.lead.state} · {formatValueShort(item.lead.estimatedValue)}
                 </p>
-                <p className="text-xs text-stone-400">Saved {formatRelative(item.createdAt)}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-xs text-stone-400">Saved {formatRelative(item.createdAt)}</p>
+                  <ContractorStatusBadge status={item.lead.contractorStatus} className="h-4.5 px-1.5 text-[10px]" />
+                </div>
               </div>
               <Badge className={item.status === "CONTACTED"
                 ? "bg-green-100 text-green-700"

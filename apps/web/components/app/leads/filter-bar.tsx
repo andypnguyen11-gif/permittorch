@@ -1,17 +1,19 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
-import type { FireCategory, PermitStatus } from "@permittorch/types";
+import type { ContractorStatus, FireCategory, PermitStatus } from "@permittorch/types";
 import type { LeadsQuery } from "@/lib/api";
 import { track } from "@/lib/analytics";
 import { CATEGORY_LABELS } from "@/components/app/category-chip";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { buildLeadsSearch, FIRE_CATEGORIES, PERMIT_STATUSES, STATUS_LABELS } from "./query";
 
-export type FilterKey = "category" | "score" | "age" | "status";
+export type FilterKey = "category" | "score" | "age" | "status" | "contractor";
 
 // Pure mapping so the filter→query logic is unit-testable without the popup.
 export function nextSearchFor(query: LeadsQuery, key: FilterKey, value: string): string {
@@ -20,6 +22,9 @@ export function nextSearchFor(query: LeadsQuery, key: FilterKey, value: string):
   if (key === "score") next.minScore = value === "all" ? undefined : Number.parseInt(value, 10);
   if (key === "age") next.maxAgeDays = value === "all" ? undefined : Number.parseInt(value, 10);
   if (key === "status") next.status = value === "all" ? undefined : (value as PermitStatus);
+  if (key === "contractor") {
+    next.excludeContractorStatus = value === "all" ? undefined : (value as ContractorStatus);
+  }
   return buildLeadsSearch(next);
 }
 
@@ -73,7 +78,9 @@ export function FilterBar({ query }: { query: LeadsQuery }) {
     track("filter_changed", { filter: key, value });
     router.push(`/app/leads${nextSearchFor(query, key, value)}`);
   };
-  const active = query.category || query.minScore != null || query.maxAgeDays != null || query.status;
+  const hideFireContractor = query.excludeContractorStatus === "FIRE_CONTRACTOR_NAMED";
+  const active = query.category || query.minScore != null || query.maxAgeDays != null || query.status
+    || hideFireContractor;
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -85,6 +92,11 @@ export function FilterBar({ query }: { query: LeadsQuery }) {
         options={AGE_OPTIONS} onChange={(v) => push("age", v)} />
       <FilterSelect label="Status" width="w-40" value={query.status ?? "all"}
         options={STATUS_OPTIONS} onChange={(v) => push("status", v)} />
+      <Label className="h-9 cursor-pointer gap-2 rounded-md border border-input bg-white px-3 text-sm font-medium text-stone-700">
+        <Checkbox checked={hideFireContractor}
+          onCheckedChange={(checked) => push("contractor", checked ? "FIRE_CONTRACTOR_NAMED" : "all")} />
+        Hide leads with a fire contractor already on the permit
+      </Label>
       {active && (
         <Button variant="ghost" size="sm" className="h-9 text-stone-500"
           onClick={() => router.push(`/app/leads${buildLeadsSearch({ market: query.market, q: query.q })}`)}>

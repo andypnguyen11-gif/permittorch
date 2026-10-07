@@ -476,7 +476,7 @@ const byScoreThenDetected = (a: LeadSummary, b: LeadSummary): number =>
   b.score - a.score || (firstDetected.get(b.id) ?? 0) - (firstDetected.get(a.id) ?? 0);
 
 export function mockLeadsResponse(query: LeadsQuery = {}): LeadsResponse {
-  const { market, category, minScore, maxAgeDays, status, q } = query;
+  const { market, category, minScore, maxAgeDays, status, q, excludeContractorStatus } = query;
   const page = Math.max(1, query.page ?? 1);
   const pageSize = Math.max(1, query.pageSize ?? 25);
   const needle = q?.trim().toLowerCase();
@@ -489,6 +489,8 @@ export function mockLeadsResponse(query: LeadsQuery = {}): LeadsResponse {
       if (minScore != null && l.score < minScore) return false;
       if (cutoff != null && (l.filedDate == null || Date.parse(l.filedDate) < cutoff)) return false;
       if (status && l.status !== status) return false;
+      // Strict equality: a null (unassessed) status never matches the exclusion.
+      if (excludeContractorStatus && l.contractorStatus === excludeContractorStatus) return false;
       if (needle) {
         const hay = `${l.title} ${l.address ?? ""} ${l.city} ${l.reason} ${l.permitType ?? ""}`.toLowerCase();
         if (!hay.includes(needle)) return false;

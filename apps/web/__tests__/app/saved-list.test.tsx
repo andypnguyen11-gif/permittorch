@@ -108,3 +108,16 @@ describe("SavedList", () => {
     expect(screen.getByText("Warehouse Fire Sprinkler System")).toBeInTheDocument();
   });
 });
+
+describe("SavedList contractor status", () => {
+  it("badges only the saved leads whose permit names a fire contractor", () => {
+    const named: SavedLeadItem = { ...item, id: "saved-011",
+      lead: { ...item.lead, id: "lead-011", title: "Parking Garage Standpipe Repair", contractorStatus: "FIRE_CONTRACTOR_NAMED" } };
+    const unassessed: SavedLeadItem = { ...item, id: "saved-099",
+      lead: { ...item.lead, id: "lead-099", title: "Unassessed Lead", contractorStatus: null } };
+    render(<SavedList initialItems={[item, named, unassessed]} />);
+    const badges = screen.getAllByText("Fire contractor on permit");
+    expect(badges).toHaveLength(1);
+    expect(badges[0].closest("li")).toHaveTextContent("Parking Garage Standpipe Repair");
+  });
+});

@@ -7,6 +7,7 @@ import {
 } from "@/components/ui/table";
 import { ScoreBadge } from "@/components/app/score-badge";
 import { CategoryIcon } from "@/components/app/category-chip";
+import { ContractorStatusBadge } from "@/components/app/contractor-status-badge";
 import { formatDate, formatRelative, formatValueShort, humanizeMachineString, repeatsTitle } from "@/components/app/format";
 import { cn } from "@/lib/utils";
 
@@ -86,6 +87,7 @@ export function LeadTable({ leads, className, emptyState, compact = false }: {
                       {lead.isNew && (
                         <Badge className="h-4.5 bg-orange-100 px-1.5 text-[10px] text-orange-700">New</Badge>
                       )}
+                      <ContractorStatusBadge status={lead.contractorStatus} className="h-4.5 px-1.5 text-[10px]" />
                     </div>
                   </div>
                 </div>
