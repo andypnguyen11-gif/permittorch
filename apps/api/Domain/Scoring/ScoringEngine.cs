@@ -250,7 +250,7 @@ public class ScoringEngine
         var opening = standing switch
         {
             LeadStanding.FireWorkAhead => $"{who} The record says \"{reading.Quote}\".",
-            LeadStanding.FireWorkMentioned => reading.Quote is null ? who : $"{who} The record mentions \"{reading.Quote}\".",
+            LeadStanding.FireWorkMentioned => reading.Quote is null ? who : $"{who} The record mentions {reading.Quote}.",
             LeadStanding.FireWorkPermitNoContractor => $"This is the {PermitKind(category)} permit, and it names no contractor.",
             LeadStanding.FireWorkPermitContractorNamed => $"This is the {PermitKind(category)} permit, and it names a contractor.",
             LeadStanding.InspectionOrViolation => permit.IsViolation

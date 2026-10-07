@@ -60,7 +60,7 @@ public class ScoringEngineStandingTests
             contractorName: null, filedDate: Oct6), Alarm());
 
         Assert.Equal(LeadStanding.FireWorkMentioned, result.Standing);
-        Assert.Equal("No contractor listed. The record mentions \"new lighting, fire alarm devices and power\". Filed Oct 6, 2026.",
+        Assert.Equal("No contractor listed. The record mentions fire alarm work. Filed Oct 6, 2026.",
             result.Reason);
     }
 

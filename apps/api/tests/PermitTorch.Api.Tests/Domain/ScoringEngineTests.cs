@@ -189,7 +189,7 @@ public class ScoringEngineTests
     }
 
     [Fact]
-    public void Reason_QuotesTheRecord_WhenItMentionsFireWork()
+    public void Reason_NamesTheFireWorkTheRecordMentions()
     {
         var permit = Permit(
             description: "New commercial building with NFPA 13 sprinkler system",
@@ -199,7 +199,7 @@ public class ScoringEngineTests
         var result = DefaultEngine().Score(permit, Sprinkler(), Now);
 
         Assert.Equal(
-            "No contractor listed. The record mentions \"new commercial building with nfpa 13 sprinkler system\". Filed Aug 18, 2026.",
+            "No contractor listed. The record mentions sprinkler work. Filed Aug 18, 2026.",
             result.Reason);
     }
 

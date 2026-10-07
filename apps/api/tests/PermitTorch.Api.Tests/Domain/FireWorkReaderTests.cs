@@ -104,16 +104,51 @@ public class FireWorkReaderTests
     {
         var reading = FireWorkReader.Read("Fire Sprinkler Permit | New Installation of Sprinkler System", PermitScope.FireWorkPermit);
         Assert.Equal(FireWorkVerdict.Mentioned, reading.Verdict);
-        Assert.Equal("fire sprinkler permit", reading.Quote);
+        Assert.Equal("sprinkler work", reading.Quote);
     }
 
     [Fact]
-    public void Mentioned_QuotesTheClauseHoldingTheFireTerm()
+    public void Mentioned_NamesTheKindOfWork_NotTheRecordText()
     {
         var reading = Building("Interior renovation of suite 200. New lighting, Fire Alarm, and added power devices; new finishes | Long Form/Alteration Permit");
         Assert.Equal(FireWorkVerdict.Mentioned, reading.Verdict);
-        Assert.Equal("new lighting, fire alarm, and added power devices", reading.Quote);
+        Assert.Equal("fire alarm work", reading.Quote);
     }
+
+    [Theory]
+    [InlineData("7-8th & 11th flrs - Red Hawk Fire Protection LLC to add and/or relocate pendent sprinkler heads | Fire Systems Permit")]
+    [InlineData("Christian Brothers Automotive fire alarm installation AlarmTech Systems Inc | Electrical")]
+    [InlineData("Power, data, fire alarm - Schrodinger Inc 14th flr TI | Electrical Permit")]
+    public void Mentioned_NeverCarriesAPartyName(string description)
+    {
+        var reading = Building(description);
+        Assert.Equal(FireWorkVerdict.Mentioned, reading.Verdict);
+        Assert.DoesNotMatch("(?i)red hawk|alarmtech|schrodinger|christian|inc|llc", reading.Quote!);
+    }
+
+    [Fact]
+    public void Mentioned_ListsEachKindOfWorkOnce()
+        => Assert.Equal("sprinkler and fire alarm work",
+            Building("Relocate sprinkler heads and fire alarm devices; NFPA 13 and NFPA 72 | Long Form/Alteration Permit").Quote);
+
+    // Production records the first version hid although they describe fire-protection work.
+    [Theory]
+    [InlineData("Install service(350KcMil)& meter bank, interior wiring ,fire alarm. ALL WORK PER 2017 NEC AND 2016 NFPA-72 | Electrical Permit | New Construction")]
+    [InlineData("Install 1,000-amp service, fire alarm, and all interior wiring | Electrical Permit | New Construction")]
+    [InlineData("Rough-In Fire Alarm as per plans, 600 amp Service | Electrical Permit | Rough-In")]
+    [InlineData("NEW 600 AMP SERVICE NEW SWITCHES, OUTLETS HARDWIRE SMOKE DETECTORS AND NEW FIRE ALARMS PER ELECTRICAL DESIGNER | Electrical Permit | Addition and/or Alteration")]
+    [InlineData("Provide and install lighting, receptacles switches and fire alarm to renovated Inpatient Pharmacy | Electrical Service / Circuit / Feeder")]
+    [InlineData("INTERIOR RENOVATION. HOUSE ELECTRICAL SERVICE WILL REMAIN. FIRE SUPPRESSION SYSTEMS WILL BE MODIFIED. | CONSTRUCTION | ALTERATION AND REPAIR")]
+    [InlineData("FOR THE ERECTION OF ATTACHED FOUR (4) STORY STRUCTURE. BUILDING IS FULLY SPRINKLERED IN ACCORDANCE WITH NFPA 13 WITH STANDPIPES | Commercial Building Permit | New Construction")]
+    [InlineData("Provide a non-voice fire alarm system for a non-sprinklered building | Fire Alarm")]
+    public void FireWorkInTheRecord_IsNeverHidden(string description)
+        => Assert.NotEqual(FireWorkVerdict.NotFireWork, Building(description).Verdict);
+
+    [Theory]
+    [InlineData("TENANT FIT-OUT. EXISTING BUILDING FULLY SPRINKLERED. ***FIRE ALARM WILL BE APPLIED FOR UNDER A SEPARATE APPLICATION*** | Commercial Building Permit | Addition and/or Alteration", "fire alarm will be applied for under a separate application")]
+    [InlineData("INTERIOR ALTERATIONS. SEPARATE FIRE ALARM PERMIT REQUIRED. | Commercial Building Permit | Addition and/or Alteration", "separate fire alarm permit")]
+    public void SeparateApplicationOrTradePermit_IsAhead(string description, string quote)
+        => AssertAhead(description, quote);
 
     [Fact]
     public void NullDescription_IsNotFireWork_ForBuilding_AndMentioned_ForFireWork()
@@ -128,14 +163,4 @@ public class FireWorkReaderTests
     public void UnknownScope_ReadsLikeABuildingPermit()
         => Assert.Equal(FireWorkVerdict.Ahead, FireWorkReader.Read("Deferred fire sprinklers.", null).Verdict);
 
-    [Fact]
-    public void Mentioned_LongClause_IsCutAroundTheTermAndMarked()
-    {
-        var reading = Building("Renovation of the existing third floor tenant space including new demising walls, new ceilings, new lighting, relocated diffusers and fire alarm devices, and new restroom finishes throughout | Long Form/Alteration Permit");
-        Assert.Equal(FireWorkVerdict.Mentioned, reading.Verdict);
-        Assert.Contains("fire alarm devices", reading.Quote);
-        Assert.True(reading.Quote!.Length <= 82, reading.Quote);
-        Assert.StartsWith("…", reading.Quote);
-        Assert.EndsWith("…", reading.Quote);
-    }
 }

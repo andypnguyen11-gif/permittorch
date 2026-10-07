@@ -180,11 +180,11 @@ public class ScoringEngineContractorStatusTests
     }
 
     [Fact]
-    public void The_reason_quotes_the_record_when_no_contractor_is_named()
+    public void The_reason_names_the_fire_work_when_no_contractor_is_named()
     {
         var result = Score(Permit(contractorName: null, description: "Riser relocation for the sprinkler system",
             filedDate: Now.AddHours(-24)));
-        Assert.Equal("No contractor listed. The record mentions \"riser relocation for the sprinkler system\". Filed Oct 5, 2026.",
+        Assert.Equal("No contractor listed. The record mentions sprinkler work. Filed Oct 5, 2026.",
             result.Reason);
     }
 }
