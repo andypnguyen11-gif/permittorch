@@ -87,7 +87,7 @@ describe("/app overview page", () => {
     expect(screen.getByTestId("stat-avg")).toHaveTextContent("across all 25 leads");
     expect(screen.getByTestId("sparkline-scope")).toHaveTextContent("across all 25 leads");
     const rows = screen.getAllByTestId("score-badge").map((b) => b.textContent);
-    expect(rows).toEqual(["100", "100", "100", "95", "90"]);
+    expect(rows).toEqual(["100", "100", "100", "100", "95"]);
     expect(screen.getByRole("region", { name: "Source health" })).toBeInTheDocument();
     expect(screen.getByText("Next digest: tomorrow morning")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: /permit filings per day/ })).toBeInTheDocument();

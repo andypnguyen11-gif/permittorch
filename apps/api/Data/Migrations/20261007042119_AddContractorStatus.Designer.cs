@@ -12,7 +12,7 @@ using PermitTorch.Api.Data;
 namespace PermitTorch.Api.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261007040519_AddContractorStatus")]
+    [Migration("20261007042119_AddContractorStatus")]
     partial class AddContractorStatus
     {
         /// <inheritdoc />
@@ -140,9 +140,6 @@ namespace PermitTorch.Api.Data.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_fire_opportunities");
-
-                    b.HasIndex("ContractorStatus")
-                        .HasDatabaseName("ix_fire_opportunities_contractor_status");
 
                     b.HasIndex("PermitId")
                         .IsUnique()

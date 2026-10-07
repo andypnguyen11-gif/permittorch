@@ -138,9 +138,6 @@ namespace PermitTorch.Api.Data.Migrations
                     b.HasKey("Id")
                         .HasName("pk_fire_opportunities");
 
-                    b.HasIndex("ContractorStatus")
-                        .HasDatabaseName("ix_fire_opportunities_contractor_status");
-
                     b.HasIndex("PermitId")
                         .IsUnique()
                         .HasDatabaseName("ix_fire_opportunities_permit_id");

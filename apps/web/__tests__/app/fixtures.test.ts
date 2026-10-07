@@ -70,6 +70,33 @@ describe("fixture scoring invariant (API scoring contract)", () => {
     }
   });
 
+  // The status is what the engine derives from the contractor branches, so the contractor
+  // signal present, the contractor name and the record type must all agree with it.
+  it("every detail's contractorStatus agrees with its contractor signal, name and record type", () => {
+    for (const d of mockLeadDetails) {
+      const types = new Set(d.signals.map((s) => s.signalType));
+      const named = d.permit.contractorName !== null;
+      const inspectionLike = d.permit.recordType === "inspection" || d.permit.recordType === "violation";
+      const contractorSignals = ["FIRE_CONTRACTOR_ASSIGNED", "OTHER_CONTRACTOR_LISTED", "NO_CONTRACTOR_LISTED"]
+        .filter((t) => types.has(t));
+      expect(contractorSignals.length, `${d.id} has one contractor signal at most`).toBeLessThanOrEqual(1);
+
+      const expected = types.has("FIRE_CONTRACTOR_ASSIGNED") ? "FIRE_CONTRACTOR_NAMED"
+        : types.has("OTHER_CONTRACTOR_LISTED") ? "OTHER_CONTRACTOR_NAMED"
+        : types.has("NO_CONTRACTOR_LISTED") ? "NO_CONTRACTOR_LISTED"
+        : "NOT_APPLICABLE";
+      expect(d.contractorStatus, d.id).toBe(expected);
+      expect(mockLeads.find((l) => l.id === d.id)!.contractorStatus, d.id).toBe(expected);
+
+      if (expected === "FIRE_CONTRACTOR_NAMED" || expected === "OTHER_CONTRACTOR_NAMED")
+        expect(named, `${d.id} names a contractor`).toBe(true);
+      if (expected === "NO_CONTRACTOR_LISTED")
+        expect(named || inspectionLike, `${d.id} is a permit with no contractor`).toBe(false);
+      if (expected === "NOT_APPLICABLE")
+        expect(!named && inspectionLike, `${d.id} is an inspection or violation with no contractor`).toBe(true);
+    }
+  });
+
   it("every detail has score === clamp(Σ weights, 0, 100), and the summary agrees", () => {
     for (const d of mockLeadDetails) {
       expect(d.score, d.id).toBe(clamp(d.signals.reduce((a, s) => a + s.weight, 0)));
@@ -91,7 +118,9 @@ describe("fixture scoring invariant (API scoring contract)", () => {
       check("OLD_PERMIT", filedAge != null && filedAge > 90 * 24 * HOURS);
       check("HIGH_PROJECT_VALUE", (d.estimatedValue ?? 0) > 500_000);
       check("LARGE_SQUARE_FOOTAGE", (d.permit.squareFootage ?? 0) > 20_000);
-      check("NO_CONTRACTOR_LISTED", !d.permit.contractorName);
+      // Inspections and violations never carry a contractor, so its absence says nothing there.
+      const inspectionLike = d.permit.recordType === "inspection" || d.permit.recordType === "violation";
+      check("NO_CONTRACTOR_LISTED", !d.permit.contractorName && !inspectionLike);
     }
   });
 

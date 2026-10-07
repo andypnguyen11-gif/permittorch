@@ -37,10 +37,10 @@ describe("/app/leads page (mock API)", () => {
   it("applies URL filters through lib/api", async () => {
     await renderPage({ minScore: "90", category: "FIRE_SPRINKLER" });
     const links = within(screen.getByRole("table")).getAllByRole("link");
+    // The logistics hub names a sprinkler contractor, so it no longer clears 90.
     expect(links.map((l) => l.textContent)).toEqual([
       "Distribution Center — New Construction",
       "Warehouse Fire Sprinkler System",
-      "Logistics Hub Fire Sprinkler Package",
     ]);
   });
 

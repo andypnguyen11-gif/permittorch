@@ -124,21 +124,7 @@ public sealed class RescoringJob : BackgroundService
                     && opportunity.ContractorStatus == result.ContractorStatus)
                     continue;
 
-                db.RemoveRange(opportunity.Signals);
-                foreach (var signal in result.Signals)
-                {
-                    db.Add(new LeadSignal
-                    {
-                        Id = Guid.NewGuid(),
-                        FireOpportunityId = opportunity.Id,
-                        SignalType = signal.SignalType,
-                        Description = signal.Description,
-                        Weight = signal.Weight,
-                    });
-                }
-                opportunity.LeadScore = result.Score;
-                opportunity.Reason = result.Reason;
-                opportunity.ContractorStatus = result.ContractorStatus;
+                StoredScore.Replace(db, opportunity, result);
                 // LastUpdatedAt is deliberately untouched: a time-based rescore is not new permit
                 // activity and must not make a lead look fresher than its data.
                 batchChanged++;
