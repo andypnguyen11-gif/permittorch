@@ -34,6 +34,7 @@ public class CsvExportTests(ApiFactory factory)
         var csv = await response.Content.ReadAsStringAsync();
         var lines = csv.TrimEnd().Split("\r\n");
         Assert.StartsWith("Score,Address,City,PermitType,FireCategory", lines[0]);
+        Assert.EndsWith(",ContractorStatus", lines[0]);
         Assert.Equal(2, lines.Length);
         Assert.Contains("\"Bravo Fire, Inc.\"", lines[1]);
         Assert.Contains("FIRE_SPRINKLER", lines[1]);
@@ -107,13 +108,14 @@ public class CsvExportTests(ApiFactory factory)
 
         var lines = csv.TrimEnd().Split("\r\n");
         Assert.EndsWith(
-            ",Applicant,OwnerPhone,OwnerEmail,ContractorPhone,ContractorEmail,ContractorLicense,ApplicantPhone,ApplicantEmail,ApplicantLicense",
+            ",Applicant,OwnerPhone,OwnerEmail,ContractorPhone,ContractorEmail,ContractorLicense,ApplicantPhone,ApplicantEmail,ApplicantLicense,ContractorStatus",
             lines[0]);
         Assert.Equal(3, lines.Length);
+        // These leads were seeded without a contractor status, so the last cell is blank.
         var withContact = Assert.Single(lines, l => l.Contains("Reliable Fire Co"));
-        Assert.EndsWith(",Pat Example,,,(480) 555-0142,office@example.com,000000,480-555-0177,,", withContact);
+        Assert.EndsWith(",Pat Example,,,(480) 555-0142,office@example.com,000000,480-555-0177,,,", withContact);
         var without = Assert.Single(lines, l => l.Contains("No Contact Fire"));
-        Assert.EndsWith(",,,,,,,,,", without);
+        Assert.EndsWith(",,,,,,,,,,", without);
     }
 
     [Fact]

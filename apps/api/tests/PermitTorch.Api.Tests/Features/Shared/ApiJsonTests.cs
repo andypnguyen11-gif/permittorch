@@ -39,9 +39,11 @@ public class ApiJsonTests
     public void Dto_properties_serialize_camelCase_with_nulls_preserved()
     {
         var dto = new LeadSummaryDto(Guid.Empty, 91, "Fire Sprinkler", null, "Houston", "TX",
-            FireCategory.FireSprinkler, null, PermitStatusKind.New, null, null, "why", true);
+            FireCategory.FireSprinkler, null, PermitStatusKind.New, null, null, "why", true,
+            ContractorStatus.OtherContractorNamed);
         var json = JsonSerializer.Serialize(dto, ApiJson.Options);
         Assert.Contains("\"score\":91", json);
+        Assert.Contains("\"contractorStatus\":\"OTHER_CONTRACTOR_NAMED\"", json);
         Assert.Contains("\"address\":null", json);
         Assert.Contains("\"filedDate\":null", json);
         Assert.Contains("\"estimatedValue\":null", json);

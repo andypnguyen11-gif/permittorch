@@ -5,6 +5,11 @@ export type PlanTier = "STARTER" | "PRO" | "TERRITORY";
 export type DigestFrequency = "NONE" | "DAILY" | "WEEKLY";
 export type SavedLeadStatus = "SAVED" | "CONTACTED";
 export type HealthStatus = "HEALTHY" | "WARNING" | "STALE" | "FAILED" | "DISABLED";
+/** Who the permit names as contractor. FIRE_CONTRACTOR_NAMED: a fire-protection firm, so the
+ *  work is most likely awarded. OTHER_CONTRACTOR_NAMED: usually the GC; the fire sub is not
+ *  visible yet. NOT_APPLICABLE: an inspection or violation, which never names one. */
+export type ContractorStatus = "NOT_APPLICABLE" | "NO_CONTRACTOR_LISTED"
+  | "OTHER_CONTRACTOR_NAMED" | "FIRE_CONTRACTOR_NAMED";
 
 export interface Paged<T> { items: T[]; total: number; page: number; pageSize: number; }
 export interface Freshness { lastUpdatedAt: string | null; }   // ISO
@@ -15,6 +20,8 @@ export interface LeadSummary {
   category: FireCategory; permitType: string | null; status: PermitStatus;
   filedDate: string | null; estimatedValue: number | null;
   reason: string; isNew: boolean;   // isNew = firstDetectedAt < 72h ago
+  /** Null until a release that knows the status has scored the lead. */
+  contractorStatus: ContractorStatus | null;
 }
 export interface LeadsResponse extends Paged<LeadSummary> { freshness: Freshness; }
 

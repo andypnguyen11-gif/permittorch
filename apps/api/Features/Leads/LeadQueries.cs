@@ -29,6 +29,8 @@ public static class LeadQueries
         }
         if (filters.Status is { } status)
             query = query.Where(o => o.Permit.Status == status);
+        if (filters.ExcludeContractorStatus is { } excluded)
+            query = query.Where(o => o.ContractorStatus == null || o.ContractorStatus != excluded);
         if (filters.Q is { } q)
         {
             var pattern = $"%{EscapeLike(q)}%";
@@ -51,14 +53,15 @@ public static class LeadQueries
     public static readonly Expression<Func<FireOpportunity, LeadRow>> ToRow = o => new LeadRow(
         o.Id, o.LeadScore, o.Category, o.Reason, o.FirstDetectedAt,
         o.Permit.PermitType, o.Permit.Status, o.Permit.Address, o.Permit.City, o.Permit.State,
-        o.Permit.FiledDate, o.Permit.EstimatedValue, o.Permit.Description);
+        o.Permit.FiledDate, o.Permit.EstimatedValue, o.Permit.Description, o.ContractorStatus);
 
     public static LeadSummaryDto ToSummary(LeadRow row, DateTime nowUtc) => new(
         row.Id, row.Score,
         LeadTitle.From(row.Description, row.PermitType, row.Category),
         row.Address, row.City, row.State, row.Category, row.PermitType, row.Status,
         row.FiledDate, row.EstimatedValue, row.Reason,
-        IsNew: row.FirstDetectedAt >= nowUtc.AddHours(-72));
+        IsNew: row.FirstDetectedAt >= nowUtc.AddHours(-72),
+        ContractorStatus: row.ContractorStatus);
 
     /// <summary>Latest successful source run across the entitled markets — narrowed to the
     /// filtered market when one is given, so "Updated N ago" describes what is on screen.</summary>
@@ -78,4 +81,4 @@ public static class LeadQueries
 public sealed record LeadRow(
     Guid Id, int Score, FireCategory Category, string Reason, DateTime FirstDetectedAt,
     string? PermitType, PermitStatusKind Status, string? Address, string City, string State,
-    DateTime? FiledDate, decimal? EstimatedValue, string? Description);
+    DateTime? FiledDate, decimal? EstimatedValue, string? Description, ContractorStatus? ContractorStatus);

@@ -8,10 +8,12 @@ public sealed record PagedResponse<T>(IReadOnlyList<T> Items, int Total, int Pag
 
 public sealed record FreshnessDto(DateTime? LastUpdatedAt);
 
+// ContractorStatus is null for a lead not yet scored by a release that knows it.
 public sealed record LeadSummaryDto(
     Guid Id, int Score, string Title, string? Address, string City, string State,
     FireCategory Category, string? PermitType, PermitStatusKind Status,
-    DateTime? FiledDate, decimal? EstimatedValue, string Reason, bool IsNew);
+    DateTime? FiledDate, decimal? EstimatedValue, string Reason, bool IsNew,
+    ContractorStatus? ContractorStatus);
 
 // LeadsResponse extends Paged<LeadSummary> with freshness (master §7)
 public sealed record LeadsResponseDto(
@@ -43,6 +45,7 @@ public sealed record LeadDetailDto(
     Guid Id, int Score, string Title, string? Address, string City, string State,
     FireCategory Category, string? PermitType, PermitStatusKind Status,
     DateTime? FiledDate, decimal? EstimatedValue, string Reason, bool IsNew,
+    ContractorStatus? ContractorStatus,
     decimal Confidence, DateTime FirstDetectedAt, DateTime LastUpdatedAt,
     LeadPermitDto Permit, IReadOnlyList<ParticipantDto> Participants,
     IReadOnlyList<LeadSignalDto> Signals, LeadSourceDto Source);

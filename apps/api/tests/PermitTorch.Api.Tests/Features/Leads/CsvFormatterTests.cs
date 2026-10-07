@@ -14,9 +14,25 @@ public class CsvFormatterTests
                 "Owner LLC", "Alpha Fire", "https://permits.example.gov/1"),
         ]);
         var lines = csv.Split("\r\n");
-        Assert.Equal("Score,Address,City,PermitType,FireCategory,Description,PermitDate,ProjectValue,Owner,Contractor,SourceUrl,Applicant,OwnerPhone,OwnerEmail,ContractorPhone,ContractorEmail,ContractorLicense,ApplicantPhone,ApplicantEmail,ApplicantLicense", lines[0]);
-        Assert.Equal("94,100 Main St,Houston,Fire Sprinkler,FIRE_SPRINKLER,New warehouse sprinkler,2026-08-01,2800000.50,Owner LLC,Alpha Fire,https://permits.example.gov/1,,,,,,,,,", lines[1]);
+        Assert.Equal("Score,Address,City,PermitType,FireCategory,Description,PermitDate,ProjectValue,Owner,Contractor,SourceUrl,Applicant,OwnerPhone,OwnerEmail,ContractorPhone,ContractorEmail,ContractorLicense,ApplicantPhone,ApplicantEmail,ApplicantLicense,ContractorStatus", lines[0]);
+        Assert.Equal("94,100 Main St,Houston,Fire Sprinkler,FIRE_SPRINKLER,New warehouse sprinkler,2026-08-01,2800000.50,Owner LLC,Alpha Fire,https://permits.example.gov/1,,,,,,,,,,", lines[1]);
         Assert.Equal("", lines[2]);   // trailing CRLF
+    }
+
+    [Fact]
+    public void Writes_the_contractor_status_last_and_blank_when_not_yet_assessed()
+    {
+        var csv = CsvFormatter.Write([
+            new LeadExportRow(94, "100 Main St", "Houston", "Fire Sprinkler", FireCategory.FireSprinkler,
+                "New warehouse sprinkler", new DateTime(2026, 8, 1), null,
+                "Owner LLC", "Alpha Fire", "https://permits.example.gov/1",
+                ContractorStatus: ContractorStatus.FireContractorNamed),
+            new LeadExportRow(70, "1 Elm St", "Houston", null, FireCategory.FireAlarm,
+                null, null, null, null, null, "https://permits.example.gov/2"),
+        ]);
+        var lines = csv.Split("\r\n");
+        Assert.EndsWith(",FIRE_CONTRACTOR_NAMED", lines[1]);
+        Assert.EndsWith("https://permits.example.gov/2,,,,,,,,,,", lines[2]);
     }
 
     [Fact]
@@ -27,7 +43,7 @@ public class CsvFormatterTests
                 "line1\nline2", null, null, null, null, "https://x.example"),
         ]);
         var dataLine = csv.Split("\r\n")[1];
-        Assert.Equal("80,\"1 \"\"Corner\"\", Suite 2\",Austin,,FIRE_ALARM,\"line1\nline2\",,,,,https://x.example,,,,,,,,,", dataLine);
+        Assert.Equal("80,\"1 \"\"Corner\"\", Suite 2\",Austin,,FIRE_ALARM,\"line1\nline2\",,,,,https://x.example,,,,,,,,,,", dataLine);
     }
 
     // Contact details follow the columns the export has always had, so a spreadsheet built on
@@ -47,7 +63,7 @@ public class CsvFormatterTests
         var dataLine = csv.Split("\r\n")[1];
         Assert.Equal(
             "88,200 Oak Ave,Mesa,Fire Alarm,FIRE_ALARM,Alarm upgrade,2026-09-01,,Warehouse Owner LLC,Reliable Fire Co,https://permits.example.gov/2," +
-            "Pat Example,480-555-0101,owner@example.com,(480) 555-0142,office@example.com,000000,480-555-0177,pat@example.com,000001",
+            "Pat Example,480-555-0101,owner@example.com,(480) 555-0142,office@example.com,000000,480-555-0177,pat@example.com,000001,",
             dataLine);
     }
 

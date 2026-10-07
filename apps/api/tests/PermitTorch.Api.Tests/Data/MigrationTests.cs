@@ -86,9 +86,29 @@ public class MigrationTests : IAsyncLifetime
                 "InitialCreate", "AddCategoryOverridden", "AddPermitDetailFields", "AddPermitRecordLink",
                 "MovePermitNamesToTheirRoles", "AddParticipantContact",
                 "RemovePlaceholderOwnersAndTestPermit", "ClearProjectValuesOfZero",
-                "AddTermsAcceptances", "AddRemovals",
+                "AddTermsAcceptances", "AddRemovals", "AddContractorStatus",
             },
             applied.Select(m => m[(m.IndexOf('_') + 1)..]).ToArray());
+    }
+
+    // Nullable on purpose: a lead scored before the status existed must read as not yet
+    // assessed, never as whichever value happens to be zero. Indexed because the feed excludes
+    // a status.
+    [Fact]
+    public async Task Fire_opportunities_contractor_status_is_nullable_and_indexed()
+    {
+        await using var db = CreateContext();
+        await db.Database.MigrateAsync();
+
+        var column = await db.Database
+            .SqlQuery<string>($"SELECT data_type || ':' || is_nullable || ':' || coalesce(column_default, '') AS \"Value\" FROM information_schema.columns WHERE table_name = 'fire_opportunities' AND column_name = 'contractor_status'")
+            .SingleAsync();
+        Assert.Equal("integer:YES:", column);
+
+        var index = await db.Database
+            .SqlQuery<string>($"SELECT indexname AS \"Value\" FROM pg_indexes WHERE tablename = 'fire_opportunities' AND indexname = 'ix_fire_opportunities_contractor_status'")
+            .SingleOrDefaultAsync();
+        Assert.Equal("ix_fire_opportunities_contractor_status", index);
     }
 
     [Fact]

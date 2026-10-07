@@ -150,7 +150,8 @@ public class LeadTitleTests
     {
         var row = new LeadRow(Guid.NewGuid(), 90, FireCategory.FireSprinkler, "Reason", DateTime.UtcNow,
             "fire_sprinkler", PermitStatusKind.Active, "1 Main St", "Mesa", "AZ", null, null,
-            "RELOCATE 12 SPRINKLER HEADS FOR NEW OFFICE LAYOUT. ALL WORK PER NFPA 13. | Commercial");
+            "RELOCATE 12 SPRINKLER HEADS FOR NEW OFFICE LAYOUT. ALL WORK PER NFPA 13. | Commercial",
+            ContractorStatus: null);
 
         var summary = LeadQueries.ToSummary(row, DateTime.UtcNow);
 

@@ -23,7 +23,7 @@ const DAY = 86_400_000;
 const lead = (o: Partial<LeadSummary>): LeadSummary => ({
   id: "x", score: 50, title: "t", address: null, city: "Houston", state: "TX",
   category: "FIRE_ALARM", permitType: null, status: "NEW", filedDate: null,
-  estimatedValue: null, reason: "r", isNew: false, ...o,
+  estimatedValue: null, reason: "r", isNew: false, contractorStatus: null, ...o,
 });
 
 describe("computeOverviewStats", () => {

@@ -14,6 +14,7 @@ const lead = (overrides: Partial<LeadSummary>): LeadSummary => ({
   filedDate: new Date(Date.now() - 48 * HOURS).toISOString(),
   estimatedValue: 1850000,
   reason: "Large commercial build-out in west Houston.", isNew: true,
+  contractorStatus: null,
   ...overrides,
 });
 

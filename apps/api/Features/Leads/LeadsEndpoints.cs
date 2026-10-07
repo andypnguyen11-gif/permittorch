@@ -23,10 +23,10 @@ public static class LeadsEndpoints
     private static async Task<IResult> GetLeads(
         HttpContext http, AppDbContext db, CurrentUserService currentUser, EntitlementService entitlements,
         string? market, string? category, int? minScore, int? maxAgeDays, string? status, string? q,
-        int? page, int? pageSize, CancellationToken ct)
+        string? excludeContractorStatus, int? page, int? pageSize, CancellationToken ct)
     {
-        if (!LeadFilters.TryParse(market, category, minScore, maxAgeDays, status, q, page, pageSize,
-                out var filters, out var error))
+        if (!LeadFilters.TryParse(market, category, minScore, maxAgeDays, status, q,
+                excludeContractorStatus, page, pageSize, out var filters, out var error))
             return ApiErrors.BadRequest(error);
 
         var user = await currentUser.RequireAsync(http.User, ct);
@@ -63,7 +63,8 @@ public static class LeadsEndpoints
             {
                 Row = new LeadRow(o.Id, o.LeadScore, o.Category, o.Reason, o.FirstDetectedAt,
                     o.Permit.PermitType, o.Permit.Status, o.Permit.Address, o.Permit.City,
-                    o.Permit.State, o.Permit.FiledDate, o.Permit.EstimatedValue, o.Permit.Description),
+                    o.Permit.State, o.Permit.FiledDate, o.Permit.EstimatedValue, o.Permit.Description,
+                    o.ContractorStatus),
                 o.Confidence, o.LastUpdatedAt,
                 Permit = new LeadPermitDto(o.Permit.PermitNumber, o.Permit.Description, o.Permit.Zip,
                     o.Permit.IssuedDate, o.Permit.SquareFootage, o.Permit.OwnerName, o.Permit.ContractorName,
@@ -90,7 +91,7 @@ public static class LeadsEndpoints
         return Results.Ok(new LeadDetailDto(
             summary.Id, summary.Score, summary.Title, summary.Address, summary.City, summary.State,
             summary.Category, summary.PermitType, summary.Status, summary.FiledDate,
-            summary.EstimatedValue, summary.Reason, summary.IsNew,
+            summary.EstimatedValue, summary.Reason, summary.IsNew, summary.ContractorStatus,
             found.Confidence, found.Row.FirstDetectedAt, found.LastUpdatedAt,
             found.Permit, found.Participants, found.Signals,
             new LeadSourceDto(found.SourceName, found.PermitSourceUrl, found.SourceLastCheckedAt,
@@ -100,11 +101,11 @@ public static class LeadsEndpoints
     private static async Task<IResult> ExportCsv(
         HttpContext http, AppDbContext db, CurrentUserService currentUser, EntitlementService entitlements,
         string? market, string? category, int? minScore, int? maxAgeDays, string? status, string? q,
-        CancellationToken ct)
+        string? excludeContractorStatus, CancellationToken ct)
     {
         // page/pageSize are ignored for export; defaults keep TryParse contract intact
-        if (!LeadFilters.TryParse(market, category, minScore, maxAgeDays, status, q, null, null,
-                out var filters, out var error))
+        if (!LeadFilters.TryParse(market, category, minScore, maxAgeDays, status, q,
+                excludeContractorStatus, null, null, out var filters, out var error))
             return ApiErrors.BadRequest(error);
 
         var user = await currentUser.RequireAsync(http.User, ct);
@@ -126,7 +127,7 @@ public static class LeadsEndpoints
                     o.Permit.OwnerName, o.Permit.ContractorName,
                     // The record's own link where there is one, otherwise the dataset it came from.
                     o.Permit.RecordUrl ?? o.Permit.SourceUrl,
-                    o.Permit.ApplicantName, null, null, null),
+                    o.Permit.ApplicantName, null, null, null, o.ContractorStatus),
             })
             .ToListAsync(ct);
 
