@@ -57,8 +57,6 @@ public class AppDbContext : DbContext
                 .HasForeignKey<FireOpportunity>(o => o.PermitId);
             e.HasMany(o => o.Signals).WithOne().HasForeignKey(s => s.FireOpportunityId);
             e.Property(o => o.CategoryOverridden).HasDefaultValue(false);
-            // The feed's first two sort keys.
-            e.HasIndex(o => new { o.Standing, o.LastActivityOn });
             // ContractorStatus is deliberately not indexed: the feed only excludes a status
             // ("IS NULL OR <> x"), which a b-tree cannot serve. Add one with an inclusion filter.
         });

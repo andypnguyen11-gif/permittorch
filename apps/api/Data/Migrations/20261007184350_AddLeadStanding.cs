@@ -28,20 +28,11 @@ namespace PermitTorch.Api.Data.Migrations
                 table: "fire_opportunities",
                 type: "integer",
                 nullable: true);
-
-            migrationBuilder.CreateIndex(
-                name: "ix_fire_opportunities_standing_last_activity_on",
-                table: "fire_opportunities",
-                columns: new[] { "standing", "last_activity_on" });
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropIndex(
-                name: "ix_fire_opportunities_standing_last_activity_on",
-                table: "fire_opportunities");
-
             migrationBuilder.DropColumn(
                 name: "scope",
                 table: "permits");

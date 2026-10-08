@@ -150,9 +150,6 @@ namespace PermitTorch.Api.Data.Migrations
                         .IsUnique()
                         .HasDatabaseName("ix_fire_opportunities_permit_id");
 
-                    b.HasIndex("Standing", "LastActivityOn")
-                        .HasDatabaseName("ix_fire_opportunities_standing_last_activity_on");
-
                     b.ToTable("fire_opportunities", (string)null);
                 });
 

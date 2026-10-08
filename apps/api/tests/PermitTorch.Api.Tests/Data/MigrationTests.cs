@@ -108,6 +108,20 @@ public class MigrationTests : IAsyncLifetime
         Assert.Equal($"{type}:YES:", shape);
     }
 
+    // The feed sorts on CASE expressions over standing and last activity (nulls placed by hand),
+    // which a plain b-tree on those columns cannot serve. An index the feed never uses only costs writes.
+    [Fact]
+    public async Task Lead_standing_columns_carry_no_index()
+    {
+        await using var db = CreateContext();
+        await db.Database.MigrateAsync();
+
+        var indexdefs = await db.Database
+            .SqlQuery<string>($"SELECT indexdef AS \"Value\" FROM pg_indexes WHERE tablename = 'fire_opportunities'")
+            .ToListAsync();
+        Assert.DoesNotContain(indexdefs, d => d.Contains("standing") || d.Contains("last_activity_on"));
+    }
+
     // Nullable on purpose: a lead scored before the status existed must read as not yet
     // assessed, never as whichever value happens to be zero.
     [Fact]

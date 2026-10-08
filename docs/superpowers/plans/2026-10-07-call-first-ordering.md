@@ -94,7 +94,7 @@ Standing counts: Ahead 402 · Mentioned 2,276 · fire-work permit no contractor 
 | `apps/api/Domain/Scoring/FireWorkReader.cs` | Create. Reads a description: ahead / mentioned / not fire work, with the quote |
 | `apps/api/Domain/Scoring/ScoringEngine.cs` | Modify. Contractor status on fire-work permits, standing, last activity, new reason |
 | `apps/api/Domain/Scoring/StoredPermit.cs`, `StoredScore.cs` | Modify. Carry scope; write standing and last activity |
-| `apps/api/Data/Entities.cs` + new migration | Modify. `Permit.Scope`, `FireOpportunity.Standing`, `FireOpportunity.LastActivityOn`, index |
+| `apps/api/Data/Entities.cs` + new migration | Modify. `Permit.Scope`, `FireOpportunity.Standing`, `FireOpportunity.LastActivityOn` (no index: the feed sorts on CASE expressions a b-tree on these columns cannot serve) |
 | `apps/api/Jobs/IngestionJob.cs`, `Jobs/RescoringJob.cs` | Modify. Persist the new fields; rescoring re-resolves scope from the stored description |
 | `apps/api/Features/Leads/LeadQueries.cs` | Modify. Hide `NotFireWork`; new `OrderForFeed` |
 | `apps/api/Features/Markets/MarketsEndpoints.cs` | Modify. Public counts skip `NotFireWork` |
@@ -257,12 +257,12 @@ Then, for 0–6: `{Filed|Issued|Inspected} {MMM d, yyyy}.` for the latest of the
 ### Task 4: Persist scope, standing and last activity
 
 **Files:**
-- Modify: `apps/api/Data/Entities.cs`, `apps/api/Data/AppDbContext.cs` (index), `apps/api/Domain/Scoring/StoredPermit.cs`, `apps/api/Domain/Scoring/StoredScore.cs`, `apps/api/Jobs/IngestionJob.cs`, `apps/api/Jobs/RescoringJob.cs`
+- Modify: `apps/api/Data/Entities.cs`, `apps/api/Data/AppDbContext.cs`, `apps/api/Domain/Scoring/StoredPermit.cs`, `apps/api/Domain/Scoring/StoredScore.cs`, `apps/api/Jobs/IngestionJob.cs`, `apps/api/Jobs/RescoringJob.cs`
 - Create: migration `AddLeadStanding` via `dotnet ef migrations add AddLeadStanding --project apps/api`
 - Test: `apps/api/tests/PermitTorch.Api.Tests/Jobs/IngestionJobTests.cs`, `apps/api/tests/PermitTorch.Api.Tests/Jobs/RescoringJobTests.cs`
 
 **Interfaces:**
-- Produces: `Permit.Scope` (`PermitScope?`, column `scope`), `FireOpportunity.Standing` (`LeadStanding?`, column `standing`; null = not yet scored by this release), `FireOpportunity.LastActivityOn` (`DateTime?`, column `last_activity_on`), index `ix_fire_opportunities_standing_last_activity_on`.
+- Produces: `Permit.Scope` (`PermitScope?`, column `scope`), `FireOpportunity.Standing` (`LeadStanding?`, column `standing`; null = not yet scored by this release), `FireOpportunity.LastActivityOn` (`DateTime?`, column `last_activity_on`). No index on them.
 - `StoredScore.Replace` also writes `Standing` and `LastActivityOn`. `StoredPermit.ToNormalized` passes `Scope`.
 - `RescoringJob` loads `Permit.Source` and sets `permit.Scope = SourcePermitTypes.Resolve(permit.Source.Jurisdiction, permit.Description)` before scoring, so a change to the list takes effect at the next full pass. A change in scope, standing or last activity counts as a change.
 
@@ -272,7 +272,7 @@ Then, for 0–6: `{Filed|Issued|Inspected} {MMM d, yyyy}.` for the latest of the
   - `RescoringJobTests.FullPass_BackfillsScopeAndStanding`: a stored Philly fire-suppression permit with `Scope = null` and `Standing = null` → after `RescoreOnceAsync(now, ct, fullPass: true)`, scope and standing are set and `changed == 1`.
   - `RescoringJobTests.FullPass_HidesLawnSprinkler`: a stored Miami lawn-sprinkler lead → `Standing == NotFireWork`.
 - [ ] **Step 2: Run, expect failure.**
-- [ ] **Step 3: Implement** the entity members, migration, index and job changes. In `IngestionJob`, set `permit.Scope = normalized.Scope ?? permit.Scope` on create and merge, and the two opportunity fields beside `ContractorStatus`.
+- [ ] **Step 3: Implement** the entity members, migration and job changes. In `IngestionJob`, set `permit.Scope = normalized.Scope ?? permit.Scope` on create and merge, and the two opportunity fields beside `ContractorStatus`.
 - [ ] **Step 4: Run `Jobs` and `Data` tests (including `MigrationTests`), expect PASS.**
 - [ ] **Step 5: Commit** `Store permit scope, lead standing and last activity`.
 
