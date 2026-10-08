@@ -1,9 +1,9 @@
 {
   "allFireWork": [
     "nyc-dobnow-permits", "sf-fire-permits", "sf-fire-inspections", "sf-fire-violations",
-    "detroit-bseed-fire-alarm-permits", "sacramento-fire-permits-current", "sacramento-fire-permits-archive",
-    "virginia-beach-fire-permits", "cosprings-fire-permits", "omaha-fire-permits", "atlanta-fire-permits",
-    "tulsa-fire-permits", "seattle-trade-permits", "kcmo-issued-permits"
+    "detroit-bseed-fire-alarm-permits", "detroit-bseed-trades-permits", "sacramento-fire-permits-current",
+    "sacramento-fire-permits-archive", "virginia-beach-fire-permits", "cosprings-fire-permits", "omaha-fire-permits",
+    "atlanta-fire-permits", "tulsa-fire-permits"
   ],
   "fireWorkTypes": {
     "philly-permits": ["Fire Suppression Permit"],
@@ -15,6 +15,9 @@
     "charlotte-accela-permits": ["Fire"],
     "louisville-construction-permits": ["Range Hood Suppression"],
     "austin-construction-permits": ["Fireline"],
-    "sanantonio-permits": ["New Sprinkler Installation", "Fire pump TOPS", "Fire alarm power"]
+    "sanantonio-permits": ["New Sprinkler Installation", "Fire pump TOPS", "Fire alarm power"],
+    "kcmo-issued-permits": ["Electrical Fire Alarm Commercial", "Fire Protection System", "Fast Track Fire Sprinkler",
+      "Kitchen Hood Fire Protection System"],
+    "seattle-trade-permits": ["Fire Sprinkler and Suppression"]
   }
 }

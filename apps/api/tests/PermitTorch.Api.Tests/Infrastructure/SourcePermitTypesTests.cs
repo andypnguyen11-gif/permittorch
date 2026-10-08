@@ -72,4 +72,29 @@ public class SourcePermitTypesTests
         Assert.NotEmpty(SourcePermitTypes.ListedSourceIds);
         Assert.All(SourcePermitTypes.ListedSourceIds, id => Assert.Matches(kebab, id));
     }
+
+    // Kansas City and Seattle carry the city's permit type after " | " (production rows,
+    // 2026-10-07); only the fire types are the fire filing, anything else is a building permit.
+    [Theory]
+    [InlineData("CPPU - Electrical (Commercial) | Electrical Fire Alarm Commercial", PermitScope.FireWorkPermit)]
+    [InlineData("CPPU - Fire Sprinkler (Commercial) | Fire Protection System", PermitScope.FireWorkPermit)]
+    [InlineData("CPPU - Fire Sprinkler (Commercial) | Fast Track Fire Sprinkler", PermitScope.FireWorkPermit)]
+    [InlineData("CPPU - Mechanical (Commercial) | Kitchen Hood Fire Protection System", PermitScope.FireWorkPermit)]
+    [InlineData("Tenant finish, deferred fire sprinklers | Commercial Building Alteration", PermitScope.BuildingPermit)]
+    [InlineData("Tenant finish, deferred fire sprinklers", PermitScope.BuildingPermit)]
+    public void KansasCity_FireTypesOnly_AreFireWork(string description, PermitScope expected)
+        => Assert.Equal(expected, SourcePermitTypes.Resolve("kcmo-issued-permits", description));
+
+    [Theory]
+    [InlineData("ADD AND RELOCATE FIRE SPRINKLERS FOR TENANT IMPROVEMENTS. | Fire Sprinkler and Suppression", PermitScope.FireWorkPermit)]
+    [InlineData("New service and panel; fire alarm devices by others | Electrical", PermitScope.BuildingPermit)]
+    [InlineData("New service and panel; fire alarm devices by others", PermitScope.BuildingPermit)]
+    public void Seattle_SprinklerAndSuppressionType_IsFireWork(string description, PermitScope expected)
+        => Assert.Equal(expected, SourcePermitTypes.Resolve("seattle-trade-permits", description));
+
+    // Detroit's sprinkler and suppression trade source is the trade permit itself, filed by the installer.
+    [Fact]
+    public void DetroitSprinklerAndSuppressionTrades_AreFireWork()
+        => Assert.Equal(PermitScope.FireWorkPermit, SourcePermitTypes.Resolve("detroit-bseed-trades-permits",
+            "FSS TECHNOLOGIES TO INSTALL NEW 13R SPRINKLER SYSTEM IN A NEW RESIDENTIAL BUILDING | Mechanical Permit"));
 }
