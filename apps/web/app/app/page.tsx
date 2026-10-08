@@ -45,7 +45,8 @@ export default async function OverviewPage({ searchParams }: {
     hotTotal: hotRes.total,
     recentTotal: recentRes.total,
   });
-  // The API already orders by score desc, then most recently detected.
+  // The API already orders the feed: permits whose record says the fire work is still ahead
+  // first, then newest activity, then a named general contractor before nobody, then value.
   const topLeads = leadsRes.items.slice(0, 5);
 
   return (

@@ -466,14 +466,88 @@ export const mockLeadDetails: LeadDetail[] = mockLeads.map((lead) => {
   };
 });
 
-const firstDetected = new Map(mockLeadDetails.map((d) => [d.id, Date.parse(d.firstDetectedAt)]));
+// The standing the API would store for each mock lead (LeadStanding). The API does not send it,
+// so it lives here: building permits whose record says the fire work is still ahead first,
+// permits that are the fire work itself below them.
+export type MockStanding =
+  | "FIRE_WORK_AHEAD" | "FIRE_WORK_MENTIONED" | "FIRE_WORK_PERMIT_NO_CONTRACTOR"
+  | "INSPECTION_OR_VIOLATION" | "FIRE_WORK_PERMIT_CONTRACTOR_NAMED" | "FIRE_FIRM_NAMED" | "CLOSED";
+const STANDING_ORDER: MockStanding[] = [
+  "FIRE_WORK_AHEAD", "FIRE_WORK_MENTIONED", "FIRE_WORK_PERMIT_NO_CONTRACTOR",
+  "INSPECTION_OR_VIOLATION", "FIRE_WORK_PERMIT_CONTRACTOR_NAMED", "FIRE_FIRM_NAMED", "CLOSED",
+];
+const mockStanding: Record<string, MockStanding> = {
+  "lead-002": "FIRE_WORK_AHEAD", "lead-019": "FIRE_WORK_AHEAD",
+  "lead-009": "FIRE_WORK_MENTIONED", "lead-024": "FIRE_WORK_MENTIONED",
+  "lead-001": "FIRE_WORK_PERMIT_NO_CONTRACTOR", "lead-003": "FIRE_WORK_PERMIT_NO_CONTRACTOR",
+  "lead-004": "FIRE_WORK_PERMIT_NO_CONTRACTOR", "lead-005": "FIRE_WORK_PERMIT_NO_CONTRACTOR",
+  "lead-006": "FIRE_WORK_PERMIT_NO_CONTRACTOR", "lead-007": "FIRE_WORK_PERMIT_NO_CONTRACTOR",
+  "lead-008": "FIRE_WORK_PERMIT_NO_CONTRACTOR", "lead-012": "FIRE_WORK_PERMIT_NO_CONTRACTOR",
+  "lead-020": "FIRE_WORK_PERMIT_NO_CONTRACTOR", "lead-021": "FIRE_WORK_PERMIT_NO_CONTRACTOR",
+  "lead-010": "INSPECTION_OR_VIOLATION", "lead-013": "INSPECTION_OR_VIOLATION",
+  "lead-015": "INSPECTION_OR_VIOLATION", "lead-016": "INSPECTION_OR_VIOLATION",
+  "lead-017": "INSPECTION_OR_VIOLATION", "lead-022": "INSPECTION_OR_VIOLATION",
+  "lead-011": "FIRE_WORK_PERMIT_CONTRACTOR_NAMED", "lead-014": "FIRE_WORK_PERMIT_CONTRACTOR_NAMED",
+  "lead-018": "FIRE_WORK_PERMIT_CONTRACTOR_NAMED",
+  "lead-023": "CLOSED", "lead-025": "CLOSED",
+};
+
+/** The values the API's feed sorts on (LeadQueries.OrderForFeed). */
+export interface FeedKey {
+  id: string;
+  standing: MockStanding | null;
+  /** UTC midnight of the latest filed, issued or inspected date not in the future, in ms. */
+  lastActivityOn: number | null;
+  contractorStatus: LeadSummary["contractorStatus"];
+  estimatedValue: number | null;
+  score: number;
+  firstDetectedAt: number;
+}
+
+const utcDay = (iso: string | null | undefined, now: number): number | null => {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (Number.isNaN(t) || t > now) return null;
+  const d = new Date(t);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+};
+
+export function feedKeyOf(lead: LeadSummary): FeedKey {
+  const detail = mockLeadDetails.find((d) => d.id === lead.id);
+  const now = Date.now();
+  const days = [lead.filedDate, detail?.permit.issuedDate, detail?.permit.inspectionDate]
+    .map((iso) => utcDay(iso, now))
+    .filter((d): d is number => d != null);
+  return {
+    id: lead.id,
+    standing: mockStanding[lead.id] ?? null,
+    lastActivityOn: days.length ? Math.max(...days) : null,
+    contractorStatus: lead.contractorStatus,
+    estimatedValue: lead.estimatedValue,
+    score: lead.score,
+    firstDetectedAt: detail ? Date.parse(detail.firstDetectedAt) : 0,
+  };
+}
+
+// Mirrors the API's feed order: standing (not yet assessed last), then the latest activity day
+// (undated last), then a named general contractor before anyone else, then project value
+// (unknown last), then score, then most recently detected, then id.
+export function compareForFeed(a: FeedKey, b: FeedKey): number {
+  const rank = (k: FeedKey) => (k.standing ? STANDING_ORDER.indexOf(k.standing) : STANDING_ORDER.length);
+  const desc = (x: number | null, y: number | null) =>
+    x == null ? (y == null ? 0 : 1) : y == null ? -1 : y - x;
+  const gc = (k: FeedKey) => (k.contractorStatus === "OTHER_CONTRACTOR_NAMED" ? 0 : 1);
+  return rank(a) - rank(b)
+    || desc(a.lastActivityOn, b.lastActivityOn)
+    || gc(a) - gc(b)
+    || desc(a.estimatedValue, b.estimatedValue)
+    || b.score - a.score
+    || b.firstDetectedAt - a.firstDetectedAt
+    || a.id.localeCompare(b.id);
+}
 
 const marketSlug = (l: LeadSummary): string =>
   `${l.city.toLowerCase()}-${l.state.toLowerCase()}`;
-
-// Mirrors the API's default ordering: score desc, then most recently detected first.
-const byScoreThenDetected = (a: LeadSummary, b: LeadSummary): number =>
-  b.score - a.score || (firstDetected.get(b.id) ?? 0) - (firstDetected.get(a.id) ?? 0);
 
 export function mockLeadsResponse(query: LeadsQuery = {}): LeadsResponse {
   const { market, category, minScore, maxAgeDays, status, q, excludeContractorStatus } = query;
@@ -497,7 +571,9 @@ export function mockLeadsResponse(query: LeadsQuery = {}): LeadsResponse {
       }
       return true;
     })
-    .sort(byScoreThenDetected);
+    .map((l) => ({ lead: l, key: feedKeyOf(l) }))
+    .sort((a, b) => compareForFeed(a.key, b.key))
+    .map(({ lead }) => lead);
 
   return {
     items: filtered.slice((page - 1) * pageSize, page * pageSize),
