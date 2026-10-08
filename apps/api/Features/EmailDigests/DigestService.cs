@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using PermitTorch.Api.Data;
 using PermitTorch.Api.Features.Auth;
+using PermitTorch.Api.Features.Leads;
 
 namespace PermitTorch.Api.Features.EmailDigests;
 
@@ -17,6 +18,16 @@ public sealed class DigestService(
 {
     /// <summary>Sample-lead nurture stops this long after the request was captured.</summary>
     public static readonly TimeSpan SampleLifetime = TimeSpan.FromDays(28);
+
+    // Leads a digest may carry: open fire work, and fire-work permits that name no contractor.
+    // For a subscriber, a lead not yet scored by this release is kept, so the first digest after a
+    // deploy is not emptied while the full rescore runs. The free sample goes to prospects, so it
+    // carries only scored leads. The feed's order (LeadQueries.OrderForFeed) decides.
+    private static IQueryable<FireOpportunity> Digestible(IQueryable<FireOpportunity> query, bool keepUnscored) =>
+        query.Where(o => (keepUnscored && o.Standing == null)
+            || o.Standing == LeadStanding.FireWorkAhead
+            || o.Standing == LeadStanding.FireWorkMentioned
+            || o.Standing == LeadStanding.FireWorkPermitNoContractor);
 
     public async Task RunOnceAsync(DateTime nowUtc, CancellationToken ct)
     {
@@ -72,11 +83,8 @@ public sealed class DigestService(
 
         var marketIds = await entitlements.GetEntitledMarketIdsAsync(user, ct);
         var since = preference.LastSentAt.Value;
-        var leads = await db.FireOpportunities
-            .Where(o => marketIds.Contains(o.Permit.Source.MarketId)
-                && o.LeadScore >= 70
-                && o.FirstDetectedAt > since)
-            .OrderByDescending(o => o.LeadScore).ThenByDescending(o => o.FirstDetectedAt)
+        var leads = await LeadQueries.OrderForFeed(Digestible(db.FireOpportunities
+                .Where(o => marketIds.Contains(o.Permit.Source.MarketId) && o.FirstDetectedAt > since), keepUnscored: true))
             .Take(10)
             .Select(o => new DigestLead(o.LeadScore, o.Category, o.Permit.Description,
                 o.Permit.PermitType, o.Permit.City, o.Permit.State, o.Permit.FiledDate,
@@ -135,9 +143,8 @@ public sealed class DigestService(
         if (request is null || !DigestSchedule.IsSampleDue(request.LastSentAt, nowUtc)) return;
         var scheduledInstant = DigestSchedule.LastScheduledInstant(DigestFrequency.Weekly, nowUtc)!.Value;
 
-        var leads = await db.FireOpportunities
-            .Where(o => o.Permit.Source.Market.Slug == request.MarketSlug && o.LeadScore >= 70)
-            .OrderByDescending(o => o.LeadScore).ThenByDescending(o => o.FirstDetectedAt)
+        var leads = await LeadQueries.OrderForFeed(Digestible(db.FireOpportunities
+                .Where(o => o.Permit.Source.Market.Slug == request.MarketSlug), keepUnscored: false))
             .Take(5)
             .Select(o => new DigestLead(o.LeadScore, o.Category, o.Permit.Description,
                 o.Permit.PermitType, o.Permit.City, o.Permit.State, o.Permit.FiledDate,

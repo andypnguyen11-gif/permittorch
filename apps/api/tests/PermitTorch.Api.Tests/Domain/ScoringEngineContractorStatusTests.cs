@@ -116,7 +116,7 @@ public class ScoringEngineContractorStatusTests
         var result = Score(Permit(contractorName: "Summit General Contractors"));
         var signal = Assert.Single(result.Signals, s => s.SignalType == "OTHER_CONTRACTOR_LISTED");
         Assert.Equal(15, signal.Weight);
-        Assert.Equal("A contractor is listed who is not a fire-protection firm", signal.Description);
+        Assert.Equal("A contractor is listed; no fire-protection firm named", signal.Description);
     }
 
     [Fact]
@@ -172,19 +172,19 @@ public class ScoringEngineContractorStatusTests
     // ---- the one-sentence reason -----------------------------------------------------------
 
     [Fact]
-    public void The_reason_says_when_a_fire_contractor_is_already_on_the_permit()
+    public void The_reason_says_when_a_fire_contractor_is_on_the_permit()
     {
-        var result = Score(Permit(contractorName: "PAR FIRE PROTECTION LLC", filedDate: Now.AddHours(-24)));
-        Assert.Equal(
-            "Explicit fire sprinkler scope and filed within the last 72 hours. A fire-protection contractor is already on this permit.",
-            result.Reason);
+        var result = Score(Permit(contractorName: "PAR FIRE PROTECTION LLC", description: "Riser relocation for the sprinkler system",
+            filedDate: Now.AddHours(-24)));
+        Assert.Equal("A fire-protection contractor is on this permit. Filed Oct 5, 2026.", result.Reason);
     }
 
     [Fact]
-    public void The_reason_is_unchanged_when_no_fire_contractor_is_named()
+    public void The_reason_names_the_fire_work_when_no_contractor_is_named()
     {
-        var result = Score(Permit(contractorName: null, filedDate: Now.AddHours(-24)));
-        Assert.Equal("Explicit fire sprinkler scope, filed within the last 72 hours, and no contractor listed yet.",
+        var result = Score(Permit(contractorName: null, description: "Riser relocation for the sprinkler system",
+            filedDate: Now.AddHours(-24)));
+        Assert.Equal("No contractor listed. The record mentions sprinkler work. Filed Oct 5, 2026.",
             result.Reason);
     }
 }

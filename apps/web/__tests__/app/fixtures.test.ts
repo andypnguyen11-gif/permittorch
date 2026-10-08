@@ -4,6 +4,10 @@ import {
   mockLeadDetails,
   mockLeadsResponse,
   mockLeadDetail,
+  compareForFeed,
+  feedKeyOf,
+  SIGNAL_CATALOG,
+  type FeedKey,
 } from "@/lib/fixtures/leads";
 import { ApiError } from "@/lib/api";
 
@@ -45,6 +49,21 @@ describe("fixture integrity", () => {
       const age = Date.now() - Date.parse(d.firstDetectedAt);
       expect(d.isNew, d.id).toBe(age < 72 * HOURS);
     }
+  });
+});
+
+describe("fixture wording (API reason contract)", () => {
+  it("every lead marked fire work ahead says in its record that the work is still to come", () => {
+    const ahead = mockLeads.filter((l) => feedKeyOf(l).standing === "FIRE_WORK_AHEAD");
+    expect(ahead.length).toBeGreaterThan(0);
+    for (const lead of ahead) {
+      const description = mockLeadDetails.find((d) => d.id === lead.id)!.permit.description ?? "";
+      expect(description, lead.id).toMatch(/deferred|separate (permit|application)|to be fully sprinklered/i);
+    }
+  });
+
+  it("the contractor signal says what the record shows", () => {
+    expect(SIGNAL_CATALOG.OTHER_CONTRACTOR_LISTED.description).toBe("A contractor is listed; no fire-protection firm named");
   });
 });
 
@@ -191,18 +210,49 @@ describe("mockLeadsResponse filtering", () => {
     expect(res.items.every((l) => l.category === "FIRE_SPRINKLER" && l.score >= 90)).toBe(true);
   });
 
-  it("sorts by score desc, then most recently first-detected, before paginating", () => {
+  // Same order as the API feed (LeadQueries.OrderForFeed): standing, then the latest activity
+  // day, then a named general contractor before nobody listed, then project value.
+  it("compareForFeed orders by standing, then activity day, then GC before nobody, then value", () => {
+    const key = (id: string, k: Partial<FeedKey>): FeedKey => ({
+      id, standing: "FIRE_WORK_AHEAD", lastActivityOn: Date.UTC(2026, 9, 6),
+      contractorStatus: "OTHER_CONTRACTOR_NAMED", estimatedValue: null, score: 80,
+      firstDetectedAt: 0, ...k,
+    });
+    const rows = [
+      key("unassessed", { standing: null, lastActivityOn: Date.UTC(2026, 9, 7), score: 100 }),
+      key("closed", { standing: "CLOSED", lastActivityOn: Date.UTC(2026, 9, 7) }),
+      key("fireWorkPermit", { standing: "FIRE_WORK_PERMIT_NO_CONTRACTOR", lastActivityOn: Date.UTC(2026, 9, 7), score: 100 }),
+      key("mentioned", { standing: "FIRE_WORK_MENTIONED", lastActivityOn: Date.UTC(2026, 9, 7), score: 100 }),
+      key("undated", { lastActivityOn: null, score: 100 }),
+      key("older", { lastActivityOn: Date.UTC(2026, 9, 5), estimatedValue: 9_000_000, score: 100 }),
+      key("nobody", { contractorStatus: "NO_CONTRACTOR_LISTED", estimatedValue: 5_000_000, score: 100 }),
+      key("gcNoValue", { score: 100 }),
+      key("gcSmall", { estimatedValue: 100_000, score: 40 }),
+      key("gcLarge", { estimatedValue: 3_000_000, score: 40 }),
+    ];
+    expect([...rows].sort(compareForFeed).map((r) => r.id)).toEqual([
+      "gcLarge", "gcSmall", "gcNoValue", "nobody", "older", "undated",
+      "mentioned", "fireWorkPermit", "closed", "unassessed",
+    ]);
+  });
+
+  it("feedKeyOf takes the latest filed, issued or inspected day that is not in the future", () => {
+    const detail = mockLeadDetail("lead-004"); // filed 60h ago, issued 30h ago
+    const issuedDay = new Date(detail.permit.issuedDate!);
+    expect(feedKeyOf(detail).lastActivityOn).toBe(
+      Date.UTC(issuedDay.getUTCFullYear(), issuedDay.getUTCMonth(), issuedDay.getUTCDate()));
+  });
+
+  it("sorts the mock list in feed order before paginating", () => {
     const items = mockLeadsResponse({ pageSize: 100 }).items;
-    const detected = new Map(mockLeadDetails.map((d) => [d.id, Date.parse(d.firstDetectedAt)]));
     for (let i = 1; i < items.length; i++) {
-      const [a, b] = [items[i - 1], items[i]];
-      expect(a.score).toBeGreaterThanOrEqual(b.score);
-      if (a.score === b.score) expect(detected.get(a.id)!).toBeGreaterThanOrEqual(detected.get(b.id)!);
+      expect(compareForFeed(feedKeyOf(items[i - 1]), feedKeyOf(items[i]))).toBeLessThan(0);
     }
-    // lead-002 (100, detected 18h ago) outranks lead-001 (100, detected 38h ago).
-    expect(items.slice(0, 3).map((l) => l.id)).toEqual(["lead-002", "lead-020", "lead-001"]);
-    const firstPage = mockLeadsResponse({ pageSize: 3 }).items.map((l) => l.id);
-    expect(firstPage).toEqual(["lead-002", "lead-020", "lead-001"]);
+    // The two building permits whose record says the fire work is still ahead lead the list,
+    // above every higher-scored sprinkler or alarm permit.
+    expect(items.slice(0, 2).map((l) => l.id).sort()).toEqual(["lead-002", "lead-019"]);
+    const firstPage = mockLeadsResponse({ pageSize: 2 }).items.map((l) => l.id);
+    expect(firstPage).toEqual(items.slice(0, 2).map((l) => l.id));
   });
 
   it("paginates: page 2 of pageSize 10 returns items 11–20 of the filtered set", () => {

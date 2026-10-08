@@ -395,6 +395,10 @@ public sealed class IngestionJob : BackgroundService
             permit.UpdatedAt = now;
         }
 
+        // Resolved from the merged description, exactly as the rescoring pass resolves it, so a
+        // record that arrives without a description never flips a stored permit's scope.
+        permit.Scope = SourcePermitTypes.Resolve(source.Jurisdiction, permit.Description);
+
         await SyncParticipantsAsync(db, permit, normalized, isNew, ct);
 
         // Classified and scored from the stored permit, which holds the merged view: a field
@@ -444,6 +448,8 @@ public sealed class IngestionJob : BackgroundService
         opportunity.LeadScore = scoreResult.Score;
         opportunity.Reason = scoreResult.Reason;
         opportunity.ContractorStatus = scoreResult.ContractorStatus;
+        opportunity.Standing = scoreResult.Standing;
+        opportunity.LastActivityOn = scoreResult.LastActivityOn;
         opportunity.LastUpdatedAt = now;
 
         foreach (var signal in scoreResult.Signals)

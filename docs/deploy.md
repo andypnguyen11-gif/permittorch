@@ -182,6 +182,16 @@ The daily rescoring pass only revisits leads with a date inside the last 91 days
 
 The contractor-status release needs this pass: it changed two weights and added `contractor_status`, which every existing lead holds as null until the pass reaches it. While the pass runs, the feed shows those leads as not yet assessed and the `excludeContractorStatus` filter leaves them in.
 
+The call-first ordering release needs this pass too. It adds `permits.scope`, `fire_opportunities.standing` and `fire_opportunities.last_activity_on`, which every existing row holds as null until the pass reaches it. The pass also reads each permit's scope from the per-source list in `apps/api/Infrastructure/Apify/source-permit-types.json`, so a later change to that list takes effect at the next full pass. While the pass runs, unscored leads sort after every scored one and the digest keeps them.
+
+Confirm it finished with SQL instead of logs. Every lead has a standing, and the first rows of the feed are building permits whose record says the fire work is still ahead (standing 0):
+
+```bash
+railway ssh --service Postgres -- sh -c 'psql -U "$PGUSER" -d "$PGDATABASE" -c "select standing, count(*) from fire_opportunities group by 1 order by 1"'
+```
+
+No row has a null standing when the pass is done. Leads at standing 7 describe no fire-protection work and are hidden from the feed, the digest, the CSV and the public market counts.
+
 ## Rotating secrets
 
 Each `railway variable set` below redeploys the service unless you pass `--skip-deploys`.

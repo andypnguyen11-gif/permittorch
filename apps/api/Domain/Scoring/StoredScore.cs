@@ -24,5 +24,7 @@ public static class StoredScore
         opportunity.LeadScore = result.Score;
         opportunity.Reason = result.Reason;
         opportunity.ContractorStatus = result.ContractorStatus;
+        opportunity.Standing = result.Standing;
+        opportunity.LastActivityOn = result.LastActivityOn;
     }
 }

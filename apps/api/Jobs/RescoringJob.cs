@@ -12,6 +12,7 @@ using PermitTorch.Api.Data;
 using PermitTorch.Api.Domain.Classification;
 using PermitTorch.Api.Domain.Normalization;
 using PermitTorch.Api.Domain.Scoring;
+using PermitTorch.Api.Infrastructure.Apify;
 
 namespace PermitTorch.Api.Jobs;
 
@@ -89,7 +90,7 @@ public sealed class RescoringJob : BackgroundService
             ct.ThrowIfCancellationRequested();
             // Keyset paging by id: stable even if rows are inserted or deleted mid-pass.
             var query = db.Set<FireOpportunity>()
-                .Include(o => o.Permit)
+                .Include(o => o.Permit).ThenInclude(p => p.Source)
                 .Include(o => o.Signals)
                 .AsQueryable();
             // Any date inside the window can still gain or lose a time-based signal. A permit
@@ -110,6 +111,13 @@ public sealed class RescoringJob : BackgroundService
 
             foreach (var opportunity in batch)
             {
+                // Re-read from the stored description every pass, so permits stored before the
+                // scope was known get it, and a change to the per-source list takes effect.
+                var permit = opportunity.Permit;
+                var permitScope = SourcePermitTypes.Resolve(permit.Source.Jurisdiction, permit.Description);
+                var scopeChanged = permitScope != permit.Scope;
+                permit.Scope = permitScope;
+
                 var result = _scoringEngine.Score(StoredPermit.ToNormalized(opportunity.Permit),
                     // Always the stored category — for a manually reclassified opportunity
                     // (CategoryOverridden) that is the admin's choice, never re-derived.
@@ -118,10 +126,13 @@ public sealed class RescoringJob : BackgroundService
                     nowUtc);
                 // The status is part of the comparison: an inspection's numbers never move
                 // between releases, so without it a null status would be skipped forever.
-                if (SameSignals(opportunity.Signals, result.Signals)
+                if (!scopeChanged
+                    && SameSignals(opportunity.Signals, result.Signals)
                     && opportunity.LeadScore == result.Score
                     && opportunity.Reason == result.Reason
-                    && opportunity.ContractorStatus == result.ContractorStatus)
+                    && opportunity.ContractorStatus == result.ContractorStatus
+                    && opportunity.Standing == result.Standing
+                    && opportunity.LastActivityOn == result.LastActivityOn)
                     continue;
 
                 StoredScore.Replace(db, opportunity, result);

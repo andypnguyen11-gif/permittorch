@@ -16,6 +16,7 @@ import { computeOverviewStats, sampleScope } from "@/components/app/overview/sta
 import { dailyCounts } from "@/components/app/overview/activity-sparkline";
 import { digestScheduleLabel } from "@/components/app/overview/digest-preview";
 import { mockAccountMe } from "@/lib/fixtures/account";
+import { mockLeadsResponse } from "@/lib/fixtures/leads";
 
 beforeAll(() => vi.stubEnv("NEXT_PUBLIC_API_MOCK", "1"));
 
@@ -76,7 +77,7 @@ describe("digestScheduleLabel", () => {
 });
 
 describe("/app overview page", () => {
-  it("renders stats, the top five leads by score, and the super-admin right rail", async () => {
+  it("renders stats, the top five leads in feed order, and the super-admin right rail", async () => {
     render(await OverviewPage());
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Find the permits worth chasing.");
     expect(screen.getAllByText("$18.64M")).toHaveLength(2); // stat card + digest preview
@@ -87,7 +88,12 @@ describe("/app overview page", () => {
     expect(screen.getByTestId("stat-avg")).toHaveTextContent("across all 25 leads");
     expect(screen.getByTestId("sparkline-scope")).toHaveTextContent("across all 25 leads");
     const rows = screen.getAllByTestId("score-badge").map((b) => b.textContent);
-    expect(rows).toEqual(["100", "100", "100", "100", "95"]);
+    // Feed order, not score: the two building permits whose record says the fire work is still
+    // ahead (lead-002, lead-019), then the two that mention fire work (lead-009 at 90, lead-024 at
+    // 50) above every higher-scored sprinkler permit. The fifth depends on which activity dates
+    // share a day, so it is read from the mock's own order.
+    expect(rows.slice(0, 4)).toEqual(["100", "100", "90", "50"]);
+    expect(rows).toEqual(mockLeadsResponse({ pageSize: 5 }).items.map((l) => String(l.score)));
     expect(screen.getByRole("region", { name: "Source health" })).toBeInTheDocument();
     expect(screen.getByText("Next digest: tomorrow morning")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: /permit filings per day/ })).toBeInTheDocument();

@@ -67,6 +67,9 @@ public class Permit
     // score still needs to know a contractor exists, and whether it is a fire-protection firm.
     public bool ContractorWithheld { get; set; }
     public bool ContractorWithheldIsFireTrade { get; set; }
+    // Whether this permit is the fire work itself, from the city's own permit type. Null on
+    // permits stored before it was known, until the next full rescore resolves it.
+    public PermitScope? Scope { get; set; }
     public string Fingerprint { get; set; } = null!;       // sha256 of address|permit_type|filed_date|description
     public DateTime FirstSeenAt { get; set; }
     public DateTime LastSeenAt { get; set; }
@@ -122,6 +125,11 @@ public class FireOpportunity
     // Who the permit names as contractor, as the scoring engine read it. Null until a release
     // that knows the status has scored the lead; readers must not treat null as any one value.
     public ContractorStatus? ContractorStatus { get; set; }
+    // Where the lead stands in "who to call first" (the feed's first sort key), and the latest
+    // filed, issued or inspection date at midnight UTC (its second). Null until a release that
+    // knows them has scored the lead.
+    public LeadStanding? Standing { get; set; }
+    public DateTime? LastActivityOn { get; set; }
     public bool CategoryOverridden { get; set; }           // set by admin reclassification; ingestion keeps Category
     public DateTime FirstDetectedAt { get; set; }
     public DateTime LastUpdatedAt { get; set; }
