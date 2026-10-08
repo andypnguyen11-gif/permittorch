@@ -20,10 +20,11 @@ public sealed class DigestService(
     public static readonly TimeSpan SampleLifetime = TimeSpan.FromDays(28);
 
     // Leads a digest may carry: open fire work, and fire-work permits that name no contractor.
-    // A lead not yet scored by this release is kept, so the first digest after a deploy is not
-    // emptied while the full rescore runs. The feed's order (LeadQueries.OrderForFeed) decides.
-    private static IQueryable<FireOpportunity> Digestible(IQueryable<FireOpportunity> query) =>
-        query.Where(o => o.Standing == null
+    // For a subscriber, a lead not yet scored by this release is kept, so the first digest after a
+    // deploy is not emptied while the full rescore runs. The free sample goes to prospects, so it
+    // carries only scored leads. The feed's order (LeadQueries.OrderForFeed) decides.
+    private static IQueryable<FireOpportunity> Digestible(IQueryable<FireOpportunity> query, bool keepUnscored) =>
+        query.Where(o => (keepUnscored && o.Standing == null)
             || o.Standing == LeadStanding.FireWorkAhead
             || o.Standing == LeadStanding.FireWorkMentioned
             || o.Standing == LeadStanding.FireWorkPermitNoContractor);
@@ -83,7 +84,7 @@ public sealed class DigestService(
         var marketIds = await entitlements.GetEntitledMarketIdsAsync(user, ct);
         var since = preference.LastSentAt.Value;
         var leads = await LeadQueries.OrderForFeed(Digestible(db.FireOpportunities
-                .Where(o => marketIds.Contains(o.Permit.Source.MarketId) && o.FirstDetectedAt > since)))
+                .Where(o => marketIds.Contains(o.Permit.Source.MarketId) && o.FirstDetectedAt > since), keepUnscored: true))
             .Take(10)
             .Select(o => new DigestLead(o.LeadScore, o.Category, o.Permit.Description,
                 o.Permit.PermitType, o.Permit.City, o.Permit.State, o.Permit.FiledDate,
@@ -143,7 +144,7 @@ public sealed class DigestService(
         var scheduledInstant = DigestSchedule.LastScheduledInstant(DigestFrequency.Weekly, nowUtc)!.Value;
 
         var leads = await LeadQueries.OrderForFeed(Digestible(db.FireOpportunities
-                .Where(o => o.Permit.Source.Market.Slug == request.MarketSlug)))
+                .Where(o => o.Permit.Source.Market.Slug == request.MarketSlug), keepUnscored: false))
             .Take(5)
             .Select(o => new DigestLead(o.LeadScore, o.Category, o.Permit.Description,
                 o.Permit.PermitType, o.Permit.City, o.Permit.State, o.Permit.FiledDate,

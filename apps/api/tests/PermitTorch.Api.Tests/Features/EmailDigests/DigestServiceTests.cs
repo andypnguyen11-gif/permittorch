@@ -186,6 +186,7 @@ public class DigestServiceTests(ApiFactory factory)
         var source = TestSeed.Source(market, Now);
         var permits = Enumerable.Range(0, 7).Select(_ => TestSeed.Permit(source)).ToArray();
         var opportunities = permits.Select((p, i) => TestSeed.Opportunity(p, 71 + i)).ToArray();
+        foreach (var o in opportunities) o.Standing = LeadStanding.FireWorkMentioned;
         var request = new SampleLeadRequest
         {
             Id = Guid.NewGuid(), Name = "Pat", Email = $"sample{Guid.NewGuid():N}@example.com",
@@ -295,6 +296,7 @@ public class DigestServiceTests(ApiFactory factory)
         var source = TestSeed.Source(market, Now);
         var permit = TestSeed.Permit(source);
         var opportunity = TestSeed.Opportunity(permit, 88);
+        opportunity.Standing = LeadStanding.FireWorkMentioned;
         var request = new SampleLeadRequest
         {
             Id = Guid.NewGuid(), Name = "Pat", Email = $"nurture{Guid.NewGuid():N}@example.com",
@@ -334,5 +336,39 @@ public class DigestServiceTests(ApiFactory factory)
 
         Assert.DoesNotContain(resend.Sent, s => s.To == expired.Email);
         Assert.Contains(resend.Sent, s => s.To == current.Email);
+    }
+
+    // The free sample goes to prospects, so it carries only leads this release has scored. A
+    // paying subscriber still gets unscored leads while the one-time rescore runs after a deploy.
+    [Fact]
+    public async Task Sample_digest_requires_a_standing_but_subscriber_digest_keeps_unscored_leads()
+    {
+        var market = TestSeed.Market("Unscored");
+        var source = TestSeed.Source(market, Now);
+        var scoredPermit = TestSeed.Permit(source, description: "Renovation with new fire alarm devices");
+        var scored = TestSeed.Opportunity(scoredPermit, 70, firstDetectedAt: Now.AddHours(-3));
+        scored.Standing = LeadStanding.FireWorkMentioned;
+        var unscoredPermit = TestSeed.Permit(source, description: "Lawn sprinkler system for the clubhouse");
+        var unscored = TestSeed.Opportunity(unscoredPermit, 100, firstDetectedAt: Now.AddHours(-3));
+        var request = new SampleLeadRequest
+        {
+            Id = Guid.NewGuid(), Name = "Pat", Email = $"unscored{Guid.NewGuid():N}@example.com",
+            Company = "Acme", MarketSlug = market.Slug, CreatedAt = Now.AddHours(-1), LastSentAt = null,
+        };
+        var sub = $"user_{Guid.NewGuid():N}";
+        var (org, user, pref) = TestSeed.User(sub, $"{sub}@example.com");
+        pref.Frequency = DigestFrequency.Daily;
+        pref.LastSentAt = Now.Date.AddDays(-1).AddHours(12).AddMinutes(5);
+        var subscription = TestSeed.Subscription(org, PlanTier.Pro, "active", market);
+        await factory.SeedAsync(db => db.AddRange(market, source, scoredPermit, scored, unscoredPermit, unscored,
+            request, org, user, pref, subscription));
+
+        var resend = await RunOnceAsync();
+
+        var sample = Assert.Single(resend.Sent, s => s.To == request.Email);
+        Assert.Contains("new fire alarm devices", sample.Html);
+        Assert.DoesNotContain("Lawn sprinkler", sample.Html);
+        var digest = Assert.Single(resend.Sent, s => s.To == user.Email);
+        Assert.Contains("Lawn sprinkler", digest.Html);
     }
 }

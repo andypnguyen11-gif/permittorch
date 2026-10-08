@@ -18,7 +18,7 @@ export const SIGNAL_CATALOG = {
   LARGE_SQUARE_FOOTAGE: { description: "Large square footage (over 20,000 sqft)", weight: 10 },
   NO_CONTRACTOR_LISTED: { description: "No contractor listed yet", weight: 10 },
   OTHER_CONTRACTOR_LISTED: {
-    description: "A contractor is listed who is not a fire-protection firm", weight: 15,
+    description: "A contractor is listed; no fire-protection firm named", weight: 15,
   },
   FIRE_CONTRACTOR_ASSIGNED: {
     description: "A fire-protection contractor is already on this permit", weight: -50,
@@ -45,7 +45,7 @@ export const mockLeads: LeadSummary[] = [
     address: "12000 Gulf Fwy", city: "Houston", state: "TX",
     category: "FIRE_SPRINKLER", permitType: "Commercial New Construction", status: "NEW",
     filedDate: hoursAgo(20), estimatedValue: 4200000,
-    reason: "210,000 sq ft distribution center with no fire contractor listed yet.", isNew: true, contractorStatus: "NO_CONTRACTOR_LISTED" },
+    reason: "No contractor listed. The record says \"deferred fire sprinklers\".", isNew: true, contractorStatus: "NO_CONTRACTOR_LISTED" },
   { id: "lead-003", score: 85, title: "Hospital Wing Fire Alarm Upgrade",
     address: "6565 Fannin St", city: "Houston", state: "TX",
     category: "FIRE_ALARM", permitType: "Fire Alarm Installation", status: "ACTIVE",
@@ -130,7 +130,7 @@ export const mockLeads: LeadSummary[] = [
     address: "2500 Victory Ave", city: "Dallas", state: "TX",
     category: "FIRE_ALARM", permitType: "Fire Alarm Installation", status: "ACTIVE",
     filedDate: daysAgo(2), estimatedValue: 1400000,
-    reason: "22-story mixed-use tower alarm system, core and shell.", isNew: true, contractorStatus: "OTHER_CONTRACTOR_NAMED" },
+    reason: "A contractor is listed; no fire-protection firm named. The record says \"fire alarm under a separate permit\".", isNew: true, contractorStatus: "OTHER_CONTRACTOR_NAMED" },
   { id: "lead-020", score: 100, title: "Data Center Clean Agent Suppression",
     address: "8687 N Central Expy", city: "Dallas", state: "TX",
     category: "FIRE_SUPPRESSION", permitType: "Clean Agent Suppression", status: "NEW",
@@ -223,7 +223,7 @@ const extras: Record<string, DetailExtras> = {
   "lead-002": {
     confidence: 0.94, firstDetectedAt: hoursAgo(18),
     permit: permit({ permitNumber: "25-176455", zip: "77034",
-      description: "New commercial construction: 210,000 sq ft distribution center with wet and ESFR sprinkler systems.",
+      description: "New commercial construction: 210,000 sq ft distribution center. Deferred fire sprinklers: wet and ESFR systems.",
       squareFootage: 210000, ownerName: "Gulf Freeway Logistics LLC" }),
     participants: [{ role: "OWNER", name: "Gulf Freeway Logistics LLC" }],
     signals: signalsOf("NEW_COMMERCIAL_BUILD", "FIRE_SPRINKLER_SCOPE", "PERMIT_RECENT",
@@ -387,7 +387,7 @@ const extras: Record<string, DetailExtras> = {
   "lead-019": {
     confidence: 0.89, firstDetectedAt: hoursAgo(46),
     permit: permit({ permitNumber: "DAL-25-09077", zip: "75219",
-      description: "Fire alarm system for a 22-story mixed-use tower, core and shell.",
+      description: "Core and shell for a 22-story mixed-use tower. Fire alarm system under a separate permit.",
       squareFootage: 520000, ownerName: "Victory Park Tower LLC",
       contractorName: "Metroplex General Contractors" }),
     participants: [

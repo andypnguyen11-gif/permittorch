@@ -36,8 +36,10 @@ describe("SampleLeadsForm", () => {
 
   it("states exactly what a sample request delivers, with the opt-out", () => {
     render(<SampleLeadsForm markets={mockMarkets} />);
-    const promise = screen.getByText(/up to 5 of the highest-scoring opportunities/);
+    const promise = screen.getByText(/up to 5 leads from your market, in the order to call them/);
+    expect(promise.textContent).toContain("fire work the record says is still ahead first, then the newest");
     expect(promise.textContent).toContain("usually within the hour, then a weekly update — you can opt out from any email");
+    expect(promise.textContent).not.toMatch(/highest-scoring|70\+/);
     expect(screen.queryByText(/5–10/)).toBeNull();
   });
 
@@ -81,7 +83,7 @@ describe("SampleLeadsForm", () => {
       }),
     );
     expect(await screen.findByText(/request received — check your inbox/i)).toBeDefined();
-    expect(screen.getByText(/up to 5 of the highest-scoring opportunities \(score 70\+\)/)).toBeDefined();
+    expect(screen.getByText(/up to 5 leads from your market, in the order to call them/)).toBeDefined();
     expect(screen.queryByText(/on the way/i)).toBeNull();
   });
 

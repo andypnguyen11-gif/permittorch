@@ -116,7 +116,7 @@ public class ScoringEngineContractorStatusTests
         var result = Score(Permit(contractorName: "Summit General Contractors"));
         var signal = Assert.Single(result.Signals, s => s.SignalType == "OTHER_CONTRACTOR_LISTED");
         Assert.Equal(15, signal.Weight);
-        Assert.Equal("A contractor is listed who is not a fire-protection firm", signal.Description);
+        Assert.Equal("A contractor is listed; no fire-protection firm named", signal.Description);
     }
 
     [Fact]

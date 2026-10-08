@@ -116,7 +116,7 @@ public class ScoringEngine
                 break;
             case ContractorStatus.OtherContractorNamed:
                 AddSignal(signals, "OTHER_CONTRACTOR_LISTED",
-                    "A contractor is listed who is not a fire-protection firm");
+                    "A contractor is listed; no fire-protection firm named");
                 break;
             case ContractorStatus.NoContractorListed:
                 AddSignal(signals, "NO_CONTRACTOR_LISTED", "No contractor listed yet");

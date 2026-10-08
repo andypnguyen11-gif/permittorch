@@ -6,6 +6,7 @@ import {
   mockLeadDetail,
   compareForFeed,
   feedKeyOf,
+  SIGNAL_CATALOG,
   type FeedKey,
 } from "@/lib/fixtures/leads";
 import { ApiError } from "@/lib/api";
@@ -48,6 +49,21 @@ describe("fixture integrity", () => {
       const age = Date.now() - Date.parse(d.firstDetectedAt);
       expect(d.isNew, d.id).toBe(age < 72 * HOURS);
     }
+  });
+});
+
+describe("fixture wording (API reason contract)", () => {
+  it("every lead marked fire work ahead says in its record that the work is still to come", () => {
+    const ahead = mockLeads.filter((l) => feedKeyOf(l).standing === "FIRE_WORK_AHEAD");
+    expect(ahead.length).toBeGreaterThan(0);
+    for (const lead of ahead) {
+      const description = mockLeadDetails.find((d) => d.id === lead.id)!.permit.description ?? "";
+      expect(description, lead.id).toMatch(/deferred|separate (permit|application)|to be fully sprinklered/i);
+    }
+  });
+
+  it("the contractor signal says what the record shows", () => {
+    expect(SIGNAL_CATALOG.OTHER_CONTRACTOR_LISTED.description).toBe("A contractor is listed; no fire-protection firm named");
   });
 });
 
