@@ -92,6 +92,17 @@ public class SourcePermitTypesTests
     public void Seattle_SprinklerAndSuppressionType_IsFireWork(string description, PermitScope expected)
         => Assert.Equal(expected, SourcePermitTypes.Resolve("seattle-trade-permits", description));
 
+    // Sugar Land and Missouri City publish fire construction permits only (production rows,
+    // 2026-10-09). Every record is the fire work itself, including hydrants and fixed extinguishing
+    // systems, whose descriptions name no system the description reader knows.
+    [Theory]
+    [InlineData("sugarland-fire-permits", "Fire Permit - Fire Sprinkler Systems (Aboveground) | Fire Sprinkler Above Ground")]
+    [InlineData("missouricity-fire-permits", "Private Fire Hydrants | Private Fire Hydrants | install fire hydrant")]
+    [InlineData("missouricity-fire-permits", "Automatic Fire Extinguishing System | Automatic Fire Extinguishing System | Add and Relocate")]
+    [InlineData("missouricity-fire-permits", "Fire Alarm & Detection Systems | Fire Alarm & Detection Systems | installing new fire alarm system")]
+    public void FortBendCounty_EveryPermit_IsFireWork(string sourceId, string description)
+        => Assert.Equal(PermitScope.FireWorkPermit, SourcePermitTypes.Resolve(sourceId, description));
+
     // Detroit's sprinkler and suppression trade source is the trade permit itself, filed by the installer.
     [Fact]
     public void DetroitSprinklerAndSuppressionTrades_AreFireWork()

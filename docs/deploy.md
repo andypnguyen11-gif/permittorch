@@ -241,6 +241,12 @@ The market is not public: it is in `DevSeeder.NotYetPublicMarketSlugs` and the w
 `NOT_YET_PUBLIC_MARKET_SLUGS`, and not in the source registry. Remove it from both lists and add it to
 the registry JSON and `source-registry.ts` to market it.
 
+Both sources are in the `allFireWork` list of `source-permit-types.json`, like Tulsa: every record
+is the fire work itself. Without that entry the first backfill hid 12 of 58 Missouri City permits
+(hydrants and fixed extinguishing systems) as "not fire work", because their descriptions name no
+system the description reader knows. A change to that list takes effect at the next full rescoring
+pass (above).
+
 What the records carry: Sugar Land's portal exposes only aboveground sprinkler permits (fire alarm
 permits are filed there but are not searchable), so every Sugar Land lead is a sprinkler lead with
 no description. Missouri City carries fire alarm, extinguishing, private main and hydrant permits
