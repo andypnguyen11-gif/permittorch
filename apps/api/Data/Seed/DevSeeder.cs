@@ -11,7 +11,7 @@ namespace PermitTorch.Api.Data.Seed;
 /// independent parts, each behind its own gate so production can only ever receive the registry
 /// and an explicitly named operator account:
 /// <list type="number">
-/// <item>Registry upsert (32 markets, 44 sources) — always runs; safe in every environment.</item>
+/// <item>Registry upsert (33 markets, 45 sources) — always runs; safe in every environment.</item>
 /// <item>Sample permits — only with <c>SEED_SAMPLE_DATA=true</c>, outside Production, and while
 /// the database holds no permits other than the samples themselves.</item>
 /// <item>E2E identities (E2E SuperAdmin from <c>SUPERADMIN_FIREBASE_UID</c>, entitled and
@@ -128,7 +128,7 @@ public static class DevSeeder
 
             var opp = permit.Opportunity;
             if (opp is null) continue;
-            var score = engine.Score(StoredPermit.ToNormalized(permit),
+            var score = engine.Score(StoredPermit.ForScoring(permit, permit.Source),
                 new ClassificationResult(opp.Category, opp.Confidence, "seed"), nowUtc);
             db.LeadSignals.RemoveRange(opp.Signals);
             opp.Signals.Clear();
@@ -164,6 +164,8 @@ public static class DevSeeder
     // 44 sources; DevSeederTests fails if they drift). Scraper build 0.1.16 added Atlanta and
     // four sources on 2026-09-28. Source.Jurisdiction MUST equal the scraper's
     // source.sourceId / COVERAGE_REPORT sourceStats[].sourceId. Adding a market = a row here + JSON.
+    // Exception: a market in NotYetPublic is registered here only. The JSON also drives the public
+    // marketing pages, so it joins the JSON when it is ready to be marketed.
     private const string ScraperUrl = "https://apify.com/scrapelabmax/us-fire-permit-leads-scraper";
 
     private static readonly (string Slug, string Name, string City, string State)[] MarketDefs =
@@ -200,6 +202,20 @@ public static class DevSeeder
         ("tulsa-ok", "Tulsa", "Tulsa", "OK"),
         ("virginia-beach-va", "Virginia Beach", "Virginia Beach", "VA"),
         ("washington-dc", "Washington", "Washington", "DC"),
+        // Scraper build 0.1.20: New Jersey's register for three counties only, never the state.
+        ("central-new-jersey-nj", "Central New Jersey (Middlesex, Somerset & Union counties)", "Central New Jersey", "NJ"),
+    };
+
+    /// <summary>Registered markets that are not in the public registry JSON yet.</summary>
+    public static readonly IReadOnlySet<string> NotYetPublicMarketSlugs =
+        new HashSet<string>(StringComparer.Ordinal) { "central-new-jersey-nj" };
+
+    // Sources whose publisher differs from the default (names the contractor, updated daily).
+    // RecencyFromFirstSeenSince is deliberately not here: it is set by hand once a backfill is in
+    // and checked, and the seeder must never set or clear it.
+    private static readonly Dictionary<string, (bool PublishesContractor, PublishCadence Cadence)> SourceSettings = new()
+    {
+        ["nj-ucc-fire-permits"] = (false, PublishCadence.Monthly),
     };
 
     // PortalType is a best-effort label from the scraper README (records carry the authoritative provider in source.provider).
@@ -249,6 +265,7 @@ public static class DevSeeder
         ("virginia-beach-building-permits", "virginia-beach-va", "Virginia Beach Building Permits (keyword)", "arcgis"),
         ("dc-permits-2025", "washington-dc", "DC Building Permits 2025", "arcgis"),
         ("dc-permits-2026", "washington-dc", "DC Building Permits 2026", "arcgis"),
+        ("nj-ucc-fire-permits", "central-new-jersey-nj", "New Jersey Construction Permits with the fire subcode (Middlesex, Somerset & Union counties)", "socrata"),
     };
 
     private static async Task<Dictionary<string, Market>> UpsertMarketsAsync(AppDbContext db, CancellationToken ct)
@@ -294,6 +311,9 @@ public static class DevSeeder
             s.City = market.City;
             s.State = market.State;
             s.PortalType = d.PortalType;
+            var settings = SourceSettings.GetValueOrDefault(d.SourceId, (PublishesContractor: true, Cadence: PublishCadence.Daily));
+            s.PublishesContractor = settings.PublishesContractor;
+            s.PublishCadence = settings.Cadence;
             result[d.SourceId] = s;
         }
         return result;
@@ -485,7 +505,7 @@ public static class DevSeeder
             db.Permits.Add(permit);
 
             var score = engine.Score(
-                StoredPermit.ToNormalized(permit), new ClassificationResult(l.Category, l.Confidence, "seed"), nowUtc);
+                StoredPermit.ForScoring(permit, source), new ClassificationResult(l.Category, l.Confidence, "seed"), nowUtc);
             var opp = new FireOpportunity
             {
                 Id = G(l.N), PermitId = permit.Id, Category = l.Category,

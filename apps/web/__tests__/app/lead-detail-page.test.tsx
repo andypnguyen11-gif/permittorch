@@ -122,6 +122,30 @@ describe("/app/leads/[id] page (mock API)", () => {
     spy.mockRestore();
   });
 
+  it("a New Jersey lead says the source does not publish the contractor and dates its data", async () => {
+    const lead = await api.getLead("lead-022", "mock-token");
+    const spy = vi.spyOn(api, "getLead").mockResolvedValueOnce({
+      ...lead, contractorStatus: "NOT_PUBLISHED",
+      reason: "This source does not publish the contractor. The record mentions fire subcode work.",
+      signals: lead.signals.filter((sig) => sig.signalType !== "NO_CONTRACTOR_LISTED"),
+      permit: { ...lead.permit, contractorName: null, ownerName: null, zip: null },
+      source: { ...lead.source, cadence: "MONTHLY", dataThrough: "2026-08-07T00:00:00Z" },
+    });
+    await renderPage("lead-022");
+    const permit = screen.getByRole("region", { name: "Permit" });
+    expect(within(permit).getByText("Not published by this source")).toBeInTheDocument();
+    expect(screen.queryByText(/No contractor listed/)).not.toBeInTheDocument();
+    const source = screen.getByRole("region", { name: "Source" });
+    expect(within(source).getByText("Data through Aug 7, 2026, published monthly")).toBeInTheDocument();
+    spy.mockRestore();
+  });
+
+  it("a daily source shows no data date", async () => {
+    await renderPage("lead-022");
+    const source = screen.getByRole("region", { name: "Source" });
+    expect(within(source).queryByText(/published monthly/)).not.toBeInTheDocument();
+  });
+
   it("renders a CONTRACTOR participant with the label 'Contractor'", async () => {
     await renderPage("lead-014");
     const participants = screen.getByRole("region", { name: "Participants" });

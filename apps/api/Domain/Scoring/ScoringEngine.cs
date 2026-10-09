@@ -123,8 +123,8 @@ public class ScoringEngine
                 break;
         }
 
-        if (LatestActivity(permit, nowUtc) is { } latest && latest < nowUtc - OldAfter)
-            AddSignal(signals, "OLD_PERMIT", "Permit older than 90 days");
+        if (OldActivity(permit, nowUtc) is { } old)
+            AddSignal(signals, "OLD_PERMIT", old);
 
         if (permit.Status == PermitStatusKind.Closed)
             AddSignal(signals, "CLOSED_PERMIT", "Permit is closed");
@@ -181,14 +181,21 @@ public class ScoringEngine
                 ? ContractorStatus.FireContractorNamed
                 : ContractorStatus.OtherContractorNamed;
         }
-        return permit.IsInspection || permit.IsViolation
-            ? ContractorStatus.NotApplicable
+        if (permit.IsInspection || permit.IsViolation) return ContractorStatus.NotApplicable;
+        return permit.ContractorNotPublished
+            ? ContractorStatus.NotPublished
             : ContractorStatus.NoContractorListed;
     }
 
     // The most specific recent event wins the wording. Dates in the future are not activity.
+    // A source whose permits are timed from when they appeared in the public data says so; the
+    // permit's own dates are not read, as they are months old by the time the record appears.
     private static string? RecentActivity(NormalizedPermit permit, DateTime nowUtc)
     {
+        if (permit.AppearedInDataAt is { } appeared)
+            return IsWithin(appeared, RecentIssuedWindow, nowUtc)
+                ? "Appeared in the public data within the last 7 days"
+                : null;
         if (IsWithin(permit.FiledDate, RecentFiledWindow, nowUtc))
             return "Filed within the last 72 hours";
         if (IsWithin(permit.IssuedDate, RecentIssuedWindow, nowUtc))
@@ -198,6 +205,15 @@ public class ScoringEngine
             && IsWithin(permit.InspectionDate, RecentInspectionWindow, nowUtc))
             return "Inspected within the last 7 days";
         return null;
+    }
+
+    private static string? OldActivity(NormalizedPermit permit, DateTime nowUtc)
+    {
+        if (permit.AppearedInDataAt is { } appeared)
+            return appeared < nowUtc - OldAfter ? "Appeared in the public data more than 90 days ago" : null;
+        return LatestActivity(permit, nowUtc) is { } latest && latest < nowUtc - OldAfter
+            ? "Permit older than 90 days"
+            : null;
     }
 
     private static bool IsWithin(DateTime? date, TimeSpan window, DateTime nowUtc)
@@ -244,9 +260,12 @@ public class ScoringEngine
     {
         if (standing == LeadStanding.NotFireWork) return "The record describes no fire-protection work.";
 
-        var who = contractorStatus == ContractorStatus.OtherContractorNamed
-            ? "A contractor is listed; no fire-protection firm named."
-            : "No contractor listed.";
+        var who = contractorStatus switch
+        {
+            ContractorStatus.OtherContractorNamed => "A contractor is listed; no fire-protection firm named.",
+            ContractorStatus.NotPublished => "This source does not publish the contractor.",
+            _ => "No contractor listed.",
+        };
         var opening = standing switch
         {
             LeadStanding.FireWorkAhead => $"{who} The record says \"{reading.Quote}\".",

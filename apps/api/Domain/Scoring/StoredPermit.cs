@@ -20,4 +20,15 @@ public static class StoredPermit
         RecordUrl: p.RecordUrl, RecordUrlKind: p.RecordUrlKind, ApplicantName: p.ApplicantName,
         ContractorWithheld: p.ContractorWithheld,
         ContractorWithheldIsFireTrade: p.ContractorWithheldIsFireTrade, Scope: p.Scope);
+
+    /// <summary>The scoring input: the stored permit plus what its source's settings say about
+    /// it. Every score must come from here, so a permit is read the same way wherever it is
+    /// scored.</summary>
+    public static NormalizedPermit ForScoring(Permit p, Source source) => ToNormalized(p) with
+    {
+        ContractorNotPublished = !source.PublishesContractor,
+        AppearedInDataAt = source.RecencyFromFirstSeenSince is { } since && p.FirstSeenAt >= since
+            ? p.FirstSeenAt
+            : null,
+    };
 }

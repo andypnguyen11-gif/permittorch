@@ -97,7 +97,9 @@ public sealed class RescoringJob : BackgroundService
             // with no filed date is always included, as before.
             if (!fullPass)
                 query = query.Where(o => o.Permit.FiledDate == null || o.Permit.FiledDate >= windowStart
-                    || o.Permit.IssuedDate >= windowStart || o.Permit.InspectionDate >= windowStart);
+                    || o.Permit.IssuedDate >= windowStart || o.Permit.InspectionDate >= windowStart
+                    // A source on the appeared-in-data clock times its signals from FirstSeenAt.
+                    || (o.Permit.Source.RecencyFromFirstSeenSince != null && o.Permit.FirstSeenAt >= windowStart));
             if (lastId is { } after)
                 query = query.Where(o => o.Id.CompareTo(after) > 0);
             var batch = await query
@@ -118,7 +120,7 @@ public sealed class RescoringJob : BackgroundService
                 var scopeChanged = permitScope != permit.Scope;
                 permit.Scope = permitScope;
 
-                var result = _scoringEngine.Score(StoredPermit.ToNormalized(opportunity.Permit),
+                var result = _scoringEngine.Score(StoredPermit.ForScoring(permit, permit.Source),
                     // Always the stored category — for a manually reclassified opportunity
                     // (CategoryOverridden) that is the admin's choice, never re-derived.
                     new ClassificationResult(opportunity.Category, opportunity.Confidence,

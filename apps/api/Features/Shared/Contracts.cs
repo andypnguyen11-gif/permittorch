@@ -6,7 +6,10 @@ public sealed record ErrorResponse(string Error);
 
 public sealed record PagedResponse<T>(IReadOnlyList<T> Items, int Total, int Page, int PageSize);
 
-public sealed record FreshnessDto(DateTime? LastUpdatedAt);
+// LastUpdatedAt is the latest run of the daily sources in view. A monthly source is described by
+// the newest permit it holds instead, never by its run: one entry per market that has data.
+public sealed record FreshnessDto(DateTime? LastUpdatedAt, IReadOnlyList<MonthlyDataDto> MonthlyData);
+public sealed record MonthlyDataDto(string MarketName, DateTime DataThrough);
 
 // ContractorStatus is null for a lead not yet scored by a release that knows it.
 public sealed record LeadSummaryDto(
@@ -37,8 +40,10 @@ public sealed record ParticipantDto(ParticipantRole Role, string Name,
 // Url is the dataset's home page. RecordUrl opens this one record and is null when the source
 // has no such link; RecordUrlKind says what it opens, so the link is never labelled as more
 // than it is.
+// DataThrough is the newest permit date the source holds; set for a monthly source only.
 public sealed record LeadSourceDto(string Name, string Url, DateTime? LastCheckedAt,
-    string? RecordUrl, RecordLinkKind? RecordUrlKind);
+    string? RecordUrl, RecordLinkKind? RecordUrlKind,
+    PublishCadence Cadence = PublishCadence.Daily, DateTime? DataThrough = null);
 
 // LeadDetail extends LeadSummary (master §7) — flattened here, same field set
 public sealed record LeadDetailDto(

@@ -9,6 +9,11 @@ import { mockMarkets, mockMarketStats } from "@/lib/fixtures/markets";
 const ZERO: Market = { id: "z1", name: "El Paso", city: "El Paso", state: "TX", slug: "el-paso-tx" };
 const NEVER: Market = { id: "z2", name: "Tulsa", city: "Tulsa", state: "OK", slug: "tulsa-ok" };
 const BROKEN: Market = { id: "z3", name: "Mesa", city: "Mesa", state: "AZ", slug: "mesa-az" };
+// Has data, but is not marketed yet.
+const NOT_PUBLIC: Market = {
+  id: "z4", name: "Central New Jersey (Middlesex, Somerset & Union counties)",
+  city: "Central New Jersey", state: "NJ", slug: "central-new-jersey-nj",
+};
 const empty = (slug: string, lastUpdatedAt: string | null): MarketStats => ({
   slug, totalLast30Days: 0, lastUpdatedAt,
   byCategory: {
@@ -20,10 +25,11 @@ const STATS: Record<string, MarketStats> = {
   ...mockMarketStats,
   "el-paso-tx": empty("el-paso-tx", "2026-08-19T06:00:00Z"),
   "tulsa-ok": { ...mockMarketStats["austin-tx"], slug: "tulsa-ok", lastUpdatedAt: null },
+  "central-new-jersey-nj": { ...mockMarketStats["austin-tx"], slug: "central-new-jersey-nj" },
 };
 
 vi.mock("@/lib/api", () => ({
-  getMarkets: vi.fn(async () => [...mockMarkets, ZERO, NEVER, BROKEN]),
+  getMarkets: vi.fn(async () => [...mockMarkets, ZERO, NEVER, BROKEN, NOT_PUBLIC]),
   getMarketStats: vi.fn(async (slug: string) => {
     const s = STATS[slug];
     if (!s) throw new Error(`stats unavailable for ${slug}`);
@@ -39,8 +45,9 @@ vi.mock("next/navigation", () => ({
 }));
 
 import * as api from "@/lib/api";
-import { getMarketsWithData, hasRealData } from "@/lib/marketing/markets-with-data";
+import { getMarketsWithData, hasRealData, isPublicMarket } from "@/lib/marketing/markets-with-data";
 import sitemap from "@/app/sitemap";
+import { marketToLocationParams } from "@/components/marketing/market-slug";
 import LocationsPage from "@/app/(marketing)/locations/page";
 import MarketPage, { generateMetadata, generateStaticParams } from "@/app/(marketing)/locations/[state]/[city]/page";
 
@@ -128,5 +135,27 @@ describe("zero-data markets get no public surface", () => {
   it("a market with data still renders", async () => {
     const el = await MarketPage({ params: Promise.resolve({ state: "texas", city: "austin" }) });
     expect(el).toBeTruthy();
+  });
+});
+
+describe("a market that is not public yet gets no public surface, even with data", () => {
+  const params = marketToLocationParams(NOT_PUBLIC);
+
+  it("is left out of getMarketsWithData, the sitemap and the /locations index", async () => {
+    expect((await getMarketsWithData()).map((e) => e.market.slug)).not.toContain(NOT_PUBLIC.slug);
+    expect((await sitemap()).some((e) => e.url.includes(params.city))).toBe(false);
+    render(await LocationsPage());
+    expect(screen.queryByText(/New Jersey/)).toBeNull();
+  });
+
+  it("has no static params and its page returns notFound()", async () => {
+    expect(await generateStaticParams()).not.toContainEqual(params);
+    await expect(MarketPage({ params: Promise.resolve(params) })).rejects.toThrow("NEXT_NOT_FOUND");
+    expect(await generateMetadata({ params: Promise.resolve(params) })).toEqual({});
+  });
+
+  it("isPublicMarket names it and nothing else", () => {
+    expect(isPublicMarket(NOT_PUBLIC.slug)).toBe(false);
+    expect(isPublicMarket("austin-tx")).toBe(true);
   });
 });

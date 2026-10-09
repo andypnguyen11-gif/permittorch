@@ -31,7 +31,7 @@ public static class FireWorkReader
 
     private static readonly Regex FireProtectionTerm = new(
         Sprinkler + @"|fire\s*alarm|fire\s*detection|\bfacp\b|nfpa[\s-]*(13|72)|standpipe|fire\s*pump"
-        + "|" + Suppression + @"|fire\s*(service\s*)?line\b|fire\s*protection", Opts);
+        + "|" + Suppression + @"|fire\s*(service\s*)?line\b|fire\s*protection|" + FireSubcode, Opts);
 
     // The kinds of fire work a Mentioned reason names, in this order.
     private static readonly (Regex Pattern, string Kind)[] WorkKinds =
@@ -43,6 +43,10 @@ public static class FireWorkReader
         (new(@"fire\s*(service\s*)?line\b", Opts), "fire line"),
     ];
     private static readonly Regex FireProtectionOnly = new(@"fire\s*protection", Opts);
+    // New Jersey's register records only that the fire subcode is on a construction permit, never
+    // which system; it is named as that and nothing more specific.
+    private const string FireSubcode = @"fire\s*(protection\s*)?subcode";
+    private static readonly Regex FireSubcodeOnly = new(FireSubcode, Opts);
 
     private static readonly Regex HotWork = new(@"hot\s*work", Opts);
     private static readonly Regex LawnSprinkler = new(@"lawn\s*sprinkl|landscape\s*sprinkl|irrigation", Opts);
@@ -122,6 +126,7 @@ public static class FireWorkReader
     private static string? WorkKindsOf(string text)
     {
         var kinds = WorkKinds.Where(k => k.Pattern.IsMatch(text)).Select(k => k.Kind).ToList();
+        if (kinds.Count == 0 && FireSubcodeOnly.IsMatch(text)) kinds.Add("fire subcode");
         if (kinds.Count == 0 && FireProtectionOnly.IsMatch(text)) kinds.Add("fire-protection");
         return kinds.Count switch
         {

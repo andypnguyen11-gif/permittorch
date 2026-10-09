@@ -177,6 +177,8 @@ public sealed class IngestionJob : BackgroundService
         var removedRecords = 0;
 
         var recordSourceIds = new HashSet<Guid>();
+        // Newest permit date delivered per source this run; describes a monthly source's freshness.
+        var latestRecordDates = new Dictionary<Guid, DateTime>();
         var unknownSources = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var inactiveSources = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var processed = 0;
@@ -220,6 +222,9 @@ public sealed class IngestionJob : BackgroundService
                 if (isNew) counts.Imported++; else counts.Duplicates++;
                 if (isClassified) counts.Classified++;
                 recordSourceIds.Add(source.Id);
+                if (RecordDate(allowed, now) is { } recordDate
+                    && (!latestRecordDates.TryGetValue(source.Id, out var newest) || recordDate > newest))
+                    latestRecordDates[source.Id] = recordDate;
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -286,7 +291,7 @@ public sealed class IngestionJob : BackgroundService
         // late-ingested backfill run cannot make a source look fresher than its data (PRD §37).
         var runTime = run.FinishedAt ?? run.StartedAt;
         LogChargeLimit(run.RunId, run.Coverage);
-        await ApplySourceUpdatesAsync(db, run.Coverage, recordSourceIds, runTime, ct);
+        await ApplySourceUpdatesAsync(db, run.Coverage, recordSourceIds, latestRecordDates, runTime, ct);
 
         var scraperRun = BuildScraperRun(run, run.Status, ingestStart, counts, CoverageJson(run.Coverage));
         db.Add(scraperRun);
@@ -404,7 +409,7 @@ public sealed class IngestionJob : BackgroundService
         // Classified and scored from the stored permit, which holds the merged view: a field
         // this record omitted keeps the value an earlier record supplied. It is also the view the
         // daily rescoring uses, so the two can never disagree about a lead.
-        var merged = StoredPermit.ToNormalized(permit);
+        var merged = StoredPermit.ForScoring(permit, source);
 
         // A manual reclassification (admin) is authoritative: keep the stored category and
         // confidence and only rescore against the refreshed permit fields. The classifier never
@@ -529,7 +534,8 @@ public sealed class IngestionJob : BackgroundService
     // Loads the affected sources fresh (the loop clears the change tracker) and applies
     // LastRecordSeenAt plus coverage-driven health in a single save.
     private async Task ApplySourceUpdatesAsync(AppDbContext db, CoverageReport? coverage,
-        HashSet<Guid> recordSourceIdSet, DateTime runTime, CancellationToken ct)
+        HashSet<Guid> recordSourceIdSet, IReadOnlyDictionary<Guid, DateTime> latestRecordDates,
+        DateTime runTime, CancellationToken ct)
     {
         // Lowercased on both sides so stat sourceIds resolve case-insensitively, exactly like
         // record resolution (the OrdinalIgnoreCase dictionary) does.
@@ -551,6 +557,8 @@ public sealed class IngestionJob : BackgroundService
         {
             if (recordSourceIdSet.Contains(source.Id))
                 source.LastRecordSeenAt = Latest(source.LastRecordSeenAt, runTime);
+            if (latestRecordDates.TryGetValue(source.Id, out var recordDate))
+                source.LatestRecordDate = Latest(source.LatestRecordDate, recordDate);
         }
 
         var bySourceId = new Dictionary<string, Source>(StringComparer.OrdinalIgnoreCase);
@@ -675,6 +683,15 @@ public sealed class IngestionJob : BackgroundService
         => coverage is null ? null : coverage.RawJson ?? JsonSerializer.Serialize(coverage, WebJson);
 
     private static DateTime Earliest(DateTime a, DateTime b) => a < b ? a : b;
+
+    // A permit's own date: issued, else filed. Inspections and violations are not permits, and a
+    // date in the future is a typo, not data.
+    private static DateTime? RecordDate(NormalizedPermit permit, DateTime nowUtc)
+    {
+        if (permit.IsInspection || permit.IsViolation) return null;
+        var date = permit.IssuedDate ?? permit.FiledDate;
+        return date <= nowUtc ? date : null;
+    }
 
     private static DateTime Latest(DateTime? existing, DateTime candidate)
         => existing.HasValue && existing.Value > candidate ? existing.Value : candidate;

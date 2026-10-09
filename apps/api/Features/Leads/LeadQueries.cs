@@ -77,15 +77,29 @@ public static class LeadQueries
         IsNew: row.FirstDetectedAt >= nowUtc.AddHours(-72),
         ContractorStatus: row.ContractorStatus);
 
-    /// <summary>Latest successful source run across the entitled markets — narrowed to the
-    /// filtered market when one is given, so "Updated N ago" describes what is on screen.</summary>
-    public static Task<DateTime?> GetFreshnessAsync(
+    /// <summary>Freshness of the entitled markets, narrowed to the filtered market when one is
+    /// given, so it describes what is on screen. Daily sources give the latest successful run
+    /// ("Updated N ago"). A monthly source's run says nothing about its data, so it gives the
+    /// newest permit it holds, per market.</summary>
+    public static async Task<FreshnessDto> GetFreshnessAsync(
         AppDbContext db, IReadOnlyList<Guid> marketIds, string? marketSlug, CancellationToken ct)
     {
         var sources = db.Sources.Where(s => marketIds.Contains(s.MarketId));
         if (marketSlug is not null)
             sources = sources.Where(s => s.Market.Slug == marketSlug);
-        return sources.MaxAsync(s => (DateTime?)s.LastSuccessfulRunAt, ct);
+
+        var lastUpdatedAt = await sources
+            .Where(s => s.PublishCadence == PublishCadence.Daily)
+            .MaxAsync(s => (DateTime?)s.LastSuccessfulRunAt, ct);
+        var monthly = await sources
+            .Where(s => s.PublishCadence == PublishCadence.Monthly && s.LatestRecordDate != null)
+            .GroupBy(s => s.Market.Name)
+            .Select(g => new { MarketName = g.Key, DataThrough = g.Max(s => s.LatestRecordDate)!.Value })
+            .ToListAsync(ct);
+        return new FreshnessDto(lastUpdatedAt, monthly
+            .OrderBy(m => m.MarketName, StringComparer.Ordinal)
+            .Select(m => new MonthlyDataDto(m.MarketName, m.DataThrough))
+            .ToList());
     }
 
     public static string EscapeLike(string input) =>

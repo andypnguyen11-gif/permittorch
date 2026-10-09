@@ -13,7 +13,11 @@ public enum PermitStatusKind { New, Active, Inspection, Failed, Closed, Unknown 
 // fire work on this permit is most likely awarded; OtherContractorNamed (usually the GC) means
 // the fire sub is not visible yet. NotApplicable: an inspection or violation with no name, which
 // says nothing. Stored null on leads not yet scored by a release that knows the status.
-public enum ContractorStatus { NotApplicable, NoContractorListed, OtherContractorNamed, FireContractorNamed }
+// NotPublished: the source never publishes the contractor, so the record cannot say either way.
+public enum ContractorStatus { NotApplicable, NoContractorListed, OtherContractorNamed, FireContractorNamed, NotPublished }
+// How often a source's publisher adds records. A monthly source is described by the newest
+// record it holds, never by how recently the scraper ran.
+public enum PublishCadence { Daily, Monthly }
 // What a permit's record link opens: the city's own page for the record, the ArcGIS attribute
 // listing for the row, or the open-data API's answer for the row.
 public enum RecordLinkKind { Page, Rest, Data }

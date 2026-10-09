@@ -35,7 +35,11 @@ public record NormalizedPermit(string ExternalId, string Jurisdiction, string? P
     bool ContractorWithheld = false, bool ContractorWithheldIsFireTrade = false,
     // Whether this permit is the fire work itself, as the provider read it from the city's own
     // permit type. Null when the source is unknown.
-    PermitScope? Scope = null)
+    PermitScope? Scope = null,
+    // From the source's settings, never from the record: the source never publishes the
+    // contractor, and (when set) the instant this permit appeared in the public data, which then
+    // times the recency signals instead of the permit's own dates.
+    bool ContractorNotPublished = false, DateTime? AppearedInDataAt = null)
 {
     public bool IsInspection => IsRecordType("inspection");
     public bool IsViolation => IsRecordType("violation");
