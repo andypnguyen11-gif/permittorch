@@ -11,7 +11,7 @@ namespace PermitTorch.Api.Data.Seed;
 /// independent parts, each behind its own gate so production can only ever receive the registry
 /// and an explicitly named operator account:
 /// <list type="number">
-/// <item>Registry upsert (33 markets, 45 sources) — always runs; safe in every environment.</item>
+/// <item>Registry upsert (34 markets, 47 sources) — always runs; safe in every environment.</item>
 /// <item>Sample permits — only with <c>SEED_SAMPLE_DATA=true</c>, outside Production, and while
 /// the database holds no permits other than the samples themselves.</item>
 /// <item>E2E identities (E2E SuperAdmin from <c>SUPERADMIN_FIREBASE_UID</c>, entitled and
@@ -204,11 +204,14 @@ public static class DevSeeder
         ("washington-dc", "Washington", "Washington", "DC"),
         // Scraper build 0.1.20: New Jersey's register for three counties only, never the state.
         ("central-new-jersey-nj", "Central New Jersey (Middlesex, Somerset & Union counties)", "Central New Jersey", "NJ"),
+        // Scraper build 0.1.22: two Fort Bend County cities as one market. Fresno addresses arrive
+        // through Missouri City's portal (its ETJ) and keep their own city and ZIP on the record.
+        ("fort-bend-county-tx", "Fort Bend County (Sugar Land & Missouri City)", "Fort Bend County", "TX"),
     };
 
     /// <summary>Registered markets that are not in the public registry JSON yet.</summary>
     public static readonly IReadOnlySet<string> NotYetPublicMarketSlugs =
-        new HashSet<string>(StringComparer.Ordinal) { "central-new-jersey-nj" };
+        new HashSet<string>(StringComparer.Ordinal) { "central-new-jersey-nj", "fort-bend-county-tx" };
 
     // Sources whose publisher differs from the default (names the contractor, updated daily).
     // RecencyFromFirstSeenSince is deliberately not here: it is set by hand once a backfill is in
@@ -216,6 +219,11 @@ public static class DevSeeder
     private static readonly Dictionary<string, (bool PublishesContractor, PublishCadence Cadence)> SourceSettings = new()
     {
         ["nj-ucc-fire-permits"] = (false, PublishCadence.Monthly),
+        // Tyler EnerGov self-service search rows never carry the contractor (scraper field audit,
+        // 2026-10-09), so these three must not earn "no contractor listed" points.
+        ["tulsa-fire-permits"] = (false, PublishCadence.Daily),
+        ["sugarland-fire-permits"] = (false, PublishCadence.Daily),
+        ["missouricity-fire-permits"] = (false, PublishCadence.Daily),
     };
 
     // PortalType is a best-effort label from the scraper README (records carry the authoritative provider in source.provider).
@@ -266,6 +274,8 @@ public static class DevSeeder
         ("dc-permits-2025", "washington-dc", "DC Building Permits 2025", "arcgis"),
         ("dc-permits-2026", "washington-dc", "DC Building Permits 2026", "arcgis"),
         ("nj-ucc-fire-permits", "central-new-jersey-nj", "New Jersey Construction Permits with the fire subcode (Middlesex, Somerset & Union counties)", "socrata"),
+        ("sugarland-fire-permits", "fort-bend-county-tx", "Sugar Land Fire Permits (Tyler EnerGov CSS)", "energov"),
+        ("missouricity-fire-permits", "fort-bend-county-tx", "Missouri City Fire Construction Permits (Tyler EnerGov CSS)", "energov"),
     };
 
     private static async Task<Dictionary<string, Market>> UpsertMarketsAsync(AppDbContext db, CancellationToken ct)

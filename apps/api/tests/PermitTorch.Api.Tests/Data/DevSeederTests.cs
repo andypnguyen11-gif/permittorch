@@ -63,7 +63,7 @@ public class DevSeederTests : IAsyncLifetime
         var first = await SeedAsync(Config(DevFlags(Identities)));
         var second = await SeedAsync(Config(DevFlags(Identities)));
 
-        Assert.Equal(new DevSeeder.SeedCounts(33, 45, 10, 10), first);
+        Assert.Equal(new DevSeeder.SeedCounts(34, 47, 10, 10), first);
         Assert.Equal(first, second);
 
         await using var db = CreateContext();
@@ -265,7 +265,7 @@ public class DevSeederTests : IAsyncLifetime
         var first = await SeedAsync(Config(Identities));
         var second = await SeedAsync(Config(Identities));
 
-        Assert.Equal(new DevSeeder.SeedCounts(33, 45, 0, 0), first);
+        Assert.Equal(new DevSeeder.SeedCounts(34, 47, 0, 0), first);
         Assert.Equal(first, second);
         await using var db = CreateContext();
         Assert.Equal(0, await db.AppUsers.CountAsync());
@@ -278,7 +278,7 @@ public class DevSeederTests : IAsyncLifetime
         var output = new StringWriter();
         var counts = await SeedAsync(Config(DevFlags(new(Identities) { ["APIFY_TOKEN"] = "" })), "Production", output);
 
-        Assert.Equal(new DevSeeder.SeedCounts(33, 45, 0, 0), counts);
+        Assert.Equal(new DevSeeder.SeedCounts(34, 47, 0, 0), counts);
         await using var db = CreateContext();
         Assert.Equal(0, await db.Permits.CountAsync());
         Assert.Equal(0, await db.FireOpportunities.CountAsync());
@@ -286,8 +286,8 @@ public class DevSeederTests : IAsyncLifetime
         Assert.Equal(0, await db.Organizations.CountAsync());
         Assert.Equal(0, await db.Subscriptions.CountAsync());
         Assert.Equal(0, await db.SubscriptionMarkets.CountAsync());
-        Assert.Equal(33, await db.Markets.CountAsync());
-        Assert.Equal(45, await db.Sources.CountAsync());
+        Assert.Equal(34, await db.Markets.CountAsync());
+        Assert.Equal(47, await db.Sources.CountAsync());
         var log = output.ToString();
         Assert.Contains($"WARN: {DevSeeder.SampleDataFlag}=true is ignored in Production", log);
         Assert.Contains($"WARN: {DevSeeder.E2EIdentitiesFlag}=true is ignored in Production", log);
@@ -429,12 +429,48 @@ public class DevSeederTests : IAsyncLifetime
         Assert.Null(source.RecencyFromFirstSeenSince);
         Assert.Null(source.LastSuccessfulRunAt);
 
-        // Every other source keeps the defaults.
-        Assert.All(await db.Sources.Where(s => s.Jurisdiction != "nj-ucc-fire-permits").ToListAsync(), s =>
+        // Every source whose publisher names the contractor keeps the defaults.
+        var withoutContractor = new[] { "nj-ucc-fire-permits" }.Concat(EnerGovSourceIds).ToArray();
+        Assert.All(await db.Sources.Where(s => !withoutContractor.Contains(s.Jurisdiction)).ToListAsync(), s =>
         {
             Assert.True(s.PublishesContractor);
             Assert.Equal(PublishCadence.Daily, s.PublishCadence);
         });
+    }
+
+    private static readonly string[] EnerGovSourceIds =
+        { "sugarland-fire-permits", "missouricity-fire-permits", "tulsa-fire-permits" };
+
+    // Scraper build 0.1.22: Sugar Land and Missouri City are read from the same Tyler EnerGov
+    // search as Tulsa, and none of the three portals ever publishes the contractor, so none may
+    // earn "no contractor listed" points. One county market with two sources, not marketed yet.
+    [Fact]
+    public async Task Fort_bend_county_and_tulsa_are_energov_sources_that_never_publish_the_contractor()
+    {
+        await SeedAsync(Config());
+
+        await using var db = CreateContext();
+        var market = await db.Markets.SingleAsync(m => m.Slug == "fort-bend-county-tx");
+        Assert.Equal("TX", market.State);
+        Assert.Equal("Fort Bend County", market.City);
+        Assert.Equal("Fort Bend County (Sugar Land & Missouri City)", market.Name);
+        Assert.Contains("fort-bend-county-tx", DevSeeder.NotYetPublicMarketSlugs);
+
+        var fortBend = await db.Sources.Include(s => s.Market)
+            .Where(s => s.Market.Slug == "fort-bend-county-tx").OrderBy(s => s.Jurisdiction).ToListAsync();
+        Assert.Equal(new[] { "missouricity-fire-permits", "sugarland-fire-permits" }, fortBend.Select(s => s.Jurisdiction));
+        Assert.All(fortBend, s => Assert.Equal(("Fort Bend County", "TX"), (s.City, s.State)));
+
+        foreach (var sourceId in EnerGovSourceIds)
+        {
+            var source = await db.Sources.SingleAsync(s => s.Jurisdiction == sourceId);
+            Assert.Equal("energov", source.PortalType);
+            Assert.False(source.PublishesContractor);
+            Assert.Equal(PublishCadence.Daily, source.PublishCadence);
+            Assert.Null(source.RecencyFromFirstSeenSince);
+        }
+        var tulsa = await db.Sources.Include(s => s.Market).SingleAsync(s => s.Jurisdiction == "tulsa-fire-permits");
+        Assert.Equal("tulsa-ok", tulsa.Market.Slug);
     }
 
     [Fact]
