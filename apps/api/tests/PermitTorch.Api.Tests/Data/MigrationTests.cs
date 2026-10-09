@@ -86,7 +86,7 @@ public class MigrationTests : IAsyncLifetime
                 "InitialCreate", "AddCategoryOverridden", "AddPermitDetailFields", "AddPermitRecordLink",
                 "MovePermitNamesToTheirRoles", "AddParticipantContact",
                 "RemovePlaceholderOwnersAndTestPermit", "ClearProjectValuesOfZero",
-                "AddTermsAcceptances", "AddRemovals", "AddContractorStatus", "AddLeadStanding",
+                "AddTermsAcceptances", "AddRemovals", "AddContractorStatus", "AddLeadStanding", "AddSourcePublishingSettings",
             },
             applied.Select(m => m[(m.IndexOf('_') + 1)..]).ToArray());
     }
@@ -554,5 +554,32 @@ public class MigrationTests : IAsyncLifetime
         Assert.Null(permits[ids["none"]].EstimatedValue);
         // Nothing else on the permit changes: the record itself did not.
         Assert.All(permits.Values, p => Assert.Equal(stamped, p.UpdatedAt));
+    }
+
+    // Sources that existed before the publishing settings were added all publish contractors and
+    // are refreshed daily; the migration must leave them reading exactly as before.
+    [Fact]
+    public async Task Existing_sources_keep_publishing_contractors_after_the_settings_migration()
+    {
+        await using var db = CreateContext();
+        var migrator = db.GetService<IMigrator>();
+        await migrator.MigrateAsync("20261007184350_AddLeadStanding");
+
+        var marketId = Guid.NewGuid();
+        await db.Database.ExecuteSqlAsync(
+            $"INSERT INTO markets (id, name, city, state, slug, active) VALUES ({marketId}, 'Tulsa', 'Tulsa', 'OK', 'tulsa-ok', true)");
+        await db.Database.ExecuteSqlAsync(
+            $"""
+            INSERT INTO sources (id, market_id, name, city, state, portal_type, source_url, jurisdiction, active, records_last_run, health_status)
+            VALUES ({Guid.NewGuid()}, {marketId}, 'Tulsa Fire', 'Tulsa', 'OK', 'energov', 'https://example.gov', 'tulsa-fire-permits', true, 0, 0)
+            """);
+
+        await migrator.MigrateAsync();
+
+        var source = await db.Sources.AsNoTracking().SingleAsync();
+        Assert.True(source.PublishesContractor);
+        Assert.Equal(PublishCadence.Daily, source.PublishCadence);
+        Assert.Null(source.RecencyFromFirstSeenSince);
+        Assert.Null(source.LatestRecordDate);
     }
 }

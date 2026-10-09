@@ -256,4 +256,15 @@ public class FireWorkReaderTests
     [InlineData("Fire alarm by Acme Electric Inc under separate permit.", "fire alarm under separate permit")]
     public void AheadQuote_IsOnlyTheFirePhrase(string description, string quote)
         => AssertAhead(description, quote);
+
+    // New Jersey's register says only that the fire subcode is on the permit (scraper build 0.1.20).
+    [Theory]
+    [InlineData("Fire subcode permit; also building, electrical, plumbing | Alteration | Business Uses")]
+    [InlineData("Fire subcode permit | New | Mercantile")]
+    public void NewJersey_FireSubcode_IsMentionedAsFireSubcodeWork(string description)
+    {
+        var reading = Building(description);
+        Assert.Equal(FireWorkVerdict.Mentioned, reading.Verdict);
+        Assert.Equal("fire subcode work", reading.Quote);
+    }
 }

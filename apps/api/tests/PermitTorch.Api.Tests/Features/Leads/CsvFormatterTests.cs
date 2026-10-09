@@ -35,6 +35,23 @@ public class CsvFormatterTests
         Assert.EndsWith("https://permits.example.gov/2,,,,,,,,,,", lines[2]);
     }
 
+    // New Jersey's register publishes no zip, owner or contractor: those columns stay blank and
+    // the status column says why the contractor is missing.
+    [Fact]
+    public void A_permit_from_a_source_that_never_publishes_the_contractor_says_so_in_the_status_column()
+    {
+        var csv = CsvFormatter.Write([
+            new LeadExportRow(60, "100 Wood Ave S", "Edison", "other_fire_protection", FireCategory.GeneralFireProtection,
+                "Fire subcode permit; also building | Alteration | Business Uses", new DateTime(2026, 8, 7), null,
+                null, null, "https://data.nj.gov/resource/w9se-dmra.json",
+                ContractorStatus: ContractorStatus.NotPublished),
+        ]);
+        var lines = csv.Split("\r\n");
+        Assert.Equal("60,100 Wood Ave S,Edison,Other Fire Protection,GENERAL_FIRE_PROTECTION,"
+            + "Fire subcode permit; also building | Alteration | Business Uses,2026-08-07,,,,"
+            + "https://data.nj.gov/resource/w9se-dmra.json,,,,,,,,,,NOT_PUBLISHED", lines[1]);
+    }
+
     [Fact]
     public void Escapes_commas_quotes_and_newlines_and_blanks_nulls()
     {

@@ -1,3 +1,6 @@
+import type { ContractorStatus } from "@permittorch/types";
+
+
 export type ScoreBand = "hot" | "strong" | "medium" | "muted";
 
 export function scoreBand(score: number): ScoreBand {
@@ -36,6 +39,21 @@ export function formatDate(iso: string | null): string {
   return new Date(iso).toLocaleDateString("en-US", {
     month: "short", day: "numeric", year: "numeric", timeZone: "UTC",
   });
+}
+
+// A monthly source is described by the newest permit it holds, never by when it was last read.
+export function dataThroughLabel(iso: string): string {
+  return `Data through ${formatDate(iso)}, published monthly`;
+}
+
+// Says what the record shows: a source that never publishes the contractor is not "no contractor".
+export const CONTRACTOR_NOT_PUBLISHED = "Not published by this source";
+
+export function contractorDisplay(
+  contractorName: string | null, contractorStatus: ContractorStatus | null,
+): string | null {
+  if (contractorName) return contractorName;
+  return contractorStatus === "NOT_PUBLISHED" ? CONTRACTOR_NOT_PUBLISHED : null;
 }
 
 // Humanizes a scraper machine string ("new_installation", "multifamily_residential")

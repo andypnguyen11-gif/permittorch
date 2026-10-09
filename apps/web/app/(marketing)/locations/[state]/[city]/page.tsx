@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getMarketStats, getMarkets } from "@/lib/api";
-import { getMarketsWithData, hasRealData } from "@/lib/marketing/markets-with-data";
+import { getMarketsWithData, hasRealData, isPublicMarket } from "@/lib/marketing/markets-with-data";
 import { buildMetadata, jsonLd } from "@/lib/seo";
 import { Breadcrumbs, breadcrumbJsonLd } from "@/components/marketing/breadcrumbs";
 import { ctaClasses } from "@/components/marketing/cta";
@@ -49,7 +49,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 /** Market + stats for URL params; null when unknown or without real data. Stats errors propagate. */
 async function resolveMarket(state: string, city: string) {
   const market = findMarketByLocationParams(await getMarkets(), state, city);
-  if (!market) return null;
+  if (!market || !isPublicMarket(market.slug)) return null;
   const stats = await getMarketStats(market.slug);
   return hasRealData(stats) ? { market, stats } : null;
 }

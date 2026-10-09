@@ -46,7 +46,7 @@ public static class LeadsEndpoints
         var freshness = await LeadQueries.GetFreshnessAsync(db, marketIds, filters.MarketSlug, ct);
         var items = rows.Select(r => LeadQueries.ToSummary(r, nowUtc)).ToList();
         return Results.Ok(new LeadsResponseDto(items, total, filters.Page, filters.PageSize,
-            new FreshnessDto(freshness)));
+            freshness));
     }
 
     private static async Task<IResult> GetLead(
@@ -82,6 +82,8 @@ public static class LeadsEndpoints
                 PermitRecordUrl = o.Permit.RecordUrl,
                 PermitRecordUrlKind = o.Permit.RecordUrlKind,
                 SourceLastCheckedAt = o.Permit.Source.LastSuccessfulRunAt,
+                SourceCadence = o.Permit.Source.PublishCadence,
+                SourceDataThrough = o.Permit.Source.LatestRecordDate,
             })
             .FirstOrDefaultAsync(ct);
 
@@ -95,7 +97,8 @@ public static class LeadsEndpoints
             found.Confidence, found.Row.FirstDetectedAt, found.LastUpdatedAt,
             found.Permit, found.Participants, found.Signals,
             new LeadSourceDto(found.SourceName, found.PermitSourceUrl, found.SourceLastCheckedAt,
-                found.PermitRecordUrl, found.PermitRecordUrlKind)));
+                found.PermitRecordUrl, found.PermitRecordUrlKind, found.SourceCadence,
+                found.SourceCadence == PublishCadence.Monthly ? found.SourceDataThrough : null)));
     }
 
     private static async Task<IResult> ExportCsv(

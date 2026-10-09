@@ -3,6 +3,17 @@ import { getAllMarketStats, getMarkets } from "@/lib/api";
 
 export interface MarketWithData { market: Market; stats: MarketStats }
 
+/**
+ * Markets the app serves to subscribers but does not market yet. Mirrors the API seeder's
+ * NotYetPublicMarketSlugs: Central New Jersey stays off public pages until its data is in and
+ * checked. Removing a slug here (and adding the market to the source registry) markets it.
+ */
+export const NOT_YET_PUBLIC_MARKET_SLUGS: ReadonlySet<string> = new Set(["central-new-jersey-nj"]);
+
+export function isPublicMarket(slug: string): boolean {
+  return !NOT_YET_PUBLIC_MARKET_SLUGS.has(slug);
+}
+
 /** A market has real data when it has been updated at least once and has recent fire permits. */
 export function hasRealData(stats: MarketStats): boolean {
   return stats.lastUpdatedAt !== null && stats.totalLast30Days > 0;
@@ -21,7 +32,7 @@ export async function getMarketsWithData(): Promise<MarketWithData[]> {
   const out: MarketWithData[] = [];
   for (const market of markets) {
     const stats = statsBySlug.get(market.slug);
-    if (stats && hasRealData(stats)) out.push({ market, stats });
+    if (stats && hasRealData(stats) && isPublicMarket(market.slug)) out.push({ market, stats });
   }
   return out;
 }

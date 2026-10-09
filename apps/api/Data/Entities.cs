@@ -28,6 +28,17 @@ public class Source
     public DateTime? LastRecordSeenAt { get; set; }
     public int RecordsLastRun { get; set; }
     public HealthStatus HealthStatus { get; set; }
+    // False for a source whose publisher never names the contractor (New Jersey's register): a
+    // permit without one then says so instead of "no contractor listed".
+    public bool PublishesContractor { get; set; } = true;
+    public PublishCadence PublishCadence { get; set; }
+    // Newest permit date (issued, else filed) this source has delivered; how a monthly source's
+    // freshness is described.
+    public DateTime? LatestRecordDate { get; set; }
+    // Go-live of the appeared-in-data clock. Permits first seen at or after it are timed from
+    // FirstSeenAt; earlier ones (a backfill) keep their permit dates. Null: permit dates only. Set by
+    // hand, never by the seeder.
+    public DateTime? RecencyFromFirstSeenSince { get; set; }
 }
 
 public class Permit

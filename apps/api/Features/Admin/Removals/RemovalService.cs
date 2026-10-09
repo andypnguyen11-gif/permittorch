@@ -225,6 +225,7 @@ public sealed class RemovalService(AppDbContext db, ScoringEngine scoring)
     {
         if (permitIds.Count == 0) return;
         var permits = await db.Permits
+            .Include(p => p.Source)
             .Include(p => p.Participants)
             .Include(p => p.Opportunity!).ThenInclude(o => o.Signals)
             .Where(p => permitIds.Contains(p.Id))
@@ -269,7 +270,7 @@ public sealed class RemovalService(AppDbContext db, ScoringEngine scoring)
 
         // Only the contractor's name is read by the score, so only this case is scored again.
         if (permit.Opportunity is not { } lead) return;
-        StoredScore.Replace(db, lead, scoring.Score(StoredPermit.ToNormalized(permit),
+        StoredScore.Replace(db, lead, scoring.Score(StoredPermit.ForScoring(permit, permit.Source),
             new ClassificationResult(lead.Category, lead.Confidence,
                 lead.CategoryOverridden ? "manual" : "rescore"),
             DateTime.UtcNow));

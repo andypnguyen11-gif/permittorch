@@ -77,14 +77,14 @@ public static class AdminEndpoints
     {
         if (body.Category is not { } category) return ApiErrors.BadRequest("category is required");
         var opportunity = await db.FireOpportunities
-            .Include(o => o.Permit)
+            .Include(o => o.Permit).ThenInclude(p => p.Source)
             .Include(o => o.Signals)
             .AsSplitQuery()
             .FirstOrDefaultAsync(o => o.Id == id, ct);
         if (opportunity is null) return ApiErrors.NotFound("Opportunity not found");
 
         var now = DateTime.UtcNow;
-        var result = scoring.Score(StoredPermit.ToNormalized(opportunity.Permit),
+        var result = scoring.Score(StoredPermit.ForScoring(opportunity.Permit, opportunity.Permit.Source),
             new ClassificationResult(category, 1.0m, "manual"), now);
 
         StoredScore.Replace(db, opportunity, result);

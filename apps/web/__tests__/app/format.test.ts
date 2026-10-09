@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  CONTRACTOR_NOT_PUBLISHED, contractorDisplay, dataThroughLabel,
   formatDate, formatRelative, formatValueShort, scoreBand,
   emailHref, humanizeMachineString, permitStatusDisplay, phoneHref, recordKind, recordLink, repeatsTitle,
 } from "@/components/app/format";
@@ -207,5 +208,25 @@ describe("emailHref", () => {
     expect(emailHref("javascript:alert(1)")).toBeNull();
     expect(emailHref("")).toBeNull();
     expect(emailHref(null)).toBeNull();
+  });
+});
+
+describe("contractorDisplay", () => {
+  it("shows the record's contractor when it names one", () => {
+    expect(contractorDisplay("Summit Builders", "NOT_PUBLISHED")).toBe("Summit Builders");
+  });
+  it("says the source does not publish it, never that none is listed", () => {
+    expect(contractorDisplay(null, "NOT_PUBLISHED")).toBe(CONTRACTOR_NOT_PUBLISHED);
+    expect(CONTRACTOR_NOT_PUBLISHED).toBe("Not published by this source");
+  });
+  it("leaves every other empty contractor empty (rendered as a dash)", () => {
+    expect(contractorDisplay(null, "NO_CONTRACTOR_LISTED")).toBeNull();
+    expect(contractorDisplay(null, null)).toBeNull();
+  });
+});
+
+describe("dataThroughLabel", () => {
+  it("names the newest permit date and the cadence", () => {
+    expect(dataThroughLabel("2026-08-07T00:00:00Z")).toBe("Data through Aug 7, 2026, published monthly");
   });
 });

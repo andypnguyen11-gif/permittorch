@@ -13,7 +13,7 @@ import { SaveButton } from "@/components/app/lead-detail/save-button";
 import { TrackOnMount } from "@/components/app/track-on-mount";
 import { STATUS_LABELS } from "@/components/app/leads/query";
 import {
-  emailHref, formatDate, formatRelative, formatValueShort,
+  contractorDisplay, dataThroughLabel, emailHref, formatDate, formatRelative, formatValueShort,
   humanizeMachineString, permitStatusDisplay, phoneHref, recordKind, recordLink, repeatsTitle,
 } from "@/components/app/format";
 import { Badge } from "@/components/ui/badge";
@@ -140,7 +140,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
               )}
               {(showAlways || lead.permit.ownerName) && <Field label="Owner" value={lead.permit.ownerName} />}
               {(showAlways || lead.permit.contractorName) &&
-                <Field label="Contractor" value={lead.permit.contractorName} />}
+                <Field label="Contractor" value={contractorDisplay(lead.permit.contractorName, lead.contractorStatus)} />}
               <Field label="Zip" value={lead.permit.zip} />
               {workTypeLabel && <Field label="Work type" value={workTypeLabel} />}
               {lead.permit.expirationDate && <Field label="Expires" value={formatDate(lead.permit.expirationDate)} />}
@@ -193,6 +193,9 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
                   className="inline-flex items-center gap-1 rounded font-medium text-orange-600 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50">
                   {sourceLink.label} <ExternalLink className="size-3.5" aria-hidden />
                 </a>
+              )}
+              {lead.source.cadence === "MONTHLY" && lead.source.dataThrough && (
+                <p className="text-xs text-stone-600">{dataThroughLabel(lead.source.dataThrough)}</p>
               )}
               <p className="text-xs text-stone-500">
                 Last checked {formatRelative(lead.source.lastCheckedAt)}

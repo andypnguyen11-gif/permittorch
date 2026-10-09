@@ -158,3 +158,22 @@ describe("LeadTable contractor status", () => {
     expect(screen.queryByText("Fire contractor on permit")).not.toBeInTheDocument();
   });
 });
+
+describe("FreshnessLine with a monthly market", () => {
+  const monthly = [{ marketName: "Central New Jersey (Middlesex, Somerset & Union counties)", dataThrough: "2026-08-07T00:00:00Z" }];
+
+  it("describes a monthly market by its data date, never by a run time", () => {
+    render(<FreshnessLine freshness={{ lastUpdatedAt: null, monthlyData: monthly }} />);
+    expect(screen.getByText(
+      "Central New Jersey (Middlesex, Somerset & Union counties): data through Aug 7, 2026, published monthly",
+    )).toBeInTheDocument();
+    expect(screen.queryByText(/Updated/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Freshness unknown")).not.toBeInTheDocument();
+  });
+
+  it("keeps the daily run time beside it for the daily markets in view", () => {
+    render(<FreshnessLine freshness={{ lastUpdatedAt: new Date(Date.now() - 12 * 60_000).toISOString(), monthlyData: monthly }} />);
+    expect(screen.getByText("Updated 12 minutes ago")).toBeInTheDocument();
+    expect(screen.getByText(/data through Aug 7, 2026, published monthly/)).toBeInTheDocument();
+  });
+});

@@ -63,7 +63,7 @@ public class DevSeederTests : IAsyncLifetime
         var first = await SeedAsync(Config(DevFlags(Identities)));
         var second = await SeedAsync(Config(DevFlags(Identities)));
 
-        Assert.Equal(new DevSeeder.SeedCounts(32, 44, 10, 10), first);
+        Assert.Equal(new DevSeeder.SeedCounts(33, 45, 10, 10), first);
         Assert.Equal(first, second);
 
         await using var db = CreateContext();
@@ -91,10 +91,13 @@ public class DevSeederTests : IAsyncLifetime
             .OrderBy(s => s.Item1).ToList();
 
         await using var db = CreateContext();
+        // A market not yet public is registered by the seeder only (DevSeeder.NotYetPublicMarketSlugs).
         var markets = (await db.Markets.ToListAsync())
+            .Where(m => !DevSeeder.NotYetPublicMarketSlugs.Contains(m.Slug))
             .Select(m => ((string?)m.Slug, (string?)m.Name, (string?)m.City, (string?)m.State))
             .OrderBy(m => m.Item1).ToList();
         var sources = (await db.Sources.Include(s => s.Market).ToListAsync())
+            .Where(s => !DevSeeder.NotYetPublicMarketSlugs.Contains(s.Market.Slug))
             .Select(s => ((string?)s.Jurisdiction, (string?)s.Market.Slug, (string?)s.Name, (string?)s.PortalType))
             .OrderBy(s => s.Item1).ToList();
 
@@ -262,7 +265,7 @@ public class DevSeederTests : IAsyncLifetime
         var first = await SeedAsync(Config(Identities));
         var second = await SeedAsync(Config(Identities));
 
-        Assert.Equal(new DevSeeder.SeedCounts(32, 44, 0, 0), first);
+        Assert.Equal(new DevSeeder.SeedCounts(33, 45, 0, 0), first);
         Assert.Equal(first, second);
         await using var db = CreateContext();
         Assert.Equal(0, await db.AppUsers.CountAsync());
@@ -275,7 +278,7 @@ public class DevSeederTests : IAsyncLifetime
         var output = new StringWriter();
         var counts = await SeedAsync(Config(DevFlags(new(Identities) { ["APIFY_TOKEN"] = "" })), "Production", output);
 
-        Assert.Equal(new DevSeeder.SeedCounts(32, 44, 0, 0), counts);
+        Assert.Equal(new DevSeeder.SeedCounts(33, 45, 0, 0), counts);
         await using var db = CreateContext();
         Assert.Equal(0, await db.Permits.CountAsync());
         Assert.Equal(0, await db.FireOpportunities.CountAsync());
@@ -283,8 +286,8 @@ public class DevSeederTests : IAsyncLifetime
         Assert.Equal(0, await db.Organizations.CountAsync());
         Assert.Equal(0, await db.Subscriptions.CountAsync());
         Assert.Equal(0, await db.SubscriptionMarkets.CountAsync());
-        Assert.Equal(32, await db.Markets.CountAsync());
-        Assert.Equal(44, await db.Sources.CountAsync());
+        Assert.Equal(33, await db.Markets.CountAsync());
+        Assert.Equal(45, await db.Sources.CountAsync());
         var log = output.ToString();
         Assert.Contains($"WARN: {DevSeeder.SampleDataFlag}=true is ignored in Production", log);
         Assert.Contains($"WARN: {DevSeeder.E2EIdentitiesFlag}=true is ignored in Production", log);
@@ -406,6 +409,51 @@ public class DevSeederTests : IAsyncLifetime
 
         Assert.Equal(0, refreshed);
         Assert.Contains("WARN", output.ToString());
+    }
+
+    // New Jersey's register (scraper 0.1.20): one source for 66 towns in three counties. The
+    // market's name says the counties so it never reads as statewide; the source never names the
+    // contractor and publishes monthly.
+    [Fact]
+    public async Task Central_new_jersey_is_registered_with_the_states_publishing_settings()
+    {
+        await SeedAsync(Config());
+
+        await using var db = CreateContext();
+        var source = await db.Sources.Include(s => s.Market).SingleAsync(s => s.Jurisdiction == "nj-ucc-fire-permits");
+        Assert.Equal("central-new-jersey-nj", source.Market.Slug);
+        Assert.Equal("NJ", source.Market.State);
+        Assert.Contains("Middlesex, Somerset & Union", source.Market.Name);
+        Assert.False(source.PublishesContractor);
+        Assert.Equal(PublishCadence.Monthly, source.PublishCadence);
+        Assert.Null(source.RecencyFromFirstSeenSince);
+        Assert.Null(source.LastSuccessfulRunAt);
+
+        // Every other source keeps the defaults.
+        Assert.All(await db.Sources.Where(s => s.Jurisdiction != "nj-ucc-fire-permits").ToListAsync(), s =>
+        {
+            Assert.True(s.PublishesContractor);
+            Assert.Equal(PublishCadence.Daily, s.PublishCadence);
+        });
+    }
+
+    [Fact]
+    public async Task Reseeding_never_touches_the_go_live_date()
+    {
+        await SeedAsync(Config());
+        var goLive = new DateTime(2026, 10, 20, 12, 0, 0, DateTimeKind.Utc);
+        await using (var db = CreateContext())
+        {
+            var source = await db.Sources.SingleAsync(s => s.Jurisdiction == "nj-ucc-fire-permits");
+            source.RecencyFromFirstSeenSince = goLive;
+            await db.SaveChangesAsync();
+        }
+
+        await SeedAsync(Config());
+
+        await using var check = CreateContext();
+        Assert.Equal(goLive, (await check.Sources.SingleAsync(s => s.Jurisdiction == "nj-ucc-fire-permits"))
+            .RecencyFromFirstSeenSince);
     }
 
     private static string RegistryPath()

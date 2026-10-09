@@ -8,11 +8,17 @@ export type HealthStatus = "HEALTHY" | "WARNING" | "STALE" | "FAILED" | "DISABLE
 /** Who the permit names as contractor. FIRE_CONTRACTOR_NAMED: a fire-protection firm, so the
  *  work is most likely awarded. OTHER_CONTRACTOR_NAMED: usually the GC; the fire sub is not
  *  visible yet. NOT_APPLICABLE: an inspection or violation, which never names one. */
+/** NOT_PUBLISHED: the source never publishes the contractor, so the record cannot say. */
 export type ContractorStatus = "NOT_APPLICABLE" | "NO_CONTRACTOR_LISTED"
-  | "OTHER_CONTRACTOR_NAMED" | "FIRE_CONTRACTOR_NAMED";
+  | "OTHER_CONTRACTOR_NAMED" | "FIRE_CONTRACTOR_NAMED" | "NOT_PUBLISHED";
+export type PublishCadence = "DAILY" | "MONTHLY";
 
 export interface Paged<T> { items: T[]; total: number; page: number; pageSize: number; }
-export interface Freshness { lastUpdatedAt: string | null; }   // ISO
+/** `lastUpdatedAt` is the latest run of the daily sources in view (ISO). A monthly source is
+ *  described by the newest permit it holds instead, one entry per market. Optional because the
+ *  web app can deploy ahead of the API. */
+export interface Freshness { lastUpdatedAt: string | null; monthlyData?: MonthlyData[]; }
+export interface MonthlyData { marketName: string; dataThrough: string; }
 
 export interface LeadSummary {
   id: string; score: number; title: string;
@@ -50,6 +56,8 @@ export interface LeadDetail extends LeadSummary {
   source: {
     name: string; url: string; lastCheckedAt: string | null;
     recordUrl: string | null; recordUrlKind: RecordLinkKind | null;
+    /** A monthly source carries `dataThrough`, the newest permit date it holds. */
+    cadence?: PublishCadence; dataThrough?: string | null;
   };
 }
 
