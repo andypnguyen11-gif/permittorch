@@ -3,7 +3,7 @@
     "nyc-dobnow-permits", "sf-fire-permits", "sf-fire-inspections", "sf-fire-violations",
     "detroit-bseed-fire-alarm-permits", "detroit-bseed-trades-permits", "sacramento-fire-permits-current",
     "sacramento-fire-permits-archive", "virginia-beach-fire-permits", "cosprings-fire-permits", "omaha-fire-permits",
-    "atlanta-fire-permits", "tulsa-fire-permits"
+    "atlanta-fire-permits", "tulsa-fire-permits", "sugarland-fire-permits", "missouricity-fire-permits"
   ],
   "fireWorkTypes": {
     "philly-permits": ["Fire Suppression Permit"],
