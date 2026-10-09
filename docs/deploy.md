@@ -104,7 +104,7 @@ Rollback: in the dashboard, open the service's **Deployments**, pick the previou
 
 The seeder is idempotent and gated per part:
 
-- **Registry** (33 markets, 45 sources): always upserted.
+- **Registry** (34 markets, 47 sources): always upserted.
 - **Sample permits**: only with `SEED_SAMPLE_DATA=true`, outside Production, and while the database holds no real permits.
 - **E2E identities** (E2E SuperAdmin from `SUPERADMIN_FIREBASE_UID`, the entitled/unentitled orgs and the seeded Pro subscription): only with `SEED_E2E_IDENTITIES=true` outside Production.
 - **Operator SuperAdmin**: `SEED_SUPERADMIN_FIREBASE_UID` (+ `SEED_SUPERADMIN_EMAIL`), in any environment. It creates that one user (or promotes them if they already signed up) and nothing else: no subscription.
@@ -116,11 +116,11 @@ In production:
 1. Run the registry seed **inside the Railway api service only**, so it sees the service's own variables (`ASPNETCORE_ENVIRONMENT=Production`). Never run it from a local shell with a sourced `.env` and a production `DATABASE_URL`: that shell's environment is Development, where the local opt-ins apply.
    ```bash
    railway ssh --service api -- sh -c 'cd /app && dotnet PermitTorch.Api.dll seed'
-   # → Seed complete. markets=33 sources=45 permits=<n> opportunities=<n>
+   # → Seed complete. markets=34 sources=47 permits=<n> opportunities=<n>
    ```
    The output must contain no `WARN: SEED_…` line. If it does, remove that variable from the service.
 2. Optional, once the operator has signed up in the web app: make them SuperAdmin by setting `SEED_SUPERADMIN_FIREBASE_UID` (their Firebase uid) and `SEED_SUPERADMIN_EMAIL` on the api service with `--skip-deploys`, run the same command, then delete both variables.
-3. Verify: `curl -s https://api.permittorch.com/api/markets` returns 33 markets. Check the database with `railway ssh --service Postgres -- sh -c 'psql -U "$PGUSER" -d "$PGDATABASE" -c "select count(*) from permits where external_id like \$\$seed-%\$\$"'`, which must return 0.
+3. Verify: `curl -s https://api.permittorch.com/api/markets` returns 34 markets. Check the database with `railway ssh --service Postgres -- sh -c 'psql -U "$PGUSER" -d "$PGDATABASE" -c "select count(*) from permits where external_id like \$\$seed-%\$\$"'`, which must return 0.
 
 Seed markets and sources **before** the first boot with `Pipeline__Enabled=true`. Otherwise ingestion could consume an Apify run while the sources table is still empty.
 
@@ -192,6 +192,14 @@ railway ssh --service Postgres -- sh -c 'psql -U "$PGUSER" -d "$PGDATABASE" -c "
 
 No row has a null standing when the pass is done. Leads at standing 7 describe no fire-protection work and are hidden from the feed, the digest, the CSV and the public market counts.
 
+The Fort Bend County release needs this pass as well. It marks `tulsa-fire-permits` as never publishing the contractor, so every existing Tulsa lead must move from "no contractor listed" to contractor status 4 (not published) and lose those points. Confirm with:
+
+```bash
+railway ssh --service Postgres -- sh -c 'psql -U "$PGUSER" -d "$PGDATABASE" -c "select o.contractor_status, count(*) from fire_opportunities o join permits p on p.id = o.permit_id join sources s on s.id = p.source_id where s.jurisdiction = \$\$tulsa-fire-permits\$\$ group by 1"'
+```
+
+Only status 4 remains when the pass is done.
+
 ## Central New Jersey: backfill, then go-live
 
 The `central-new-jersey-nj` market and its one source `nj-ucc-fire-permits` come from the seeder with
@@ -220,6 +228,36 @@ Order:
    Backfilled permits keep the permit-date clock; permits first seen after this get the
    first-seen clock at ingestion, and the daily rescoring pass ages them.
 4. Add the three counties to the daily task's input in the scraper project.
+
+## Fort Bend County: backfill, then the daily input
+
+The `fort-bend-county-tx` market has two sources, `sugarland-fire-permits` and `missouricity-fire-permits`
+(scraper build 0.1.22). Both read a Tyler EnerGov self-service search that never publishes the
+contractor, so they come from the seeder with `publishes_contractor = false`, like Tulsa from this
+release on. They publish on filing, so the cadence stays daily and `recency_from_first_seen_since`
+stays null: there is no go-live step.
+
+The market is not public: it is in `DevSeeder.NotYetPublicMarketSlugs` and the web app's
+`NOT_YET_PUBLIC_MARKET_SLUGS`, and not in the source registry. Remove it from both lists and add it to
+the registry JSON and `source-registry.ts` to market it.
+
+What the records carry: Sugar Land's portal exposes only aboveground sprinkler permits (fire alarm
+permits are filed there but are not searchable), so every Sugar Land lead is a sprinkler lead with
+no description. Missouri City carries fire alarm, extinguishing, private main and hydrant permits
+with descriptions. A permit in Missouri City's extraterritorial jurisdiction arrives through its
+source with the record's own city and ZIP (Fresno, 77545) and belongs to this market.
+
+Order:
+
+1. Deploy, then run the registry seed (above).
+2. Run the one-time backfill of both cities from 2026-07-01 in the scraper project with
+   `onlyNewRecords` on, and let ingestion take it in. Check it:
+   ```bash
+   railway ssh --service Postgres -- sh -c 'psql -U "$PGUSER" -d "$PGDATABASE" -c "select s.jurisdiction, o.contractor_status, o.standing, count(*) from permits p join sources s on s.id = p.source_id join fire_opportunities o on o.permit_id = p.id where s.jurisdiction in (\$\$sugarland-fire-permits\$\$, \$\$missouricity-fire-permits\$\$) group by 1, 2, 3 order by 1, 2, 3"'
+   ```
+   Every row should have contractor status 4 (not published) and no standing 7 (not fire work).
+3. Add `"Sugar Land, TX"` and `"Missouri City, TX"` to the daily task's `cities` input in the
+   scraper project. Nothing else in the input changes.
 
 ## Rotating secrets
 

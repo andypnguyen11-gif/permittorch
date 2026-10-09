@@ -154,8 +154,10 @@ describe("a market that is not public yet gets no public surface, even with data
     expect(await generateMetadata({ params: Promise.resolve(params) })).toEqual({});
   });
 
-  it("isPublicMarket names it and nothing else", () => {
+  it("isPublicMarket names it, Fort Bend County and nothing else", () => {
     expect(isPublicMarket(NOT_PUBLIC.slug)).toBe(false);
+    // Registered 2026-10-09 with the API seeder; marketed only once its backfill is in and checked.
+    expect(isPublicMarket("fort-bend-county-tx")).toBe(false);
     expect(isPublicMarket("austin-tx")).toBe(true);
   });
 });
