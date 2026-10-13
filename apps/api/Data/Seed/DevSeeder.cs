@@ -11,7 +11,7 @@ namespace PermitTorch.Api.Data.Seed;
 /// independent parts, each behind its own gate so production can only ever receive the registry
 /// and an explicitly named operator account:
 /// <list type="number">
-/// <item>Registry upsert (34 markets, 47 sources) — always runs; safe in every environment.</item>
+/// <item>Registry upsert (39 markets, 52 sources) — always runs; safe in every environment.</item>
 /// <item>Sample permits — only with <c>SEED_SAMPLE_DATA=true</c>, outside Production, and while
 /// the database holds no permits other than the samples themselves.</item>
 /// <item>E2E identities (E2E SuperAdmin from <c>SUPERADMIN_FIREBASE_UID</c>, entitled and
@@ -207,11 +207,23 @@ public static class DevSeeder
         // Scraper build 0.1.22: two Fort Bend County cities as one market. Fresno addresses arrive
         // through Missouri City's portal (its ETJ) and keep their own city and ZIP on the record.
         ("fort-bend-county-tx", "Fort Bend County (Sugar Land & Missouri City)", "Fort Bend County", "TX"),
+        // Scraper build 0.1.25: five Bay Area cities, one market each. The Menlo Park Fire Protection
+        // District serves Menlo Park, Atherton, East Palo Alto and part of Redwood City, so those
+        // addresses arrive through its source and keep their own city and ZIP on the record.
+        ("hayward-ca", "Hayward", "Hayward", "CA"),
+        ("san-mateo-ca", "San Mateo", "San Mateo", "CA"),
+        ("fremont-ca", "Fremont", "Fremont", "CA"),
+        ("menlo-park-ca", "Menlo Park Fire Protection District (Menlo Park, Atherton & East Palo Alto)", "Menlo Park", "CA"),
+        ("santa-clara-ca", "Santa Clara", "Santa Clara", "CA"),
     };
 
     /// <summary>Registered markets that are not in the public registry JSON yet.</summary>
     public static readonly IReadOnlySet<string> NotYetPublicMarketSlugs =
-        new HashSet<string>(StringComparer.Ordinal) { "central-new-jersey-nj", "fort-bend-county-tx" };
+        new HashSet<string>(StringComparer.Ordinal)
+        {
+            "central-new-jersey-nj", "fort-bend-county-tx",
+            "hayward-ca", "san-mateo-ca", "fremont-ca", "menlo-park-ca", "santa-clara-ca",
+        };
 
     // Sources whose publisher differs from the default (names the contractor, updated daily).
     // RecencyFromFirstSeenSince is deliberately not here: it is set by hand once a backfill is in
@@ -224,6 +236,13 @@ public static class DevSeeder
         ["tulsa-fire-permits"] = (false, PublishCadence.Daily),
         ["sugarland-fire-permits"] = (false, PublishCadence.Daily),
         ["missouricity-fire-permits"] = (false, PublishCadence.Daily),
+        // None of the five Bay Area portals names a contractor (scraper build 0.1.25): Hayward and
+        // San Mateo are EnerGov searches like Tulsa, and the three Accela portals print no parties.
+        ["hayward-fire-permits"] = (false, PublishCadence.Daily),
+        ["san-mateo-fire-permits"] = (false, PublishCadence.Daily),
+        ["fremont-fire-permits"] = (false, PublishCadence.Daily),
+        ["mpfd-fire-permits"] = (false, PublishCadence.Daily),
+        ["santa-clara-fire-permits"] = (false, PublishCadence.Daily),
     };
 
     // PortalType is a best-effort label from the scraper README (records carry the authoritative provider in source.provider).
@@ -276,6 +295,11 @@ public static class DevSeeder
         ("nj-ucc-fire-permits", "central-new-jersey-nj", "New Jersey Construction Permits with the fire subcode (Middlesex, Somerset & Union counties)", "socrata"),
         ("sugarland-fire-permits", "fort-bend-county-tx", "Sugar Land Fire Permits (Tyler EnerGov CSS)", "energov"),
         ("missouricity-fire-permits", "fort-bend-county-tx", "Missouri City Fire Construction Permits (Tyler EnerGov CSS)", "energov"),
+        ("hayward-fire-permits", "hayward-ca", "Hayward Fire Sprinkler and Underground Permits (Tyler EnerGov CSS)", "energov"),
+        ("san-mateo-fire-permits", "san-mateo-ca", "San Mateo Fire Sprinkler Permits (Tyler EnerGov CSS)", "energov"),
+        ("fremont-fire-permits", "fremont-ca", "Fremont Fire AFES Permits (Accela Citizen Access, Building module)", "accela"),
+        ("mpfd-fire-permits", "menlo-park-ca", "Menlo Park Fire Protection District Sprinkler and Underground Permits (Accela Citizen Access)", "accela"),
+        ("santa-clara-fire-permits", "santa-clara-ca", "Santa Clara Fire Sprinkler, Suppression, Underground and Pump Permits (Accela Citizen Access, Fire module)", "accela"),
     };
 
     private static async Task<Dictionary<string, Market>> UpsertMarketsAsync(AppDbContext db, CancellationToken ct)

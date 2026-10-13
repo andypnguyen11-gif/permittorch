@@ -5,13 +5,18 @@ export interface MarketWithData { market: Market; stats: MarketStats }
 
 /**
  * Markets the app serves to subscribers but does not market yet. Mirrors the API seeder's
- * NotYetPublicMarketSlugs: Central New Jersey and Fort Bend County stay off public pages until
- * their data is in and checked. Removing a slug here (and adding the market to the source
- * registry) markets it.
+ * NotYetPublicMarketSlugs: Central New Jersey, Fort Bend County and the five Bay Area markets
+ * stay off public pages until their data is in and checked. Removing a slug here (and adding
+ * the market to the source registry) markets it.
  */
 export const NOT_YET_PUBLIC_MARKET_SLUGS: ReadonlySet<string> = new Set([
   "central-new-jersey-nj",
   "fort-bend-county-tx",
+  "hayward-ca",
+  "san-mateo-ca",
+  "fremont-ca",
+  "menlo-park-ca",
+  "santa-clara-ca",
 ]);
 
 export function isPublicMarket(slug: string): boolean {

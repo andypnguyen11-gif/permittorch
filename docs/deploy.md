@@ -104,7 +104,7 @@ Rollback: in the dashboard, open the service's **Deployments**, pick the previou
 
 The seeder is idempotent and gated per part:
 
-- **Registry** (34 markets, 47 sources): always upserted.
+- **Registry** (39 markets, 52 sources): always upserted.
 - **Sample permits**: only with `SEED_SAMPLE_DATA=true`, outside Production, and while the database holds no real permits.
 - **E2E identities** (E2E SuperAdmin from `SUPERADMIN_FIREBASE_UID`, the entitled/unentitled orgs and the seeded Pro subscription): only with `SEED_E2E_IDENTITIES=true` outside Production.
 - **Operator SuperAdmin**: `SEED_SUPERADMIN_FIREBASE_UID` (+ `SEED_SUPERADMIN_EMAIL`), in any environment. It creates that one user (or promotes them if they already signed up) and nothing else: no subscription.
@@ -116,11 +116,11 @@ In production:
 1. Run the registry seed **inside the Railway api service only**, so it sees the service's own variables (`ASPNETCORE_ENVIRONMENT=Production`). Never run it from a local shell with a sourced `.env` and a production `DATABASE_URL`: that shell's environment is Development, where the local opt-ins apply.
    ```bash
    railway ssh --service api -- sh -c 'cd /app && dotnet PermitTorch.Api.dll seed'
-   # → Seed complete. markets=34 sources=47 permits=<n> opportunities=<n>
+   # → Seed complete. markets=39 sources=52 permits=<n> opportunities=<n>
    ```
    The output must contain no `WARN: SEED_…` line. If it does, remove that variable from the service.
 2. Optional, once the operator has signed up in the web app: make them SuperAdmin by setting `SEED_SUPERADMIN_FIREBASE_UID` (their Firebase uid) and `SEED_SUPERADMIN_EMAIL` on the api service with `--skip-deploys`, run the same command, then delete both variables.
-3. Verify: `curl -s https://api.permittorch.com/api/markets` returns 34 markets. Check the database with `railway ssh --service Postgres -- sh -c 'psql -U "$PGUSER" -d "$PGDATABASE" -c "select count(*) from permits where external_id like \$\$seed-%\$\$"'`, which must return 0.
+3. Verify: `curl -s https://api.permittorch.com/api/markets` returns 39 markets. Check the database with `railway ssh --service Postgres -- sh -c 'psql -U "$PGUSER" -d "$PGDATABASE" -c "select count(*) from permits where external_id like \$\$seed-%\$\$"'`, which must return 0.
 
 Seed markets and sources **before** the first boot with `Pipeline__Enabled=true`. Otherwise ingestion could consume an Apify run while the sources table is still empty.
 
@@ -264,6 +264,67 @@ Order:
    Every row should have contractor status 4 (not published) and no standing 7 (not fire work).
 3. Add `"Sugar Land, TX"` and `"Missouri City, TX"` to the daily task's `cities` input in the
    scraper project. Nothing else in the input changes.
+
+## Bay Area: backfill, then a second daily task
+
+Scraper build 0.1.25 adds five Bay Area jurisdictions. Each is its own market with one source:
+
+| Market | Source | Portal |
+| --- | --- | --- |
+| `hayward-ca` | `hayward-fire-permits` | Tyler EnerGov |
+| `san-mateo-ca` | `san-mateo-fire-permits` | Tyler EnerGov |
+| `fremont-ca` | `fremont-fire-permits` | Accela |
+| `menlo-park-ca` | `mpfd-fire-permits` | Accela (Menlo Park Fire Protection District) |
+| `santa-clara-ca` | `santa-clara-fire-permits` | Accela |
+
+None of the five portals names a contractor, so all five come from the seeder with
+`publishes_contractor = false`, like Tulsa and Fort Bend County: their leads carry contractor
+status 4 (not published) and never earn "no contractor listed" points. They publish on filing or
+issue, so the cadence is daily and `recency_from_first_seen_since` stays null: there is no go-live
+step. No full rescoring pass is needed: these sources have no existing leads.
+
+All five are in `source-permit-types.json` under `allFireWork` because every record is the fire
+filing itself: each portal is searched by its fire-system permit types only (sprinkler, suppression,
+underground and pump), and fire-alarm types are deliberately not read. Fremont in particular needs
+the entry: its descriptions are often only a project name, which names no system the description
+reader knows, so without it those leads would be hidden as "not fire work".
+
+Menlo Park is one market, decided 2026-10-13. The district serves Menlo Park, Atherton, East Palo
+Alto and part of Redwood City, so a run for Menlo Park returns rows for all four, and every one
+arrives through `mpfd-fire-permits` with the record's own city and ZIP and belongs to `menlo-park-ca`.
+ZIP 94303 is shared with Palo Alto, which the district does not serve.
+
+What is normal in these records, and not a failed ingest: none of the five portals gives a record
+link, so `source.recordUrl` falls back to the portal. Fremont's portal prints street-only addresses,
+so every Fremont lead has `city` Fremont and no ZIP. A few Menlo Park rows print the ZIP as the word
+`null` and arrive without one.
+
+The five markets are not public: they are in `DevSeeder.NotYetPublicMarketSlugs` and the web app's
+`NOT_YET_PUBLIC_MARKET_SLUGS`, and not in the source registry. Remove a market from both lists and
+add it to the registry JSON and `source-registry.ts` to market it.
+
+Residential rows, decided 2026-10-13: the scraper holds back the district's two residential
+sprinkler types, San Mateo's residential type and Hayward's single-family descriptions unless the
+run sets `includeResidential: true`. The first buyer here installs residential systems, so the four
+Bay Area cities go on a **new** daily task in the scraper project with `includeResidential: true`.
+Do not add them to the existing daily task, and do not turn that flag on there: it would change
+every other market's rows.
+
+Order:
+
+1. Deploy, then run the registry seed (above).
+2. Run the one-time backfill in the scraper project with `onlyNewRecords` on: Fremont, Hayward,
+   San Mateo and Menlo Park from 2026-07-14, with `includeResidential: true`. Santa Clara is
+   backfilled with `lookbackDays: 30` instead: its portal caps a search at 40 pages, and a run from
+   2026-07-14 hits the cap and withholds rows, while 30 days does not. Let ingestion take it in,
+   then check it:
+   ```bash
+   railway ssh --service Postgres -- sh -c 'psql -U "$PGUSER" -d "$PGDATABASE" -c "select s.jurisdiction, o.contractor_status, o.standing, count(*) from permits p join sources s on s.id = p.source_id join fire_opportunities o on o.permit_id = p.id where s.jurisdiction in (\$\$hayward-fire-permits\$\$, \$\$san-mateo-fire-permits\$\$, \$\$fremont-fire-permits\$\$, \$\$mpfd-fire-permits\$\$, \$\$santa-clara-fire-permits\$\$) group by 1, 2, 3 order by 1, 2, 3"'
+   ```
+   Every row should have contractor status 4 (not published) and no standing 7 (not fire work).
+3. Create the second daily task with `"Fremont, CA"`, `"Hayward, CA"`, `"San Mateo, CA"` and
+   `"Menlo Park, CA"` in its `cities` input and `includeResidential: true`. Santa Clara is seeded
+   but stays out of the daily input for now; when it is added, give it `lookbackDays: 30`.
 
 ## Rotating secrets
 

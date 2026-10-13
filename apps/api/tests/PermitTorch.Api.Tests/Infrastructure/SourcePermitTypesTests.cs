@@ -103,6 +103,19 @@ public class SourcePermitTypesTests
     public void FortBendCounty_EveryPermit_IsFireWork(string sourceId, string description)
         => Assert.Equal(PermitScope.FireWorkPermit, SourcePermitTypes.Resolve(sourceId, description));
 
+    // The five Bay Area sources (scraper build 0.1.25) search fire permit types only, so every
+    // record is the fire filing itself. Fremont's descriptions are often just a project name,
+    // which the description reader cannot place; without the entry those leads would be hidden.
+    [Theory]
+    [InlineData("hayward-fire-permits", "NFPA 13D NEW SYSTEM 12 HEADS | Fire Sprinkler NFPA 13/13D New System")]
+    [InlineData("san-mateo-fire-permits", "NFPA 13R, 48 heads | Fire Sprinkler - Commercial and Multi-Family")]
+    [InlineData("fremont-fire-permits", "WARM SPRINGS LOGISTICS CENTER BLDG 2 | Fire AFES")]
+    [InlineData("fremont-fire-permits", "Fire AFES")]
+    [InlineData("mpfd-fire-permits", "Underground fire service lateral | Underground Piping")]
+    [InlineData("santa-clara-fire-permits", "FS - Tenant improvement, relocate 14 heads | Fire Sprinkler")]
+    public void BayArea_EveryPermit_IsFireWork(string sourceId, string description)
+        => Assert.Equal(PermitScope.FireWorkPermit, SourcePermitTypes.Resolve(sourceId, description));
+
     // Detroit's sprinkler and suppression trade source is the trade permit itself, filed by the installer.
     [Fact]
     public void DetroitSprinklerAndSuppressionTrades_AreFireWork()
