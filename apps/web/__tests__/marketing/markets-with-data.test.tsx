@@ -154,10 +154,14 @@ describe("a market that is not public yet gets no public surface, even with data
     expect(await generateMetadata({ params: Promise.resolve(params) })).toEqual({});
   });
 
-  it("isPublicMarket names it, Fort Bend County and nothing else", () => {
+  it("isPublicMarket names it, Fort Bend County, the five Bay Area markets and nothing else", () => {
     expect(isPublicMarket(NOT_PUBLIC.slug)).toBe(false);
     // Registered 2026-10-09 with the API seeder; marketed only once its backfill is in and checked.
     expect(isPublicMarket("fort-bend-county-tx")).toBe(false);
+    // Registered 2026-10-13 (scraper build 0.1.25); held back until the owner decides to market them.
+    for (const slug of ["hayward-ca", "san-mateo-ca", "fremont-ca", "menlo-park-ca", "santa-clara-ca"]) {
+      expect(isPublicMarket(slug)).toBe(false);
+    }
     expect(isPublicMarket("austin-tx")).toBe(true);
   });
 });
