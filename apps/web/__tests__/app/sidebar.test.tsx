@@ -28,6 +28,7 @@ describe("Sidebar", () => {
     render(<Sidebar role="SUPER_ADMIN" />);
     expect(screen.getByRole("link", { name: "Sources" })).toHaveAttribute("href", "/app/admin/sources");
     expect(screen.getByRole("link", { name: "Runs" })).toHaveAttribute("href", "/app/admin/runs");
+    expect(screen.getByRole("link", { name: "Pre-sprinkler" })).toHaveAttribute("href", "/app/admin/pre-sprinkler");
     expect(screen.getByRole("link", { name: "Users" })).toHaveAttribute("href", "/app/admin/users");
     expect(screen.getByRole("link", { name: "Subscriptions" })).toHaveAttribute("href", "/app/admin/subscriptions");
   });

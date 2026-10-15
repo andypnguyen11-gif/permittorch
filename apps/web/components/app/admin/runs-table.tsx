@@ -22,6 +22,7 @@ export function RunsTable({ runs }: { runs: ScraperRunSummary[] }) {
         <TableHeader className="bg-stone-50">
           <TableRow className="hover:bg-transparent [&>th]:h-10 [&>th]:px-4 [&>th]:text-[11px] [&>th]:font-semibold [&>th]:tracking-wider [&>th]:text-stone-500 [&>th]:uppercase">
             <TableHead>Run</TableHead>
+            <TableHead>Feed</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Started</TableHead>
             <TableHead className="text-right">Imported</TableHead>
@@ -38,6 +39,7 @@ export function RunsTable({ runs }: { runs: ScraperRunSummary[] }) {
               <TableRow key={run.id} data-flagged={flagged || undefined}
                 className={cn("[&>td]:px-4 [&>td]:py-2.5", flagged && "bg-red-50/50 hover:bg-red-50")}>
                 <TableCell className="font-mono text-xs text-stone-600">{run.apifyRunId}</TableCell>
+                <TableCell className="text-sm text-stone-600">{run.feed === "PRE_SPRINKLER" ? "Pre-sprinkler" : "Fire"}</TableCell>
                 <TableCell>
                   <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
                     ok ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700")}>

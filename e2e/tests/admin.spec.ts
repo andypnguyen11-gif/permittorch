@@ -25,11 +25,25 @@ test.describe("admin area", () => {
       await signIn(page, USERS.superadmin);
       for (const [path, heading] of [
         ["/app/admin/runs", "Scraper runs"], ["/app/admin/users", "Users"],
-        ["/app/admin/subscriptions", "Subscriptions"],
+        ["/app/admin/subscriptions", "Subscriptions"], ["/app/admin/pre-sprinkler", "Pre-sprinkler leads"],
       ] as const) {
         await page.goto(path);
         await expect(page.getByRole("heading", { level: 1, name: heading })).toBeVisible();
       }
+    });
+  });
+
+  test.describe("SuperAdmin pre-sprinkler leads", () => {
+    requireUsers("superadmin");
+
+    test("opens from the sidebar with the Open filter and a CSV download", async ({ page }) => {
+      await signIn(page, USERS.superadmin);
+      await page.getByRole("link", { name: "Pre-sprinkler", exact: true }).click();
+      await page.waitForURL("**/app/admin/pre-sprinkler");
+      await expect(page.getByRole("heading", { level: 1, name: "Pre-sprinkler leads" })).toBeVisible();
+      await expect(page.getByRole("form", { name: "Filter pre-sprinkler leads" })).toBeVisible();
+      await expect(page.getByLabel("Standing")).toHaveValue("OPEN");
+      await expect(page.getByRole("button", { name: /Download CSV/ })).toBeVisible();
     });
   });
 
@@ -40,7 +54,9 @@ test.describe("admin area", () => {
       await signIn(page, USERS.entitled); // Role: Member
       await expect(page.getByRole("link", { name: "Runs", exact: true })).toHaveCount(0);
 
-      for (const path of ["/app/admin/sources", "/app/admin/runs", "/app/admin/users", "/app/admin/subscriptions"]) {
+      await expect(page.getByRole("link", { name: "Pre-sprinkler", exact: true })).toHaveCount(0);
+      for (const path of ["/app/admin/sources", "/app/admin/runs", "/app/admin/users", "/app/admin/subscriptions",
+        "/app/admin/pre-sprinkler"]) {
         await page.goto(path);
         await page.waitForURL((url) => url.pathname === "/app");
         await expect(page.getByText(AUSTIN_SOURCE_NAME, { exact: true })).toHaveCount(0);
