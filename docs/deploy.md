@@ -84,7 +84,7 @@ PermitTorch can be made free for a pilot without touching Stripe or any data. Tw
 | `api` | `Access__FreeForAll` | `true` | Every signed-in user is entitled to every **active** market and to the top plan (Territory), so CSV export and every other plan-gated feature opens. `POST /api/billing/checkout` returns 409 "PermitTorch is free during the pilot; no payment is needed". `/api/account/me` reports `freeAccess: true`, and the app hides every upgrade prompt, locked market card and checkout picker. |
 | `web` | `NEXT_PUBLIC_FREE_PILOT` | `1` | `/pricing` shows "Free during the pilot" and its call to action goes to `/signup` instead of a paid plan. It is inlined at build time, so setting it triggers a web rebuild. |
 
-What stays the same: inactive markets stay hidden; pre-sprinkler leads stay SuperAdmin-only; ingestion and scoring are unaffected; Stripe webhooks keep processing; an organization that already pays keeps its subscription and its billing portal (it can cancel there) and is not charged differently.
+What stays the same: inactive markets stay hidden; pre-sprinkler leads stay SuperAdmin-only; ingestion and scoring are unaffected; Stripe webhooks keep processing; an organization that already pays keeps its subscription and its billing portal, and Stripe keeps billing it until it is cancelled there (the account page points it to the portal). Nothing cancels or pauses those subscriptions automatically.
 
 **Digest emails during the pilot.** Each user picks the markets their digest covers on the Alerts page (stored in `email_preference_markets`). A digest only ever covers picked markets the user is entitled to. During the pilot a user who has picked no market gets no email; a paying user with no pick still gets every market on their plan.
 
