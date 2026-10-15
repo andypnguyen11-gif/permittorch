@@ -44,6 +44,7 @@ Service settings are applied through the Railway API or the dashboard. They are 
 - `RAILWAY_DOCKERFILE_PATH=apps/api/Dockerfile`
 - Secrets and IDs: `FIREBASE_PROJECT_ID`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_TERRITORY`, `EMAIL_UNSUBSCRIBE_SECRET`, `APIFY_TOKEN`, `APIFY_TASK_ID`.
 - `STRIPE_MANAGED_PAYMENTS=true`: Checkout Sessions make Stripe the merchant of record (Stripe Managed Payments: Stripe collects and remits sales tax, handles fraud, disputes and receipts, for 3.5% on top of processing). Any other value, or unset, sends a plain checkout. Turn it on only once Managed Payments is enabled for the account in the Dashboard (Settings → Managed Payments).
+- `APIFY_PRESPRINKLER_TASK_ID`: the pre-sprinkler task (see "Pre-sprinkler leads (admin only)"). Unset, that ingestion is off.
 - **Deliberately unset:**
   - `RESEND_API_KEY`: digests are skipped until it is set.
   - `SENTRY_DSN`: Sentry stays off until it is set.
@@ -325,6 +326,43 @@ Order:
 3. Create the second daily task with `"Fremont, CA"`, `"Hayward, CA"`, `"San Mateo, CA"` and
    `"Menlo Park, CA"` in its `cities` input and `includeResidential: true`. Santa Clara is seeded
    but stays out of the daily input for now; when it is added, give it `lookbackDays: 30`.
+
+## Pre-sprinkler leads (admin only)
+
+Building permits for new homes, ADUs and additions in Fremont, Hayward, San Mateo and Menlo Park
+with no fire sprinkler application found at the address yet. Only a `SuperAdmin` (the database role)
+sees them, at `/app/admin/pre-sprinkler` (API: `/api/admin/pre-sprinkler`), and only for the markets
+in `PreSprinkler:MarketSlugs` (default `fremont-ca`, `hayward-ca`, `san-mateo-ca`, `menlo-park-ca`).
+They live in `pre_sprinkler_leads`, `pre_sprinkler_contacts` and `pre_sprinkler_signals` and never
+enter `permits`, `fire_opportunities`, digests, market stats or any subscriber read.
+
+- **Actor:** `pre-sprinkler-building-leads`, private, in the scraper project. One dataset item per
+  lead; the run's `COVERAGE_REPORT` lists each source with `ok`.
+- **Task:** `permittorch-presprinkler-weekly` (Apify task id `9bRJ0Y5JKWk20XojB`), scheduled
+  Fridays 13:00 UTC, 90-day lookback, `onlyNewRecords: false`. Every run re-sends each lead still
+  open, so a lead an `ok` source stops sending is set `NO_LONGER_LISTED` (hidden by default). A source
+  reported failed, or absent from the report, never retires a lead.
+- **Variable (api service):** `APIFY_PRESPRINKLER_TASK_ID=9bRJ0Y5JKWk20XojB`. It uses the same
+  `APIFY_TOKEN`. While it is unset the pre-sprinkler ingestion does not run. Its runs are recorded in
+  `scraper_runs` with `feed = 1` and show as "Pre-sprinkler" on the admin runs page.
+- **Weights:** `PreSprinklerScoring` in `appsettings.json` (override with
+  `PreSprinklerScoring__Weights__NEW_HOME=…`). Scores are recomputed at ingest and once a day.
+
+Order:
+
+1. Deploy the API (the `AddPreSprinklerLeads` migration runs on startup), then run the registry seed
+   (above). It adds the four sources with `feed = 1`: `fremont-building-permits`,
+   `hayward-building-permits`, `san-mateo-building-permits`, `menlo-park-building-permits`. They are
+   not in `source-permit-types.json`, and fire ingestion refuses their records.
+2. Set `APIFY_PRESPRINKLER_TASK_ID=9bRJ0Y5JKWk20XojB` on the api service and redeploy. Runs of the task
+   from before this point are ingested oldest first, as with the fire task.
+3. After the next run, check it:
+   ```bash
+   railway ssh --service Postgres -- sh -c 'psql -U "$PGUSER" -d "$PGDATABASE" -c "select s.jurisdiction, l.kind, l.standing, count(*) from pre_sprinkler_leads l join sources s on s.id = l.source_id group by 1, 2, 3 order by 1, 2, 3"'
+   railway ssh --service Postgres -- sh -c 'psql -U "$PGUSER" -d "$PGDATABASE" -c "select count(*) from permits p join sources s on s.id = p.source_id where s.feed = 1"'
+   ```
+   The first lists leads per source, kind (0 new home, 1 ADU, 2 addition) and standing (0 open,
+   1 sprinkler permit filed, 2 check unavailable, 3 no longer listed). The second must return 0.
 
 ## Rotating secrets
 
