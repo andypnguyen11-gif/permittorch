@@ -109,6 +109,14 @@ public static class FeaturesSetup
                     Window = TimeSpan.FromMinutes(1),
                     QueueLimit = 0,
                 }));
+            // Signed-in feedback: always authenticated, so this partitions per account (`sub`).
+            o.AddPolicy(FeedbackEndpoints.RateLimitPolicy, context =>
+                RateLimitPartition.GetFixedWindowLimiter(GlobalPartitionKey(context), _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 5,
+                    Window = TimeSpan.FromMinutes(10),
+                    QueueLimit = 0,
+                }));
             // Public unsubscribe links: tokens are unguessable, but cap probing per client IP.
             o.AddPolicy(UnsubscribeEndpoints.RateLimitPolicy, context =>
                 RateLimitPartition.GetFixedWindowLimiter("ip:" + ClientIp(context), _ => new FixedWindowRateLimiterOptions
