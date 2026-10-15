@@ -42,11 +42,11 @@ Service settings are applied through the Railway API or the dashboard. They are 
 - `API_PUBLIC_URL=https://api.permittorch.com`
 - `EMAIL_FROM=leads@permittorch.dev` (placeholder until Resend is set up)
 - `RAILWAY_DOCKERFILE_PATH=apps/api/Dockerfile`
-- Secrets and IDs: `FIREBASE_PROJECT_ID`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_TERRITORY`, `EMAIL_UNSUBSCRIBE_SECRET`, `APIFY_TOKEN`, `APIFY_TASK_ID`.
+- Secrets and IDs: `FIREBASE_PROJECT_ID`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_TERRITORY`, `EMAIL_UNSUBSCRIBE_SECRET`, `RESEND_API_KEY` (digest emails are sent through Resend; unset, digests are skipped), `APIFY_TOKEN`, `APIFY_TASK_ID`.
+- `Access__FreeForAll=true`: the free pilot (see "Free pilot"). Unset or `false`, access comes from paid subscriptions.
 - `STRIPE_MANAGED_PAYMENTS=true`: Checkout Sessions make Stripe the merchant of record (Stripe Managed Payments: Stripe collects and remits sales tax, handles fraud, disputes and receipts, for 3.5% on top of processing). Any other value, or unset, sends a plain checkout. Turn it on only once Managed Payments is enabled for the account in the Dashboard (Settings → Managed Payments).
 - `APIFY_PRESPRINKLER_TASK_ID`: the pre-sprinkler task (see "Pre-sprinkler leads (admin only)"). Unset, that ingestion is off.
 - **Deliberately unset:**
-  - `RESEND_API_KEY`: digests are skipped until it is set.
   - `SENTRY_DSN`: Sentry stays off until it is set.
   - `SEED_SAMPLE_DATA`, `SEED_E2E_IDENTITIES`, `SUPERADMIN_FIREBASE_UID`, `E2E_*`: sample data and test identities never belong in production. The seeder ignores the two flags in Production anyway and logs a `WARN` naming them.
   - `SEED_SUPERADMIN_FIREBASE_UID`, `SEED_SUPERADMIN_EMAIL`: set only while running the one-time operator seed below, then remove.
@@ -58,6 +58,7 @@ Service settings are applied through the Railway API or the dashboard. They are 
 - `RAILWAY_DOCKERFILE_PATH=apps/web/Dockerfile`
 - Build-time: `NEXT_PUBLIC_FIREBASE_API_KEY`, `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`, `NEXT_PUBLIC_FIREBASE_PROJECT_ID`, `NEXT_PUBLIC_FIREBASE_APP_ID`
 - Runtime (server): `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` (single line with `\n` escapes), `AUTH_COOKIE_SIGNATURE_KEY_CURRENT`, `AUTH_COOKIE_SIGNATURE_KEY_PREVIOUS`
+- Build-time: `NEXT_PUBLIC_FREE_PILOT=1` while the free pilot runs (see "Free pilot"). Unset, `/pricing` shows the paid plans.
 - **Not yet set:** `NEXT_PUBLIC_POSTHOG_KEY` and `NEXT_PUBLIC_SENTRY_DSN`. Analytics and Sentry stay off until they are set.
 - **Must be absent:** `NEXT_PUBLIC_API_MOCK`.
 
@@ -73,6 +74,21 @@ Account **Permit Torch** `acct_1UMrlV72kpazdRcy` (an individual, Texas; created 
 - **Signing secret:** stored in `STRIPE_WEBHOOK_SECRET` on `api`. Unsigned or wrongly signed requests return 400.
 - **Switching production between modes:** set `STRIPE_SECRET_KEY` (a restricted key of that mode), `STRIPE_WEBHOOK_SECRET` (that mode's endpoint) and the three `STRIPE_PRICE_*` together, in one `railway variable set`, so the API never runs with keys from one mode and prices from the other.
 - **Restricted key permissions** for `STRIPE_SECRET_KEY`: Checkout Sessions write, Customers write, Subscriptions read, Customer portal write. Nothing else.
+
+## Free pilot
+
+PermitTorch can be made free for a pilot without touching Stripe or any data. Two variables control it, and they are set together:
+
+| Service | Variable | Pilot on | Effect |
+| --- | --- | --- | --- |
+| `api` | `Access__FreeForAll` | `true` | Every signed-in user is entitled to every **active** market and to the top plan (Territory), so CSV export and every other plan-gated feature opens. `POST /api/billing/checkout` returns 409 "PermitTorch is free during the pilot; no payment is needed". `/api/account/me` reports `freeAccess: true`, and the app hides every upgrade prompt, locked market card and checkout picker. |
+| `web` | `NEXT_PUBLIC_FREE_PILOT` | `1` | `/pricing` shows "Free during the pilot" and its call to action goes to `/signup` instead of a paid plan. It is inlined at build time, so setting it triggers a web rebuild. |
+
+What stays the same: inactive markets stay hidden; pre-sprinkler leads stay SuperAdmin-only; ingestion and scoring are unaffected; Stripe webhooks keep processing; an organization that already pays keeps its subscription and its billing portal (it can cancel there) and is not charged differently.
+
+**Digest emails during the pilot.** Each user picks the markets their digest covers on the Alerts page (stored in `email_preference_markets`). A digest only ever covers picked markets the user is entitled to. During the pilot a user who has picked no market gets no email; a paying user with no pick still gets every market on their plan.
+
+**Turning it off.** Remove `Access__FreeForAll` from `api` (or set it to `false`) and remove `NEXT_PUBLIC_FREE_PILOT` from `web`. Access goes back to the markets on each organization's active or trialing subscription; users without one see the upgrade path and checkout again. No data is deleted either way: subscriptions and digest market picks are kept, and a pick outside the paid markets is simply not mailed.
 
 ## Forwarded headers (rate limiting)
 
