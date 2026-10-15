@@ -22,6 +22,7 @@ public sealed record PreSprinklerLeadDto(
     IReadOnlyList<string> Notes, int Score, PreSprinklerStanding Standing, string StandingLabel,
     DateTime FirstSeenAt, DateTime LastSeenAt,
     IReadOnlyList<PreSprinklerContactDto> Contacts,
-    IReadOnlyList<PreSprinklerSignalDto>? Signals = null);
+    IReadOnlyList<PreSprinklerSignalDto>? Signals = null,
+    string? BuilderTag = null);
 
 public sealed record PreSprinklerMarketDto(string Slug, string Name);

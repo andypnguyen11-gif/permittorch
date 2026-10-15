@@ -110,7 +110,7 @@ public static class PreSprinklerEndpoints
         var total = await query.CountAsync(ct);
         var leads = await Order(query)
             .Skip((currentPage - 1) * size).Take(size)
-            .Include(l => l.Contacts).Include(l => l.Source).ThenInclude(s => s.Market)
+            .Include(l => l.Contacts).Include(l => l.Signals).Include(l => l.Source).ThenInclude(s => s.Market)
             .AsSplitQuery().AsNoTracking()
             .ToListAsync(ct);
         return Results.Ok(new PagedResponse<PreSprinklerLeadDto>(
@@ -145,7 +145,7 @@ public static class PreSprinklerEndpoints
         var query = Apply(Scoped(db, PreSprinklerMarkets.From(configuration)), filters);
         var leads = await Order(query)
             .Take(ExportCap + 1)
-            .Include(l => l.Contacts).Include(l => l.Source).ThenInclude(s => s.Market)
+            .Include(l => l.Contacts).Include(l => l.Signals).Include(l => l.Source).ThenInclude(s => s.Market)
             .AsSplitQuery().AsNoTracking()
             .ToListAsync(ct);
         if (leads.Count > ExportCap)
@@ -181,7 +181,8 @@ public static class PreSprinklerEndpoints
             withSignals
                 ? l.Signals.OrderByDescending(s => s.Weight).ThenBy(s => s.SignalType, StringComparer.Ordinal)
                     .Select(s => new PreSprinklerSignalDto(s.SignalType, s.Description, s.Weight)).ToList()
-                : null);
+                : null,
+            PreSprinklerLabels.Builder(l.Signals));
     }
 
     private static T? ReadJson<T>(string? json) where T : class

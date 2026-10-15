@@ -333,6 +333,15 @@ under `PreSprinklerScoring`, and every point is a `pre_sprinkler_signals` row.
 | `PLAN_CHECK` | +5 | status is in plan check |
 | `LICENSED_BUILDER_NAMED` | +5 | a contractor contact carries a licence number |
 | `PHONE_PRESENT` | +5 | some contact has a phone |
+| `NO_CONTRACTOR_ON_RECORD` | +10 | no contractor contact: the owner, applicant or architect is the contact (added 2026-10-15) |
+| `TRACT_BUILDER` | -20 | the project name or description names a tract ('Tract 8684') (added 2026-10-15) |
+| `REPEAT_BUILDER` | -15 | not a tract, and a contractor on the lead is on ≥ 3 stored leads, matched by licence, else company, else name (added 2026-10-15) |
+
+*Why the last three (2026-10-15):* a general contractor or tract builder usually already has two or
+three sprinkler subs it gets quotes from, so a new installer's call is worth less there than on a
+homeowner's ADU, an owner's teardown or an architect's one-off house. The 2026-10-15 acceptance run
+showed it: the Olive Ave tract had sprinkler permits filed months before its building permits. These
+are rankings, not filters; the tag shows in the admin table and the CSV's `Builder` column.
 
 **Standing:**
 

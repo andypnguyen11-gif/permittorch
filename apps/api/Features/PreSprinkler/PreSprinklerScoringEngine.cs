@@ -19,8 +19,9 @@ public sealed class PreSprinklerScoringEngine(PreSprinklerScoringOptions options
 
     public static bool IsPlanCheck(string? status) => status is not null && PlanCheckPattern.IsMatch(status);
 
-    public PreSprinklerScore Score(PreSprinklerLead lead, DateOnly today)
+    public PreSprinklerScore Score(PreSprinklerLead lead, DateOnly today, PreSprinklerBuilders? builders = null)
     {
+        builders ??= PreSprinklerBuilders.Empty;
         var signals = new List<ScoredSignal>();
         void Add(string type, string description)
         {
@@ -68,6 +69,22 @@ public sealed class PreSprinklerScoringEngine(PreSprinklerScoringOptions options
         if (lead.Contacts.Any(c => !string.IsNullOrWhiteSpace(c.Phone)))
             Add(PreSprinklerSignals.PhonePresent, "The record lists a phone number");
 
+        // Who is on the record. A homeowner, an architect or a one-off builder rarely has a
+        // sprinkler sub lined up; a tract builder or a contractor filing many permits usually does.
+        if (!lead.Contacts.Any(c => c.Role == PreSprinklerContactRole.Contractor))
+            Add(PreSprinklerSignals.NoContractorOnRecord,
+                "No contractor on the record: the owner, applicant or architect is the contact");
+        if (PreSprinklerBuilders.Tract(lead) is { } tract)
+        {
+            Add(PreSprinklerSignals.TractBuilder,
+                $"Lot in tract {tract}: tract builders usually have sprinkler subs already");
+        }
+        else if (builders.PermitsByContractor(lead) is var permits && permits >= options.RepeatBuilderMinPermits)
+        {
+            Add(PreSprinklerSignals.RepeatBuilder,
+                $"The contractor on the record has {permits} building permits in these cities: an established builder usually has sprinkler subs already");
+        }
+
         return new PreSprinklerScore(Math.Clamp(signals.Sum(s => s.Weight), 0, 100), signals);
     }
 
@@ -82,9 +99,9 @@ public sealed class PreSprinklerScoringEngine(PreSprinklerScoringOptions options
 
     /// <summary>Applies a score to a tracked lead: replaces its signal rows, so the stored score
     /// is always the sum of the stored signals.</summary>
-    public void Apply(AppDbContext db, PreSprinklerLead lead, DateTime nowUtc)
+    public void Apply(AppDbContext db, PreSprinklerLead lead, DateTime nowUtc, PreSprinklerBuilders? builders = null)
     {
-        var score = Score(lead, DateOnly.FromDateTime(nowUtc));
+        var score = Score(lead, DateOnly.FromDateTime(nowUtc), builders);
         if (lead.Signals.Count > 0)
         {
             db.RemoveRange(lead.Signals);

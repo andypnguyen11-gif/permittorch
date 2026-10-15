@@ -138,5 +138,7 @@ export interface PreSprinklerLead {
   contacts: PreSprinklerContact[];
   /** Detail only. */
   signals?: PreSprinklerSignal[] | null;
+  /** Why the lead ranks as it does by who is on the record (tract or repeat builder, or no contractor). */
+  builderTag?: string | null;
 }
 export interface PreSprinklerMarket { slug: string; name: string; }

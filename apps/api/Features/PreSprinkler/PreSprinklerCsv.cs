@@ -7,7 +7,7 @@ using PermitTorch.Api.Features.Shared;
 namespace PermitTorch.Api.Features.PreSprinkler;
 
 /// <summary>The admin download, in the column order of the hand-built 2026-10-13 sheet, then the
-/// sprinkler check, score, standing and market. Every cell goes through CsvFormatter.Escape, so a
+/// sprinkler check, builder tag, score, standing and market. Every cell goes through CsvFormatter.Escape, so a
 /// cell a spreadsheet would run as a formula is defused. CRLF, invariant culture.</summary>
 public static class PreSprinklerCsv
 {
@@ -15,7 +15,7 @@ public static class PreSprinklerCsv
     [
         "City", "Address", "Building permit #", "Project type", "Scope", "Permit status", "Filed",
         "Who to call (role: name, phone, email)", "Sprinkler requirement", "Portal description", "City record",
-        "Sprinkler check", "Score", "Standing", "Market",
+        "Sprinkler check", "Builder", "Score", "Standing", "Market",
     ];
 
     public static string Header => string.Join(',', Columns.Select(CsvFormatter.Escape));
@@ -40,6 +40,7 @@ public static class PreSprinklerCsv
                 l.Description ?? l.ProjectName ?? "",
                 l.RecordUrl ?? l.PortalUrl ?? "",
                 l.SprinklerLabel,
+                l.BuilderTag ?? "",
                 l.Score.ToString(CultureInfo.InvariantCulture),
                 Wire.Name(l.Standing),
                 l.MarketSlug,
