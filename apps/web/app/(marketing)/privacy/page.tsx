@@ -49,6 +49,7 @@ const SECTIONS: LegalSection[] = [
     body: [
       "We use the information we collect from customers to operate the service, send the digests and sample leads they request, process payments, and improve the product.",
       "We do not sell our customers’ personal information. Permit records are different: access to them is what our customers pay for, as section 2 explains.",
+      "Feedback you send from the app is stored with your account and used only to read and reply to it.",
     ],
   },
   {
