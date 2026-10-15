@@ -69,11 +69,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <AnalyticsIdentity userId={me.id} />
       <div className="flex h-dvh bg-stone-50 text-stone-900">
         <div className="hidden lg:flex">
-          <Sidebar role={me.role} plan={me.plan} />
+          <Sidebar role={me.role} plan={me.plan} freeAccess={me.freeAccess} />
         </div>
         <div className="flex min-w-0 flex-1 flex-col">
           <Suspense fallback={<div className="h-16 shrink-0 border-b border-border bg-white" />}>
-            <TopBar markets={markets} email={me.email} role={me.role} plan={me.plan} />
+            <TopBar markets={markets} email={me.email} role={me.role} plan={me.plan} freeAccess={me.freeAccess} />
           </Suspense>
           <main id="main" className="flex-1 overflow-y-auto">
             <div className="mx-auto w-full max-w-7xl p-4 sm:p-6 lg:p-8">{children}</div>

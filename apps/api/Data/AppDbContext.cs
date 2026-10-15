@@ -20,6 +20,7 @@ public class AppDbContext : DbContext
     public DbSet<SubscriptionMarket> SubscriptionMarkets => Set<SubscriptionMarket>();
     public DbSet<SavedLead> SavedLeads => Set<SavedLead>();
     public DbSet<EmailPreference> EmailPreferences => Set<EmailPreference>();
+    public DbSet<EmailPreferenceMarket> EmailPreferenceMarkets => Set<EmailPreferenceMarket>();
     public DbSet<SampleLeadRequest> SampleLeadRequests => Set<SampleLeadRequest>();
     public DbSet<Removal> Removals => Set<Removal>();
     public DbSet<PreSprinklerLead> PreSprinklerLeads => Set<PreSprinklerLead>();
@@ -106,6 +107,14 @@ public class AppDbContext : DbContext
         {
             e.HasOne<AppUser>().WithMany().HasForeignKey(p => p.UserId);
             e.HasIndex(p => p.UserId).IsUnique();
+        });
+
+        modelBuilder.Entity<EmailPreferenceMarket>(e =>
+        {
+            e.HasKey(pm => new { pm.EmailPreferenceId, pm.MarketId });
+            e.HasOne<EmailPreference>().WithMany(p => p.Markets)
+                .HasForeignKey(pm => pm.EmailPreferenceId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Market>().WithMany().HasForeignKey(pm => pm.MarketId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<SampleLeadRequest>(e =>

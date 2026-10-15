@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { PricingTiers, PRICING_TIERS } from "@/components/marketing/pricing-tiers";
 
@@ -47,4 +47,38 @@ describe("PricingTiers", () => {
     expect(hasCsv("Territory")).toBe(true);
     expect(hasCsv("Starter")).toBe(false);
   });
+});
+
+describe("/pricing during the free pilot (NEXT_PUBLIC_FREE_PILOT)", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("says it is free and sends the CTA to sign-up instead of a paid plan", async () => {
+    vi.stubEnv("NEXT_PUBLIC_FREE_PILOT", "1");
+    const { default: PricingPage } = await import("@/app/(marketing)/pricing/page");
+    const { container } = render(PricingPage());
+    expect(screen.getByRole("heading", { level: 1, name: "Free during the pilot" })).toBeDefined();
+    expect(screen.getByRole("link", { name: "Create a free account" }).getAttribute("href")).toBe("/signup");
+    expect(screen.queryByText("$129")).toBeNull();
+    expect(screen.queryByRole("link", { name: /choose|start free with/i })).toBeNull();
+    expect(container.querySelector('script[type="application/ld+json"]')).toBeNull();
+  });
+
+  it("shows the paid tiers when the flag is unset", async () => {
+    vi.stubEnv("NEXT_PUBLIC_FREE_PILOT", "");
+    const { default: PricingPage } = await import("@/app/(marketing)/pricing/page");
+    render(PricingPage());
+    expect(screen.getByText("$129")).toBeDefined();
+    expect(screen.queryByText("Free during the pilot")).toBeNull();
+  });
+});
+
+describe("isFreePilot", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it.each([["1", true], ["true", true], ["TRUE", true], ["0", false], ["", false]])(
+    "NEXT_PUBLIC_FREE_PILOT=%s → %s", async (value, expected) => {
+      vi.stubEnv("NEXT_PUBLIC_FREE_PILOT", value);
+      const { isFreePilot } = await import("@/lib/free-pilot");
+      expect(isFreePilot()).toBe(expected);
+    });
 });

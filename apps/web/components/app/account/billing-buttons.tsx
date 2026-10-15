@@ -65,9 +65,13 @@ const go = (url: string) => { if (url && url !== "#") window.location.assign(url
  * subscription exists but grants no plan (unpaid, paused, incomplete): the
  * portal is then the only way to fix payment, so no upgrade is offered.
  */
-export function BillingButtons({ plan }: { plan: PlanTier | null }) {
+export function BillingButtons({ plan, offerUpgrade = true }: {
+  plan: PlanTier | null;
+  /** False during the free pilot: the portal stays for an existing subscription, but nothing is upsold. */
+  offerUpgrade?: boolean;
+}) {
   const getToken = useApiToken();
-  const upgrade = plan === null ? null : nextPlan(plan);
+  const upgrade = plan === null || !offerUpgrade ? null : nextPlan(plan);
   const openPortal = async () => go((await createBillingPortal(await getToken())).url);
 
   return (

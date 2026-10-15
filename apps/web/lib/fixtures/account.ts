@@ -28,6 +28,7 @@ export const mockAccountMe: AccountMe = {
   digestFrequency: "DAILY",
   hasLiveSubscription: true,
   termsAccepted: true,
+  freeAccess: false,
 };
 
 // Markets this mock organization is entitled to: a subset of the single market

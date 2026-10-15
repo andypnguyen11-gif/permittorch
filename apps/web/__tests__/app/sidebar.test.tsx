@@ -57,4 +57,12 @@ describe("Sidebar extras", () => {
     rerender(<Sidebar role="MEMBER" plan="TERRITORY" />);
     expect(screen.queryByRole("link", { name: /Upgrade plan/ })).not.toBeInTheDocument();
   });
+
+  it("hides the upgrade card during the free pilot, whatever the plan", () => {
+    const { rerender } = render(<Sidebar role="MEMBER" plan={null} freeAccess />);
+    expect(screen.queryByText("Unlock more markets")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Upgrade plan/ })).not.toBeInTheDocument();
+    rerender(<Sidebar role="MEMBER" plan="PRO" freeAccess />);
+    expect(screen.queryByRole("link", { name: /Upgrade plan/ })).not.toBeInTheDocument();
+  });
 });

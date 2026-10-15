@@ -253,3 +253,38 @@ describe("lib/api excludeContractorStatus", () => {
     expect(url).toBe("http://api.test/api/leads/export.csv?minScore=80&excludeContractorStatus=FIRE_CONTRACTOR_NAMED");
   });
 });
+
+describe("lib/api email preferences", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    vi.stubEnv("NEXT_PUBLIC_API_MOCK", "0");
+    vi.stubEnv("NEXT_PUBLIC_API_URL", "http://api.test");
+  });
+
+  it("reads the frequency and digest markets", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse({ frequency: "DAILY", marketSlugs: ["houston-tx"] }));
+    vi.stubGlobal("fetch", fetchMock);
+    const api = await import("@/lib/api");
+
+    await expect(api.getEmailPreferences("tok_123")).resolves.toEqual({ frequency: "DAILY", marketSlugs: ["houston-tx"] });
+    expect((fetchMock.mock.calls[0] as unknown as [string])[0]).toBe("http://api.test/api/email-preferences");
+  });
+
+  it("sends the digest markets with the frequency, and leaves them out when not given", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(null, { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const api = await import("@/lib/api");
+
+    await api.updateEmailPreferences("WEEKLY", "tok_123", ["dallas-tx"]);
+    await api.updateEmailPreferences("NONE", "tok_123");
+
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("http://api.test/api/email-preferences");
+    expect(init.method).toBe("PUT");
+    expect(JSON.parse(init.body as string)).toEqual({ frequency: "WEEKLY", marketSlugs: ["dallas-tx"] });
+    expect(JSON.parse((fetchMock.mock.calls[1] as unknown as [string, RequestInit])[1].body as string))
+      .toEqual({ frequency: "NONE" });
+  });
+});

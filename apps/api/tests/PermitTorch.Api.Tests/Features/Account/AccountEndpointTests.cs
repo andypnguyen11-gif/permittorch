@@ -30,6 +30,7 @@ public class AccountEndpointTests(ApiFactory factory)
         Assert.Equal("WEEKLY", body.GetProperty("digestFrequency").GetString());
         Assert.Equal(user.Id, body.GetProperty("id").GetGuid());
         Assert.True(body.GetProperty("hasLiveSubscription").GetBoolean());
+        Assert.False(body.GetProperty("freeAccess").GetBoolean());   // Access:FreeForAll is off by default
         Assert.NotEqual(sub, body.GetProperty("id").GetString());   // internal id, never the Firebase uid
     }
 
@@ -126,5 +127,100 @@ public class AccountEndpointTests(ApiFactory factory)
         Assert.Equal(HttpStatusCode.Unauthorized,
             (await factory.CreateClient().PutAsync("/api/email-preferences",
                 new StringContent("{\"frequency\":\"NONE\"}", System.Text.Encoding.UTF8, "application/json"))).StatusCode);
+    }
+
+    // ── Digest market choice ────────────────────────────────────────────────────
+
+    private static StringContent Json(string json) => new(json, System.Text.Encoding.UTF8, "application/json");
+
+    private async Task<(HttpClient Client, Market A, Market B, Market NotMine)> SeedSubscriberAsync()
+    {
+        var a = TestSeed.Market("Digesta");
+        var b = TestSeed.Market("Digestb");
+        var notMine = TestSeed.Market("Digestc");
+        var sub = $"user_{Guid.NewGuid():N}";
+        var (org, user, pref) = TestSeed.User(sub, $"{sub}@example.com");
+        var subscription = TestSeed.Subscription(org, PlanTier.Territory, "active", a, b);
+        await factory.SeedAsync(db => db.AddRange(a, b, notMine, org, user, pref, subscription));
+        return (factory.CreateClientFor(sub, user.Email), a, b, notMine);
+    }
+
+    private static async Task<(string Frequency, string[] Slugs)> GetPreferencesAsync(HttpClient client)
+    {
+        var body = JsonSerializer.Deserialize<JsonElement>(await client.GetStringAsync("/api/email-preferences"));
+        return (body.GetProperty("frequency").GetString()!,
+            body.GetProperty("marketSlugs").EnumerateArray().Select(e => e.GetString()!).ToArray());
+    }
+
+    [Fact]
+    public async Task Get_email_preferences_defaults_to_off_with_no_markets()
+    {
+        var sub = $"user_{Guid.NewGuid():N}";
+        var (frequency, slugs) = await GetPreferencesAsync(factory.CreateClientFor(sub, $"{sub}@example.com"));
+        Assert.Equal("NONE", frequency);
+        Assert.Empty(slugs);
+    }
+
+    [Fact]
+    public async Task Put_email_preferences_saves_entitled_markets_and_get_returns_them()
+    {
+        var (client, a, b, _) = await SeedSubscriberAsync();
+
+        var put = await client.PutAsync("/api/email-preferences",
+            Json($"{{\"frequency\":\"WEEKLY\",\"marketSlugs\":[\" {a.Slug} \",\"{a.Slug}\"]}}"));
+        Assert.Equal(HttpStatusCode.OK, put.StatusCode);
+        var (saved, slugs) = await GetPreferencesAsync(client);
+        Assert.Equal("WEEKLY", saved);
+        Assert.Equal(new[] { a.Slug }, slugs);
+
+        // Omitting marketSlugs keeps the choice; a new list replaces it; an empty list clears it.
+        await client.PutAsync("/api/email-preferences", Json("{\"frequency\":\"DAILY\"}"));
+        var (frequency, kept) = await GetPreferencesAsync(client);
+        Assert.Equal("DAILY", frequency);
+        Assert.Equal(new[] { a.Slug }, kept);
+
+        await client.PutAsync("/api/email-preferences", Json($"{{\"frequency\":\"DAILY\",\"marketSlugs\":[\"{b.Slug}\"]}}"));
+        Assert.Equal(new[] { b.Slug }, (await GetPreferencesAsync(client)).Slugs);
+
+        await client.PutAsync("/api/email-preferences", Json("{\"frequency\":\"DAILY\",\"marketSlugs\":[]}"));
+        Assert.Empty((await GetPreferencesAsync(client)).Slugs);
+    }
+
+    [Theory]
+    [InlineData("unentitled")]
+    [InlineData("unknown")]
+    public async Task Put_email_preferences_refuses_a_market_the_user_cannot_see(string kind)
+    {
+        var (client, a, _, notMine) = await SeedSubscriberAsync();
+        var bad = kind == "unentitled" ? notMine.Slug : $"nowhere-{Guid.NewGuid():N}";
+
+        var response = await client.PutAsync("/api/email-preferences",
+            Json($"{{\"frequency\":\"DAILY\",\"marketSlugs\":[\"{a.Slug}\",\"{bad}\"]}}"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = JsonSerializer.Deserialize<JsonElement>(await response.Content.ReadAsStringAsync());
+        Assert.Equal($"Unknown or unavailable market: {bad}", body.GetProperty("error").GetString());
+        Assert.Empty((await GetPreferencesAsync(client)).Slugs);   // nothing saved
+    }
+
+    [Theory]
+    [InlineData("[null]", "marketSlugs must not contain null entries")]
+    [InlineData("[\"  \"]", "marketSlugs entries must be non-empty slugs")]
+    public async Task Put_email_preferences_validates_market_slug_entries(string slugs, string error)
+    {
+        var (client, _, _, _) = await SeedSubscriberAsync();
+
+        var response = await client.PutAsync("/api/email-preferences",
+            Json($"{{\"frequency\":\"DAILY\",\"marketSlugs\":{slugs}}}"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains(error, await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Get_email_preferences_requires_auth()
+    {
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await factory.CreateClient().GetAsync("/api/email-preferences")).StatusCode);
     }
 }

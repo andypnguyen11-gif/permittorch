@@ -16,6 +16,7 @@ const REQUIRED = [
   "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "STRIPE_PRICE_STARTER", "STRIPE_PRICE_PRO", "STRIPE_PRICE_TERRITORY",
   "RESEND_API_KEY", "EMAIL_FROM", "EMAIL_UNSUBSCRIBE_SECRET", "SENTRY_DSN", "NEXT_PUBLIC_SENTRY_DSN",
   "WEB_ORIGIN", "API_PUBLIC_URL", "ForwardedHeaders__ForwardLimit", "Pipeline__Enabled",
+  "Access__FreeForAll", "NEXT_PUBLIC_FREE_PILOT",
   "NEXT_PUBLIC_API_URL", "NEXT_PUBLIC_API_MOCK", "NEXT_PUBLIC_MOCK_ROLE",
   "NEXT_PUBLIC_FIREBASE_API_KEY", "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN", "NEXT_PUBLIC_FIREBASE_PROJECT_ID",
   "NEXT_PUBLIC_FIREBASE_APP_ID", "FIREBASE_CLIENT_EMAIL", "FIREBASE_PRIVATE_KEY",
@@ -31,7 +32,8 @@ describe(".env.example", () => {
   });
 
   it("keeps optional overrides commented out", () => {
-    for (const name of ["ForwardedHeaders__ForwardLimit", "Pipeline__Enabled", "NEXT_PUBLIC_API_MOCK", "NEXT_PUBLIC_MOCK_ROLE"])
+    for (const name of ["ForwardedHeaders__ForwardLimit", "Pipeline__Enabled", "NEXT_PUBLIC_API_MOCK", "NEXT_PUBLIC_MOCK_ROLE",
+      "Access__FreeForAll", "NEXT_PUBLIC_FREE_PILOT"])
       expect(text).toMatch(new RegExp(`^#\\s*${name}=`, "m"));
   });
 

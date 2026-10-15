@@ -8,11 +8,12 @@ import { MobileNav } from "@/components/app/mobile-nav";
 import { track } from "@/lib/analytics";
 import { MarketSelect, leadsHrefWith, useLeadsLocation } from "@/components/app/market-select";
 
-export function TopBar({ markets, email, role = "MEMBER", plan }: {
+export function TopBar({ markets, email, role = "MEMBER", plan, freeAccess = false }: {
   markets: Market[];
   email: string;
   role?: AccountMe["role"];
   plan?: PlanTier | null;
+  freeAccess?: boolean;
 }) {
   const router = useRouter();
   const { pathname, searchParams, currentQ } = useLeadsLocation();
@@ -33,7 +34,7 @@ export function TopBar({ markets, email, role = "MEMBER", plan }: {
 
   return (
     <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-3 border-b border-border bg-white/90 px-4 backdrop-blur supports-backdrop-filter:bg-white/75 sm:px-6">
-      <MobileNav role={role} plan={plan} markets={markets} />
+      <MobileNav role={role} plan={plan} freeAccess={freeAccess} markets={markets} />
       <form
         role="search"
         className="relative min-w-0 flex-1 max-w-xl"

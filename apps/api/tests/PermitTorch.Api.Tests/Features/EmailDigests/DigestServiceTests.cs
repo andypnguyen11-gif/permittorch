@@ -47,12 +47,12 @@ public class DigestServiceTests(ApiFactory factory)
     }
 
     private async Task<RecordingResend> RunOnceAsync(RecordingResend? resend = null, DateTime? now = null,
-        Microsoft.Extensions.Logging.ILogger<DigestService>? logger = null)
+        Microsoft.Extensions.Logging.ILogger<DigestService>? logger = null, bool freeForAll = false)
     {
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         resend ??= new RecordingResend();
-        var service = new DigestService(db, new PermitTorch.Api.Features.Auth.EntitlementService(db), resend, Tokens,
+        var service = new DigestService(db, new PermitTorch.Api.Features.Auth.EntitlementService(db, TestAccess.For(freeForAll)), resend, Tokens,
             Microsoft.Extensions.Options.Options.Create(EmailOptions), logger ?? NullLogger<DigestService>.Instance);
         await service.RunOnceAsync(now ?? Now, CancellationToken.None);
         return resend;
@@ -370,5 +370,100 @@ public class DigestServiceTests(ApiFactory factory)
         Assert.DoesNotContain("Lawn sprinkler", sample.Html);
         var digest = Assert.Single(resend.Sent, s => s.To == user.Email);
         Assert.Contains("Lawn sprinkler", digest.Html);
+    }
+
+    // ── Digest market choice ────────────────────────────────────────────────────
+
+    private static readonly DateTime DueDaily = Now.Date.AddDays(-1).AddHours(12).AddMinutes(5);
+
+    /// <summary>Two markets, one open lead each (told apart by description), and a daily-digest
+    /// user who chose `chosen` of them. `subscribed` attaches both to an active Territory plan.</summary>
+    private async Task<(Market A, Market B, AppUser User, EmailPreference Pref, string Tag)> SeedChoiceAsync(
+        bool subscribed, Func<Market, Market, Market[]> chosen)
+    {
+        var tag = Guid.NewGuid().ToString("N")[..8];
+        var a = TestSeed.Market("Choicea");
+        var b = TestSeed.Market("Choiceb");
+        var sourceA = TestSeed.Source(a, Now);
+        var sourceB = TestSeed.Source(b, Now);
+        var permitA = TestSeed.Permit(sourceA, description: $"Sprinkler retrofit alpha {tag}");
+        var permitB = TestSeed.Permit(sourceB, description: $"Sprinkler retrofit bravo {tag}");
+        var leadA = TestSeed.Opportunity(permitA, 90, firstDetectedAt: Now.AddHours(-3));
+        var leadB = TestSeed.Opportunity(permitB, 90, firstDetectedAt: Now.AddHours(-3));
+        leadA.Standing = leadB.Standing = LeadStanding.FireWorkAhead;
+        var sub = $"user_{Guid.NewGuid():N}";
+        var (org, user, pref) = TestSeed.User(sub, $"{sub}@example.com");
+        pref.Frequency = DigestFrequency.Daily;
+        pref.LastSentAt = DueDaily;
+        foreach (var market in chosen(a, b))
+            pref.Markets.Add(new EmailPreferenceMarket { EmailPreferenceId = pref.Id, MarketId = market.Id });
+        await factory.SeedAsync(db =>
+        {
+            db.AddRange(a, b, sourceA, sourceB, permitA, permitB, leadA, leadB, org, user, pref);
+            if (subscribed) db.Add(TestSeed.Subscription(org, PlanTier.Territory, "active", a, b));
+        });
+        return (a, b, user, pref, tag);
+    }
+
+    [Fact]
+    public async Task Digest_covers_only_the_chosen_markets()
+    {
+        var (_, _, user, _, tag) = await SeedChoiceAsync(subscribed: true, (a, _) => [a]);
+
+        var resend = await RunOnceAsync();
+
+        var sent = Assert.Single(resend.Sent, s => s.To == user.Email);
+        Assert.Contains($"alpha {tag}", sent.Html);
+        Assert.DoesNotContain($"bravo {tag}", sent.Html);
+    }
+
+    [Fact]
+    public async Task Free_pilot_digest_covers_the_chosen_markets_without_a_subscription()
+    {
+        var (_, _, user, _, tag) = await SeedChoiceAsync(subscribed: false, (_, b) => [b]);
+
+        var resend = await RunOnceAsync(freeForAll: true);
+
+        var sent = Assert.Single(resend.Sent, s => s.To == user.Email);
+        Assert.Contains($"bravo {tag}", sent.Html);
+        Assert.DoesNotContain($"alpha {tag}", sent.Html);
+    }
+
+    [Fact]
+    public async Task Free_pilot_sends_nothing_without_chosen_markets_but_advances_last_sent()
+    {
+        var (_, _, user, pref, _) = await SeedChoiceAsync(subscribed: false, (_, _) => []);
+        var logger = new ListLogger();
+
+        var resend = await RunOnceAsync(logger: logger, freeForAll: true);
+
+        Assert.DoesNotContain(resend.Sent, s => s.To == user.Email);
+        var stored = await factory.QueryAsync(db => db.EmailPreferences.SingleAsync(p => p.Id == pref.Id));
+        Assert.Equal(Now, stored.LastSentAt);
+        Assert.Contains(logger.Lines, line => line.Contains("No digest markets chosen") && line.Contains(user.Id.ToString()));
+    }
+
+    [Fact]
+    public async Task Paid_user_without_chosen_markets_still_gets_every_entitled_market()
+    {
+        var (_, _, user, _, tag) = await SeedChoiceAsync(subscribed: true, (_, _) => []);
+
+        var resend = await RunOnceAsync();
+
+        var sent = Assert.Single(resend.Sent, s => s.To == user.Email);
+        Assert.Contains($"alpha {tag}", sent.Html);
+        Assert.Contains($"bravo {tag}", sent.Html);
+    }
+
+    [Fact]
+    public async Task A_chosen_market_the_user_is_not_entitled_to_is_never_mailed()
+    {
+        var (_, _, user, pref, _) = await SeedChoiceAsync(subscribed: false, (a, _) => [a]);
+
+        var resend = await RunOnceAsync();   // paid path, no subscription: entitled to nothing
+
+        Assert.DoesNotContain(resend.Sent, s => s.To == user.Email);
+        var stored = await factory.QueryAsync(db => db.EmailPreferences.SingleAsync(p => p.Id == pref.Id));
+        Assert.Equal(Now, stored.LastSentAt);   // the existing "no leads" path
     }
 }

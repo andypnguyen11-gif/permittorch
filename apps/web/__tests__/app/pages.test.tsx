@@ -26,7 +26,7 @@ beforeAll(() => vi.stubEnv("NEXT_PUBLIC_API_MOCK", "1"));
 
 const NO_PLAN: AccountMe = {
   id: "u-new", email: "new@example.com", role: "MEMBER", organizationName: "New Co", plan: null,
-  digestFrequency: "NONE", hasLiveSubscription: false, termsAccepted: true,
+  digestFrequency: "NONE", hasLiveSubscription: false, termsAccepted: true, freeAccess: false,
 };
 const NO_COUNTS = {
   FIRE_SPRINKLER: 0, FIRE_ALARM: 0, FIRE_SUPPRESSION: 0, KITCHEN_SUPPRESSION: 0,
@@ -61,6 +61,57 @@ describe("/app/alerts", () => {
       screen.getByText("Permits whose record says the fire work is still ahead come first, newest first"),
     ).toBeInTheDocument();
     expect(screen.queryByText(/score 90\+/)).not.toBeInTheDocument();
+  });
+});
+
+describe("/app/alerts market picker", () => {
+  it("lists the user's markets with the saved digest markets checked", async () => {
+    render(await AlertsPage());
+    expect(screen.getByRole("heading", { name: "Markets in your digest" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Houston" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Dallas" })).not.toBeChecked();
+  });
+
+  it("says no email goes out during the free pilot until a market is picked", async () => {
+    const me = vi.spyOn(api, "getAccountMe").mockResolvedValue({ ...NO_PLAN, freeAccess: true });
+    const prefs = vi.spyOn(api, "getEmailPreferences").mockResolvedValue({ frequency: "WEEKLY", marketSlugs: [] });
+    render(await AlertsPage());
+    expect(screen.getByRole("radio", { name: /Weekly/ })).toBeChecked();
+    expect(screen.getByText("No email is sent until you pick at least one market.")).toBeInTheDocument();
+    me.mockRestore();
+    prefs.mockRestore();
+  });
+});
+
+describe("/app/account during the free pilot", () => {
+  it("shows a plain free-pilot plan line and no checkout or upsell", async () => {
+    const me = vi.spyOn(api, "getAccountMe").mockResolvedValue({ ...NO_PLAN, freeAccess: true });
+    await page({ plan: "TERRITORY" });
+    expect(screen.getByText("Free during the pilot")).toBeInTheDocument();
+    expect(screen.getByText(/no payment is needed/)).toBeInTheDocument();
+    expect(screen.getByText("Markets included")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Subscribe/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Upgrade/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("Unlock more winning opportunities")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Compare plans" })).not.toBeInTheDocument();
+    me.mockRestore();
+  });
+
+  it("keeps the billing portal, without an upgrade, for a subscription from before the pilot", async () => {
+    const me = vi.spyOn(api, "getAccountMe").mockResolvedValue(
+      { ...NO_PLAN, plan: "PRO", hasLiveSubscription: true, freeAccess: true });
+    await page();
+    expect(screen.getByRole("button", { name: "Manage billing" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Upgrade/ })).not.toBeInTheDocument();
+    me.mockRestore();
+  });
+
+  it("never shows the checkout confirmation on ?checkout=success", async () => {
+    const me = vi.spyOn(api, "getAccountMe").mockResolvedValue({ ...NO_PLAN, freeAccess: true });
+    await page({ checkout: "success" });
+    expect(screen.queryByText(/Confirming your subscription/)).not.toBeInTheDocument();
+    expect(screen.getByText("Free during the pilot")).toBeInTheDocument();
+    me.mockRestore();
   });
 });
 
@@ -187,5 +238,24 @@ describe("/app/markets", () => {
     expect(austin).toHaveTextContent("Locked");
     expect(screen.getByRole("link", { name: "Upgrade to unlock" })).toHaveAttribute("href", "/app/account");
     spy.mockRestore();
+  });
+});
+
+describe("/app/markets during the free pilot", () => {
+  it("shows only included markets, with no locked cards or upgrade links", async () => {
+    const me = vi.spyOn(api, "getAccountMe").mockResolvedValue({ ...NO_PLAN, freeAccess: true });
+    const catalog = vi.spyOn(api, "getMarkets").mockResolvedValue([
+      market("houston-tx", "Houston", "Houston"),
+      market("dallas-tx", "Dallas", "Dallas"),
+      market("austin-tx", "Austin", "Austin"),
+    ]);
+    render(await MarketsPage());
+    expect(screen.getByRole("heading", { name: "Houston" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Austin" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Locked")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Upgrade to unlock" })).not.toBeInTheDocument();
+    expect(screen.getByText(/free during the pilot/)).toBeInTheDocument();
+    me.mockRestore();
+    catalog.mockRestore();
   });
 });

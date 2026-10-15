@@ -3,6 +3,7 @@ import type {
   AdminSource,
   ContractorStatus,
   DigestFrequency,
+  EmailPreferences,
   FireCategory,
   LeadDetail,
   LeadsResponse,
@@ -209,11 +210,20 @@ export async function getAccountMe(token: string): Promise<AccountMe> {
   return apiFetch<AccountMe>("/api/account/me", {}, token);
 }
 
-export async function updateEmailPreferences(frequency: DigestFrequency, token: string): Promise<void> {
-  if (isMock()) return (await fixtures()).updateEmailPreferences(frequency);
+export async function getEmailPreferences(token: string): Promise<EmailPreferences> {
+  if (isMock()) return (await fixtures()).getEmailPreferences();
+  return apiFetch<EmailPreferences>("/api/email-preferences", {}, token);
+}
+
+// `marketSlugs` replaces the digest's markets (the API refuses one the user is not
+// entitled to); left out, the saved markets stay as they are.
+export async function updateEmailPreferences(
+  frequency: DigestFrequency, token: string, marketSlugs?: string[],
+): Promise<void> {
+  if (isMock()) return (await fixtures()).updateEmailPreferences(frequency, marketSlugs);
   return apiFetch<void>(
     "/api/email-preferences",
-    { method: "PUT", body: JSON.stringify({ frequency }) },
+    { method: "PUT", body: JSON.stringify(marketSlugs === undefined ? { frequency } : { frequency, marketSlugs }) },
     token,
   );
 }

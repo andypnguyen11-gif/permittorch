@@ -81,7 +81,16 @@ public sealed class DigestService(
         var user = await db.AppUsers.FirstOrDefaultAsync(u => u.Id == preference.UserId, ct);
         if (user is null) return;
 
-        var marketIds = await entitlements.GetEntitledMarketIdsAsync(user, ct);
+        var marketIds = await DigestMarketIdsAsync(preference, user, ct);
+        if (marketIds is null)
+        {
+            // Free pilot: every active market is entitled, so a digest goes out only for markets the
+            // user picked. Advance like an empty digest so the sweep does not retry every tick.
+            logger.LogInformation("No digest markets chosen for user {UserId}; skipping send", user.Id);
+            preference.LastSentAt = nowUtc;
+            await db.SaveChangesAsync(CancellationToken.None);
+            return;
+        }
         var since = preference.LastSentAt.Value;
         var leads = await LeadQueries.OrderForFeed(Digestible(db.FireOpportunities
                 .Where(o => marketIds.Contains(o.Permit.Source.MarketId) && o.FirstDetectedAt > since), keepUnscored: true))
@@ -111,6 +120,20 @@ public sealed class DigestService(
         // The email is out: persist progress even if the sweep is being cancelled.
         preference.LastSentAt = nowUtc;
         await db.SaveChangesAsync(CancellationToken.None);
+    }
+
+    /// <summary>The markets a subscriber digest covers: the user's chosen markets that they are
+    /// entitled to. With no choice saved, a paid user gets every entitled market (unchanged
+    /// behaviour); during the free pilot it is null, meaning send nothing.</summary>
+    private async Task<IReadOnlyList<Guid>?> DigestMarketIdsAsync(EmailPreference preference, AppUser user, CancellationToken ct)
+    {
+        var entitled = await entitlements.GetEntitledMarketIdsAsync(user, ct);
+        var chosen = await db.EmailPreferenceMarkets
+            .Where(pm => pm.EmailPreferenceId == preference.Id)
+            .Select(pm => pm.MarketId)
+            .ToListAsync(ct);
+        if (chosen.Count == 0) return entitlements.FreeForAll ? null : entitled;
+        return entitled.Intersect(chosen).ToList();
     }
 
     private async Task RunSampleDigestsAsync(DateTime nowUtc, CancellationToken ct)

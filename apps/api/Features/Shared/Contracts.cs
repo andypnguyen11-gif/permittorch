@@ -67,9 +67,14 @@ public sealed record SavedLeadItemDto(Guid Id, SavedLeadStatus Status, DateTime 
 /// unpaid/paused/incomplete ones that grant no plan — so the UI routes to the billing portal, not a
 /// second checkout. `TermsAccepted` is false until the user agrees to the current terms; the API
 /// serves no leads before that.</summary>
+/// <summary>`FreeAccess`: PermitTorch is free during the pilot (Access:FreeForAll), so the web app
+/// offers no upgrade or checkout. `Plan` stays the subscription's own plan, if any.</summary>
 public sealed record AccountMeDto(
     Guid Id, string Email, UserRole Role, string OrganizationName, PlanTier? Plan,
-    DigestFrequency DigestFrequency, bool HasLiveSubscription, bool TermsAccepted);
+    DigestFrequency DigestFrequency, bool HasLiveSubscription, bool TermsAccepted, bool FreeAccess);
+
+/// <summary>`MarketSlugs`: the markets the digest covers, limited to markets the user is entitled to.</summary>
+public sealed record EmailPreferencesDto(DigestFrequency Frequency, IReadOnlyList<string> MarketSlugs);
 
 public sealed record AdminSourceDto(
     Guid Id, string Name, string City, string State, bool Active,

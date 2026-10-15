@@ -2,7 +2,7 @@
 // This file has no runtime behavior; it exists so `tsc --noEmit` fails if
 // any exported name or shape drifts from the contract.
 import type {
-  AccountMe, AdminSource, DigestFrequency, FireCategory, Freshness,
+  AccountMe, AdminSource, DigestFrequency, EmailPreferences, FireCategory, Freshness,
   HealthStatus, LeadDetail, LeadSignal, LeadsResponse, LeadSummary,
   Market, MarketStats, Paged, PermitStatus, PlanTier, Removal,
   RemovalPreview, RemovalRecord, SavedLeadItem,
@@ -78,8 +78,9 @@ const savedItem: SavedLeadItem = { id: "sl_1", status: savedStatus, createdAt: "
 const me: AccountMe = {
   id: "usr_1", email: "owner@example.com", role: "ADMIN",
   organizationName: "Acme Fire", plan, digestFrequency: digest, hasLiveSubscription: true,
-  termsAccepted: true,
+  termsAccepted: true, freeAccess: false,
 };
+const emailPreferences: EmailPreferences = { frequency: digest, marketSlugs: ["houston-tx"] };
 
 const adminSource: AdminSource = {
   id: "src_1", name: "Houston", city: "Houston", state: "TX", active: true,
@@ -121,5 +122,5 @@ void preSprinklerLead; void preSprinklerMarket;
 
 export type ContractOk = [
   typeof leads, typeof detail, typeof market, typeof stats,
-  typeof savedItem, typeof me, typeof adminSource, typeof run,
+  typeof savedItem, typeof me, typeof emailPreferences, typeof adminSource, typeof run,
 ];

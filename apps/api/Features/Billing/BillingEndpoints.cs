@@ -36,6 +36,7 @@ public static class BillingEndpoints
     public static readonly TimeSpan MarketDataWindow = TimeSpan.FromDays(14);
 
     public const string PortalConflictMessage = "Manage your plan in the billing portal";
+    public const string FreePilotMessage = "PermitTorch is free during the pilot; no payment is needed";
 
     public static IEndpointRouteBuilder MapBillingEndpoints(this IEndpointRouteBuilder endpoints)
     {
@@ -75,8 +76,10 @@ public static class BillingEndpoints
 
     private static async Task<IResult> CreateCheckout(
         CheckoutRequest body, HttpContext http, AppDbContext db, CurrentUserService currentUser,
-        StripeGateway stripe, IOptions<BillingOptions> options, CancellationToken ct)
+        EntitlementService entitlements, StripeGateway stripe, IOptions<BillingOptions> options, CancellationToken ct)
     {
+        // Nobody pays for what is free. The portal and webhooks stay open for existing subscriptions.
+        if (entitlements.FreeForAll) return ApiErrors.Conflict(FreePilotMessage);
         if (body.Plan is not { } plan) return ApiErrors.BadRequest("plan is required");
         if (!TryNormalizeMarketSlugs(plan, body.MarketSlug, body.MarketSlugs, out var slugs, out var error))
             return ApiErrors.BadRequest(error);

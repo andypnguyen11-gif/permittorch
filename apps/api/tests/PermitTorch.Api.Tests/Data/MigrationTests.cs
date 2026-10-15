@@ -43,6 +43,8 @@ public class MigrationTests : IAsyncLifetime
         Assert.Contains(indexdefs, d => d.Contains("UNIQUE") && d.Contains("sources") && d.Contains("jurisdiction"));
         Assert.Contains(indexdefs, d => d.Contains("UNIQUE") && d.Contains("scraper_runs") && d.Contains("apify_run_id"));
         Assert.Contains(indexdefs, d => d.Contains("UNIQUE") && d.Contains("email_preferences") && d.Contains("user_id"));
+        Assert.Contains(indexdefs, d => d.Contains("UNIQUE") && d.Contains("pk_email_preference_markets")
+            && d.Contains("email_preference_id") && d.Contains("market_id"));
 
         // FTS GIN index on permits description + address.
         Assert.Contains(indexdefs, d => d.Contains("ix_permits_fts") && d.Contains("gin") && d.Contains("to_tsvector"));
@@ -87,7 +89,7 @@ public class MigrationTests : IAsyncLifetime
                 "MovePermitNamesToTheirRoles", "AddParticipantContact",
                 "RemovePlaceholderOwnersAndTestPermit", "ClearProjectValuesOfZero",
                 "AddTermsAcceptances", "AddRemovals", "AddContractorStatus", "AddLeadStanding", "AddSourcePublishingSettings",
-                "AddPreSprinklerLeads",
+                "AddPreSprinklerLeads", "AddEmailPreferenceMarkets",
             },
             applied.Select(m => m[(m.IndexOf('_') + 1)..]).ToArray());
     }
