@@ -181,6 +181,7 @@ public sealed class IngestionJob : BackgroundService
         var latestRecordDates = new Dictionary<Guid, DateTime>();
         var unknownSources = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var inactiveSources = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var wrongFeedSources = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var processed = 0;
         // A lead is dated from the run that found it, never from when the run was ingested. A
         // run ingested late, or ingested again, must not present old activity as new.
@@ -197,6 +198,14 @@ public sealed class IngestionJob : BackgroundService
                     // Aggregated into one error per sourceId after the loop; counted as a failure
                     // because data is being dropped for a source nobody configured.
                     Increment(unknownSources, normalized.Jurisdiction);
+                    counts.Failures++;
+                    continue;
+                }
+                if (source.Feed != SourceFeed.Fire)
+                {
+                    // Defence: a pre-sprinkler source's records never become permits or fire
+                    // leads, whatever task delivered them.
+                    Increment(wrongFeedSources, normalized.Jurisdiction);
                     counts.Failures++;
                     continue;
                 }
@@ -277,6 +286,12 @@ public sealed class IngestionJob : BackgroundService
         {
             _logger.LogError(
                 "Apify run {RunId}: skipped {Count} records for unknown sourceId '{SourceId}' (no Source row has this Jurisdiction)",
+                run.RunId, count, sourceId);
+        }
+        foreach (var (sourceId, count) in wrongFeedSources)
+        {
+            _logger.LogError(
+                "Apify run {RunId}: rejected {Count} records for '{SourceId}', which feeds the pre-sprinkler leads, not fire permits",
                 run.RunId, count, sourceId);
         }
         foreach (var (sourceId, count) in inactiveSources)
@@ -549,7 +564,7 @@ public sealed class IngestionJob : BackgroundService
         if (statSourceIds.Count == 0 && recordSourceIds.Count == 0) return;
 
         var tracked = await db.Set<Source>()
-            .Where(s => s.Active
+            .Where(s => s.Active && s.Feed == SourceFeed.Fire
                 && (recordSourceIds.Contains(s.Id) || statSourceIds.Contains(s.Jurisdiction.ToLower())))
             .ToListAsync(ct);
 

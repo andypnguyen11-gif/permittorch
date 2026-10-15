@@ -18,6 +18,8 @@ public sealed class SourceHealthMonitor : BackgroundService
     private readonly ILogger<SourceHealthMonitor> _logger;
     private readonly TimeSpan _checkInterval;
     private readonly TimeSpan _staleThreshold;
+    // The pre-sprinkler task runs weekly, so its sources go stale on a week's clock, not a day's.
+    private readonly TimeSpan _preSprinklerStaleThreshold;
 
     public SourceHealthMonitor(IServiceScopeFactory scopeFactory, IConfiguration configuration,
         ILogger<SourceHealthMonitor> logger)
@@ -28,6 +30,8 @@ public sealed class SourceHealthMonitor : BackgroundService
             configuration.GetValue<int?>("SourceHealth:CheckIntervalMinutes") ?? 60);
         _staleThreshold = TimeSpan.FromHours(
             configuration.GetValue<int?>("SourceHealth:StaleAfterHours") ?? 24);
+        _preSprinklerStaleThreshold = TimeSpan.FromHours(
+            configuration.GetValue<int?>("SourceHealth:PreSprinklerStaleAfterHours") ?? 8 * 24);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -68,12 +72,15 @@ public sealed class SourceHealthMonitor : BackgroundService
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
         var cutoff = nowUtc - _staleThreshold;
+        var preSprinklerCutoff = nowUtc - _preSprinklerStaleThreshold;
         // Healthy and Warning (e.g. truncated) sources both go Stale once their data ages out.
         var staleSources = await db.Set<Source>()
             .Where(s => s.Active
                 && (s.HealthStatus == HealthStatus.Healthy || s.HealthStatus == HealthStatus.Warning)
                 && s.LastSuccessfulRunAt != null
-                && s.LastSuccessfulRunAt < cutoff)
+                && (s.Feed == SourceFeed.PreSprinkler
+                    ? s.LastSuccessfulRunAt < preSprinklerCutoff
+                    : s.LastSuccessfulRunAt < cutoff))
             .ToListAsync(ct);
 
         foreach (var source in staleSources)
@@ -81,7 +88,8 @@ public sealed class SourceHealthMonitor : BackgroundService
             source.HealthStatus = HealthStatus.Stale;
             _logger.LogWarning(
                 "Source {Name} ({Jurisdiction}) is stale: last successful run at {LastRun:u} is older than {Threshold}",
-                source.Name, source.Jurisdiction, source.LastSuccessfulRunAt, _staleThreshold);
+                source.Name, source.Jurisdiction, source.LastSuccessfulRunAt,
+                source.Feed == SourceFeed.PreSprinkler ? _preSprinklerStaleThreshold : _staleThreshold);
         }
 
         // An active source that has never produced a successful run must not look Healthy.

@@ -73,11 +73,13 @@ public sealed record AccountMeDto(
 
 public sealed record AdminSourceDto(
     Guid Id, string Name, string City, string State, bool Active,
-    HealthStatus HealthStatus, DateTime? LastSuccessfulRunAt, int RecordsLastRun);
+    HealthStatus HealthStatus, DateTime? LastSuccessfulRunAt, int RecordsLastRun,
+    SourceFeed Feed = SourceFeed.Fire);
 
 public sealed record ScraperRunSummaryDto(
     Guid Id, string ApifyRunId, string Status, DateTime StartedAt, DateTime? FinishedAt,
-    int RecordsImported, int DuplicatesSkipped, int Failures, double DurationSeconds);
+    int RecordsImported, int DuplicatesSkipped, int Failures, double DurationSeconds,
+    SourceFeed Feed = SourceFeed.Fire);
 
 /// <summary>A removal as the admin sees it. The key it is compared by is not sent.</summary>
 public sealed record RemovalDto(

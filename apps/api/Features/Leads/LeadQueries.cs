@@ -84,7 +84,8 @@ public static class LeadQueries
     public static async Task<FreshnessDto> GetFreshnessAsync(
         AppDbContext db, IReadOnlyList<Guid> marketIds, string? marketSlug, CancellationToken ct)
     {
-        var sources = db.Sources.Where(s => marketIds.Contains(s.MarketId));
+        // Fire sources only: the admin-only pre-sprinkler feed says nothing about the leads on screen.
+        var sources = db.Sources.Where(s => marketIds.Contains(s.MarketId) && s.Feed == SourceFeed.Fire);
         if (marketSlug is not null)
             sources = sources.Where(s => s.Market.Slug == marketSlug);
 

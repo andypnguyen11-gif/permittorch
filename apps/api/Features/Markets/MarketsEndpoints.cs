@@ -45,6 +45,7 @@ public static class MarketsEndpoints
             .ToListAsync(ct);
 
         var lastUpdated = await db.Sources
+            .Where(s => s.Feed == SourceFeed.Fire)
             .GroupBy(s => s.MarketId)
             .Select(g => new { MarketId = g.Key, LastUpdatedAt = g.Max(s => s.LastSuccessfulRunAt) })
             .ToDictionaryAsync(x => x.MarketId, x => x.LastUpdatedAt, ct);
@@ -85,7 +86,7 @@ public static class MarketsEndpoints
             byCategory[Wire.Name(entry.Category)] = entry.Count;
 
         var lastUpdatedAt = await db.Sources
-            .Where(s => s.MarketId == market.Id)
+            .Where(s => s.MarketId == market.Id && s.Feed == SourceFeed.Fire)
             .MaxAsync(s => (DateTime?)s.LastSuccessfulRunAt, ct);
 
         return Results.Ok(new MarketStatsDto(market.Slug, counts.Sum(c => c.Count), byCategory, lastUpdatedAt));
