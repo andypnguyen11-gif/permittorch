@@ -76,7 +76,11 @@ export interface AccountMe {
   hasLiveSubscription: boolean;
   /** False until the user agrees to the current terms. The API serves no leads before that. */
   termsAccepted: boolean;
+  /** PermitTorch is free during the pilot: every active market and feature, no upgrade or checkout. */
+  freeAccess: boolean;
 }
+/** The digest settings: how often, and which of the user's markets it covers. */
+export interface EmailPreferences { frequency: DigestFrequency; marketSlugs: string[]; }
 /** Which product a source or run feeds: fire permits, or the admin-only pre-sprinkler leads. */
 export type SourceFeed = "FIRE" | "PRE_SPRINKLER";
 export interface AdminSource {

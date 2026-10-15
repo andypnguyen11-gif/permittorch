@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, Lock, MapPin } from "lucide-react";
-import { getAccountMarkets, getLeads, getMarkets } from "@/lib/api";
+import { getAccountMarkets, getAccountMe, getLeads, getMarkets } from "@/lib/api";
 import { getApiToken } from "@/components/app/get-token";
 import { handleApiError } from "@/components/app/api-errors";
 import { orderMarkets } from "@/components/app/order-markets";
@@ -14,10 +14,11 @@ export const metadata: Metadata = { title: "Markets" };
 
 export default async function MarketsPage() {
   const token = await getApiToken();
-  const [allMarkets, entitled] = await Promise.all([getMarkets(), getAccountMarkets(token)])
+  const [allMarkets, entitled, me] = await Promise.all([getMarkets(), getAccountMarkets(token), getAccountMe(token)])
     .catch((err) => handleApiError(err));
   const entitledSlugs = new Set(entitled.map((m) => m.slug));
-  const markets = orderMarkets(allMarkets, entitled);
+  // Free during the pilot: every active market is included, so nothing is shown as locked.
+  const markets = me.freeAccess ? entitled : orderMarkets(allMarkets, entitled);
 
   // Per-market lead count via the leads endpoint (total only, so pageSize 1).
   const counts = new Map<string, number>(
@@ -33,7 +34,11 @@ export default async function MarketsPage() {
     <div className="space-y-5">
       <div className="space-y-1">
         <h1 className="text-2xl font-bold tracking-tight">Markets</h1>
-        <p className="text-sm text-stone-500">Markets on your plan, plus others you can unlock.</p>
+        <p className="text-sm text-stone-500">
+          {me.freeAccess
+            ? "Every market is included while PermitTorch is free during the pilot."
+            : "Markets on your plan, plus others you can unlock."}
+        </p>
       </div>
       {markets.length === 0 ? (
         <EmptyState icon={MapPin} title="No markets available yet"

@@ -51,10 +51,12 @@ export default async function AccountPage({ searchParams }: {
   // ?plan= arrives from /pricing → /signup; it only preselects the picker.
   const requestedPlan = parsePlanTier(params?.plan);
   const checkoutResult = params?.checkout === "success" || params?.checkout === "cancelled" ? params.checkout : null;
+  // Free during the pilot: no checkout of any kind. An existing subscription keeps its portal.
+  const free = me.freeAccess;
   // Back from a paid Checkout but the webhook has not attached the plan yet: confirm, never re-offer checkout.
-  const confirming = checkoutResult === "success" && me.plan === null && !me.hasLiveSubscription;
+  const confirming = !free && checkoutResult === "success" && me.plan === null && !me.hasLiveSubscription;
   // Any live Stripe subscription (even unpaid/paused/incomplete) is managed in the portal.
-  const showPicker = !confirming && me.plan === null && !me.hasLiveSubscription;
+  const showPicker = !free && !confirming && me.plan === null && !me.hasLiveSubscription;
   const checkoutMarkets = showPicker ? await pickerMarkets(markets) : [];
 
   return (
@@ -71,13 +73,13 @@ export default async function AccountPage({ searchParams }: {
 
       <SectionCard title="Plan & billing"
         action={
-          <Badge className={me.plan ? "bg-orange-100 text-orange-700" : "bg-stone-100 text-stone-600"}>
-            {me.plan ? `${PLAN_LABELS[me.plan]} plan` : "No active plan"}
+          <Badge className={free || me.plan ? "bg-orange-100 text-orange-700" : "bg-stone-100 text-stone-600"}>
+            {free ? "Free during the pilot" : me.plan ? `${PLAN_LABELS[me.plan]} plan` : "No active plan"}
           </Badge>
         }>
         <div className="space-y-5">
           <div>
-            <p className="mb-2 text-sm font-medium text-stone-700">Markets on your plan</p>
+            <p className="mb-2 text-sm font-medium text-stone-700">{free ? "Markets included" : "Markets on your plan"}</p>
             {markets.length === 0 ? (
               <p className="text-sm text-stone-500">No markets on this plan yet.</p>
             ) : (
@@ -92,7 +94,21 @@ export default async function AccountPage({ searchParams }: {
               </ul>
             )}
           </div>
-          {confirming ? (
+          {free ? (
+            <div className="space-y-3">
+              <p className="text-sm text-stone-600">
+                PermitTorch is free during the pilot. Every market and feature is included, and no payment is needed.
+              </p>
+              {me.hasLiveSubscription && (
+                <>
+                  <p className="text-sm text-stone-600">
+                    You still have a subscription from before the pilot. You can manage or cancel it in the billing portal.
+                  </p>
+                  <BillingButtons plan={me.plan} offerUpgrade={false} />
+                </>
+              )}
+            </div>
+          ) : confirming ? (
             <CheckoutConfirming />
           ) : showPicker ? (
             <>
@@ -109,7 +125,7 @@ export default async function AccountPage({ searchParams }: {
         </div>
       </SectionCard>
 
-      {me.plan !== "TERRITORY" && (
+      {!free && me.plan !== "TERRITORY" && (
         <div className="flex gap-4 rounded-xl border border-orange-200 bg-gradient-to-br from-orange-50 to-white p-5">
           <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-orange-500 text-white">
             <Sparkles className="size-5" aria-hidden />

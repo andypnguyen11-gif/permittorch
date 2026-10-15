@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Check } from "lucide-react";
-import { getAccountMe } from "@/lib/api";
+import { getAccountMarkets, getAccountMe, getEmailPreferences } from "@/lib/api";
 import { getApiToken } from "@/components/app/get-token";
 import { handleApiError } from "@/components/app/api-errors";
 import { DigestForm } from "@/components/app/alerts/digest-form";
@@ -16,7 +16,10 @@ const CONTENTS = [
 ];
 
 export default async function AlertsPage() {
-  const me = await getAccountMe(await getApiToken()).catch((err) => handleApiError(err));
+  const token = await getApiToken();
+  const [me, preferences, markets] = await Promise.all(
+    [getAccountMe(token), getEmailPreferences(token), getAccountMarkets(token)],
+  ).catch((err) => handleApiError(err));
   return (
     <div className="max-w-2xl space-y-6">
       <div className="space-y-1">
@@ -25,7 +28,8 @@ export default async function AlertsPage() {
           Choose how often PermitTorch emails <span className="font-medium text-stone-700">{me.email}</span> new opportunities.
         </p>
       </div>
-      <DigestForm initialFrequency={me.digestFrequency} />
+      <DigestForm initialFrequency={preferences.frequency} markets={markets}
+        initialMarketSlugs={preferences.marketSlugs} freeAccess={me.freeAccess} />
       <SectionCard title="What’s in the digest">
         <ul className="space-y-2 text-sm text-stone-600">
           {CONTENTS.map((c) => (

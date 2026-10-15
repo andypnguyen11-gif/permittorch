@@ -48,9 +48,11 @@ function NavLink({ href, label, icon: Icon, active, onNavigate }: {
   );
 }
 
-export function Sidebar({ role, plan, onNavigate, top }: {
+export function Sidebar({ role, plan, freeAccess = false, onNavigate, top }: {
   role: AccountMe["role"];
   plan?: PlanTier | null;
+  /** Free during the pilot: everything is included, so there is nothing to upgrade to. */
+  freeAccess?: boolean;
   onNavigate?: () => void;
   /** Optional control rendered under the brand (the mobile sheet's market selector). */
   top?: React.ReactNode;
@@ -58,7 +60,7 @@ export function Sidebar({ role, plan, onNavigate, top }: {
   const pathname = usePathname();
   const isActive = (href: string) =>
     href === "/app" ? pathname === "/app" : pathname === href || pathname.startsWith(`${href}/`);
-  const showUpsell = plan !== undefined && plan !== "TERRITORY";
+  const showUpsell = !freeAccess && plan !== undefined && plan !== "TERRITORY";
 
   return (
     <aside className="flex h-full w-60 shrink-0 flex-col border-r border-border bg-white">

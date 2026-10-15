@@ -59,6 +59,12 @@ describe("BillingButtons", () => {
     expect(screen.queryByRole("button", { name: /Upgrade/ })).not.toBeInTheDocument();
   });
 
+  it("offers no upgrade during the free pilot but keeps the billing portal", () => {
+    render(<TooltipProvider><BillingButtons plan="PRO" offerUpgrade={false} /></TooltipProvider>);
+    expect(screen.getByRole("button", { name: /Manage billing/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Upgrade/ })).not.toBeInTheDocument();
+  });
+
   it("offers only the portal (no upgrade) for a live subscription without a plan", () => {
     vi.stubEnv("NEXT_PUBLIC_API_MOCK", "0");
     renderButtons(null);
