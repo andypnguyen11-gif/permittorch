@@ -39,6 +39,9 @@ public class Source
     // FirstSeenAt; earlier ones (a backfill) keep their permit dates. Null: permit dates only. Set by
     // hand, never by the seeder.
     public DateTime? RecencyFromFirstSeenSince { get; set; }
+    // Fire sources feed the subscriber product. PreSprinkler sources feed the admin-only
+    // pre-sprinkler leads, and each ingestion refuses the other feed's records.
+    public SourceFeed Feed { get; set; }
 }
 
 public class Permit
@@ -170,6 +173,7 @@ public class ScraperRun
     public int Failures { get; set; }
     public double DurationSeconds { get; set; }
     public string? CoverageReportJson { get; set; }        // raw COVERAGE_REPORT payload
+    public SourceFeed Feed { get; set; }                   // which Apify task the run came from
 }
 
 public class Organization
@@ -245,4 +249,69 @@ public class SampleLeadRequest                             // marketing lead mag
     public string MarketSlug { get; set; } = null!;
     public DateTime CreatedAt { get; set; }
     public DateTime? LastSentAt { get; set; }
+}
+
+/// <summary>A building permit for a new home, an ADU or an addition with no fire sprinkler
+/// application found at its address yet. Admin only: these rows never enter permits,
+/// fire_opportunities, digests, market stats or any subscriber read.</summary>
+public class PreSprinklerLead
+{
+    public Guid Id { get; set; }
+    public Guid SourceId { get; set; }
+    public Source Source { get; set; } = null!;
+    public string ExternalId { get; set; } = null!;        // scraper recordId; unique with SourceId
+    public string PermitNumber { get; set; } = null!;
+    public string? PermitTypeLabel { get; set; }           // the city's own permit type
+    public PreSprinklerKind Kind { get; set; }
+    public SprinklerRequirement SprinklerRequirement { get; set; }
+    public string? Status { get; set; }                    // the city's own status word
+    public DateOnly? FiledOn { get; set; }
+    public string? Description { get; set; }
+    public string? ProjectName { get; set; }
+    public string? Street { get; set; }
+    public string? City { get; set; }
+    public string? State { get; set; }
+    public string? Zip { get; set; }
+    public int? SquareFeet { get; set; }
+    public bool SizeKnown { get; set; }
+    public decimal? Valuation { get; set; }
+    public string? RecordUrl { get; set; }
+    public string? PortalUrl { get; set; }
+    public SprinklerCheckStatus SprinklerCheckStatus { get; set; }
+    public DateOnly? SprinklerCheckedFrom { get; set; }    // fire permits filed since this date were read
+    public DateOnly? SprinklerCheckedAt { get; set; }
+    public string SprinklerMatches { get; set; } = "[]";   // jsonb: [{ permitNumber, sourceId, filedDate, status }]
+    public string Notes { get; set; } = "[]";              // jsonb: short machine-written facts
+    public int LeadScore { get; set; }                     // 0-100, PreSprinklerScoringEngine
+    public PreSprinklerStanding Standing { get; set; }
+    public DateTime FirstSeenAt { get; set; }
+    public DateTime LastSeenAt { get; set; }
+    public DateTime? ScoredAt { get; set; }
+    public Guid? LastRunId { get; set; }                   // scraper_runs.id of the run that last listed it
+    public List<PreSprinklerContact> Contacts { get; set; } = new();
+    public List<PreSprinklerSignal> Signals { get; set; } = new();
+}
+
+/// <summary>A party as the permit record publishes it. Never looked up anywhere else.</summary>
+public class PreSprinklerContact
+{
+    public Guid Id { get; set; }
+    public Guid LeadId { get; set; }
+    public int Position { get; set; }                      // the scraper's order: contractor, applicant, owner, rest
+    public PreSprinklerContactRole Role { get; set; }
+    public string? RoleLabel { get; set; }                 // the portal's own label
+    public string? Name { get; set; }
+    public string? Company { get; set; }
+    public string? Phone { get; set; }
+    public string? Email { get; set; }
+    public string? LicenseNumber { get; set; }
+}
+
+public class PreSprinklerSignal
+{
+    public Guid Id { get; set; }
+    public Guid LeadId { get; set; }
+    public string SignalType { get; set; } = null!;
+    public string Description { get; set; } = null!;       // never contains a person's name
+    public int Weight { get; set; }
 }

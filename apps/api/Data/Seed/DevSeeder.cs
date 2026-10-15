@@ -11,7 +11,7 @@ namespace PermitTorch.Api.Data.Seed;
 /// independent parts, each behind its own gate so production can only ever receive the registry
 /// and an explicitly named operator account:
 /// <list type="number">
-/// <item>Registry upsert (39 markets, 52 sources) — always runs; safe in every environment.</item>
+/// <item>Registry upsert (39 markets, 56 sources) — always runs; safe in every environment.</item>
 /// <item>Sample permits — only with <c>SEED_SAMPLE_DATA=true</c>, outside Production, and while
 /// the database holds no permits other than the samples themselves.</item>
 /// <item>E2E identities (E2E SuperAdmin from <c>SUPERADMIN_FIREBASE_UID</c>, entitled and
@@ -300,6 +300,20 @@ public static class DevSeeder
         ("fremont-fire-permits", "fremont-ca", "Fremont Fire AFES Permits (Accela Citizen Access, Building module)", "accela"),
         ("mpfd-fire-permits", "menlo-park-ca", "Menlo Park Fire Protection District Sprinkler and Underground Permits (Accela Citizen Access)", "accela"),
         ("santa-clara-fire-permits", "santa-clara-ca", "Santa Clara Fire Sprinkler, Suppression, Underground and Pump Permits (Accela Citizen Access, Fire module)", "accela"),
+        // The private pre-sprinkler-building-leads actor (its own Apify task): building permits for
+        // new homes, ADUs and additions. Feed = PreSprinkler, so fire ingestion refuses them and
+        // they feed only the admin-only pre-sprinkler leads. Not in source-permit-types.json.
+        ("fremont-building-permits", "fremont-ca", "Fremont Building Permits for new homes, ADUs and additions (Accela Citizen Access, Building module)", "accela"),
+        ("hayward-building-permits", "hayward-ca", "Hayward Building Permits for new homes, ADUs and additions (Tyler EnerGov CSS)", "energov"),
+        ("san-mateo-building-permits", "san-mateo-ca", "San Mateo Building Permits for new homes, ADUs and additions (Tyler EnerGov CSS)", "energov"),
+        ("menlo-park-building-permits", "menlo-park-ca", "Menlo Park Building Permits for new homes, ADUs and additions (Accela Citizen Access, Building module)", "accela"),
+    };
+
+    /// <summary>Sources of the pre-sprinkler feed. Every other source feeds fire permits.</summary>
+    public static readonly IReadOnlySet<string> PreSprinklerSourceIds = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "fremont-building-permits", "hayward-building-permits", "san-mateo-building-permits",
+        "menlo-park-building-permits",
     };
 
     private static async Task<Dictionary<string, Market>> UpsertMarketsAsync(AppDbContext db, CancellationToken ct)
@@ -348,6 +362,7 @@ public static class DevSeeder
             var settings = SourceSettings.GetValueOrDefault(d.SourceId, (PublishesContractor: true, Cadence: PublishCadence.Daily));
             s.PublishesContractor = settings.PublishesContractor;
             s.PublishCadence = settings.Cadence;
+            s.Feed = PreSprinklerSourceIds.Contains(d.SourceId) ? SourceFeed.PreSprinkler : SourceFeed.Fire;
             result[d.SourceId] = s;
         }
         return result;

@@ -29,6 +29,9 @@ public class AppDbContextModelTests
     [InlineData(typeof(SavedLead))]
     [InlineData(typeof(EmailPreference))]
     [InlineData(typeof(SampleLeadRequest))]
+    [InlineData(typeof(PreSprinklerLead))]
+    [InlineData(typeof(PreSprinklerContact))]
+    [InlineData(typeof(PreSprinklerSignal))]
     public void Model_contains_entity(Type entityType)
     {
         using var db = CreateContext();
@@ -157,5 +160,29 @@ public class AppDbContextModelTests
             .Single(k => k.PrincipalEntityType.ClrType == typeof(Permit));
         Assert.True(fk.IsUnique);
         Assert.Equal("PermitId", fk.Properties.Single().Name);
+    }
+
+    [Fact]
+    public void Pre_sprinkler_tables_are_their_own_and_unique_per_source_and_external_id()
+    {
+        using var db = CreateContext();
+        var lead = db.Model.FindEntityType(typeof(PreSprinklerLead))!;
+        Assert.Equal("pre_sprinkler_leads", lead.GetTableName());
+        Assert.Equal("pre_sprinkler_contacts", db.Model.FindEntityType(typeof(PreSprinklerContact))!.GetTableName());
+        Assert.Equal("pre_sprinkler_signals", db.Model.FindEntityType(typeof(PreSprinklerSignal))!.GetTableName());
+        var index = Assert.Single(lead.GetIndexes(), i => i.IsUnique);
+        Assert.Equal(new[] { "SourceId", "ExternalId" }, index.Properties.Select(p => p.Name));
+        Assert.Equal("jsonb", lead.FindProperty(nameof(PreSprinklerLead.SprinklerMatches))!.GetColumnType());
+        Assert.Equal("jsonb", lead.FindProperty(nameof(PreSprinklerLead.Notes))!.GetColumnType());
+    }
+
+    [Fact]
+    public void Sources_and_scraper_runs_carry_a_feed()
+    {
+        using var db = CreateContext();
+        Assert.Equal("feed", db.Model.FindEntityType(typeof(Source))!.FindProperty(nameof(Source.Feed))!.GetColumnName());
+        Assert.Equal("feed", db.Model.FindEntityType(typeof(ScraperRun))!.FindProperty(nameof(ScraperRun.Feed))!.GetColumnName());
+        Assert.Equal(0, (int)SourceFeed.Fire);
+        Assert.Equal(1, (int)SourceFeed.PreSprinkler);
     }
 }
