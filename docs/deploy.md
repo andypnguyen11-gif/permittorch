@@ -347,6 +347,10 @@ enter `permits`, `fire_opportunities`, digests, market stats or any subscriber r
   `scraper_runs` with `feed = 1` and show as "Pre-sprinkler" on the admin runs page.
 - **Weights:** `PreSprinklerScoring` in `appsettings.json` (override with
   `PreSprinklerScoring__Weights__NEW_HOME=…`). Scores are recomputed at ingest and once a day.
+  `TRACT_BUILDER` (-20) and `REPEAT_BUILDER` (-15, a contractor on `RepeatBuilderMinPermits` = 3 or more
+  stored leads) rank builders who usually have sprinkler subs lower; `NO_CONTRACTOR_ON_RECORD` (+10)
+  ranks owner, applicant and architect leads higher. The admin table and the CSV `Builder` column show
+  the resulting tag.
 
 Order:
 

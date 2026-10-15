@@ -232,10 +232,15 @@ public sealed class PreSprinklerIngestionJob : BackgroundService
             lead.LastRunId = scraperRun.Id;
             // A lead that reappears returns to what its sprinkler check says.
             lead.Standing = PreSprinklerScoringEngine.StandingFor(lead.SprinklerCheckStatus);
-            _scoring.Apply(db, lead, now);
             scraperRun.Classified++;
             listed.Add(lead.Id);
         }
+
+        // Scored once every lead of the run is merged, so a builder's permit count includes the
+        // whole run, not just the leads read before it.
+        var builders = PreSprinklerBuilders.From(byKey.Values);
+        foreach (var lead in byKey.Values.Where(l => listed.Contains(l.Id)))
+            _scoring.Apply(db, lead, now, builders);
 
         var unlisted = MarkNoLongerListed(run, bySourceId, existing, listed, byKey);
         UpdateSourceHealth(run, bySourceId, recordsPerSource, seenAt);

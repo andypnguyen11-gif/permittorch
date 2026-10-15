@@ -60,6 +60,17 @@ public static class PreSprinklerLabels
         };
     }
 
+    /// <summary>Why a lead ranks lower: the builder on it usually has sprinkler subs already.
+    /// Read off the lead's stored signals, so the tag always matches the score.</summary>
+    public static string? Builder(IEnumerable<PreSprinklerSignal> signals)
+    {
+        var list = signals.ToList();
+        if (list.Any(s => s.SignalType == PreSprinklerSignals.TractBuilder)) return "Tract builder: likely has sprinkler subs";
+        if (list.Any(s => s.SignalType == PreSprinklerSignals.RepeatBuilder)) return "Repeat builder: likely has sprinkler subs";
+        if (list.Any(s => s.SignalType == PreSprinklerSignals.NoContractorOnRecord)) return "Owner, applicant or architect on the record";
+        return null;
+    }
+
     public static string? Date(DateOnly? date) =>
         date?.ToString("MMM d, yyyy", CultureInfo.InvariantCulture);
 }

@@ -137,6 +137,27 @@ public class PreSprinklerIngestionJobTests(PostgresFixture fixture)
     }
 
     [Fact]
+    public async Task Leads_are_scored_after_the_whole_run_so_every_lead_of_a_repeat_builder_is_marked()
+    {
+        // One builder (unique licence) on three permits of one run: had scoring run lead by lead,
+        // the first two would have been scored before the third was read.
+        var (_, source) = await SeedSourceAsync();
+        var license = Random.Shared.NextInt64(1_000_000, 9_999_999).ToString();
+        var builder = Contact("contractor", "Test Builder", "Test Repeat Builders Inc", UniquePhone(), "rb@example.com", license);
+        await IngestAsync(Coverage((source.Jurisdiction, true)),
+            Lead(source.Jurisdiction, "BL-RB-1", contacts: [builder]),
+            Lead(source.Jurisdiction, "BL-RB-2", kind: "adu", contacts: [builder]),
+            Lead(source.Jurisdiction, "BL-RB-3", kind: "addition", contacts: [builder]));
+
+        foreach (var number in new[] { "BL-RB-1", "BL-RB-2", "BL-RB-3" })
+        {
+            var lead = await LeadAsync(source, number);
+            Assert.Contains(lead!.Signals, s => s.SignalType == PreSprinklerSignals.RepeatBuilder);
+            Assert.Equal(Math.Clamp(lead.Signals.Sum(s => s.Weight), 0, 100), lead.LeadScore);
+        }
+    }
+
+    [Fact]
     public async Task Upsert_updates_in_place_and_never_overwrites_a_value_with_null()
     {
         var (_, source) = await SeedSourceAsync();

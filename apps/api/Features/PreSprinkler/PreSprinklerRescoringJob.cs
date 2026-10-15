@@ -53,6 +53,7 @@ public sealed class PreSprinklerRescoringJob(
             .ToListAsync(ct);
 
         var count = 0;
+        var builders = PreSprinklerBuilders.From(leads.Where(l => !removals.IsRemovedRecordId(l.SourceId, l.ExternalId)));
         foreach (var lead in leads)
         {
             if (removals.IsRemovedRecordId(lead.SourceId, lead.ExternalId))
@@ -67,7 +68,7 @@ public sealed class PreSprinklerRescoringJob(
                 if (contacts.Any(c => c.Scrub(removals) != c))
                     PreSprinklerIngestionJob.ReplaceContacts(db, lead, contacts, removals);
             }
-            scoring.Apply(db, lead, nowUtc);
+            scoring.Apply(db, lead, nowUtc, builders);
         }
         await db.SaveChangesAsync(ct);
         return count;

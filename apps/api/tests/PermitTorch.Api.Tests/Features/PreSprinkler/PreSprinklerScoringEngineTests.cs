@@ -42,7 +42,7 @@ public class PreSprinklerScoringEngineTests
     {
         var signals = Signals(Lead(kind));
         Assert.Equal(weight, signals[signal]);
-        Assert.Equal(2, signals.Count);   // BASE + the kind
+        Assert.Equal(3, signals.Count);   // BASE + the kind + NO_CONTRACTOR_ON_RECORD (no contacts)
     }
 
     [Theory]
@@ -123,9 +123,85 @@ public class PreSprinklerScoringEngineTests
         var options = new PreSprinklerScoringOptions();
         options.Weights[PreSprinklerSignals.NewHome] = 45;
         options.Weights[PreSprinklerSignals.Base] = 0;
+        options.Weights[PreSprinklerSignals.NoContractorOnRecord] = 0;
         var score = new PreSprinklerScoringEngine(options).Score(Lead(), Today);
         Assert.Equal(45, score.Score);
         Assert.DoesNotContain(score.Signals, s => s.SignalType == PreSprinklerSignals.Base);
+    }
+
+    private static PreSprinklerContact Builder(string? company, string? license = null, string? name = null) => new()
+    {
+        Id = Guid.NewGuid(), Role = PreSprinklerContactRole.Contractor, Name = name, Company = company,
+        Phone = "(555) 010-0002", LicenseNumber = license,
+    };
+
+    [Fact]
+    public void A_lead_with_no_contractor_ranks_higher_and_a_contractor_lead_does_not()
+    {
+        Assert.Equal(10, Signals(Lead(PreSprinklerKind.Adu, contacts: Contact()))[PreSprinklerSignals.NoContractorOnRecord]);
+        Assert.False(Signals(Lead(PreSprinklerKind.Adu, contacts: Builder("Test Builders Inc")))
+            .ContainsKey(PreSprinklerSignals.NoContractorOnRecord));
+    }
+
+    [Fact]
+    public void A_tract_lot_is_marked_and_ranks_lower()
+    {
+        var lead = Lead(contacts: Builder("Test Homes LLC"));
+        lead.ProjectName = "Test Peralta Tract 8684 - (Lot 12) NSFD";
+        var signals = Signals(lead);
+        Assert.Equal(-20, signals[PreSprinklerSignals.TractBuilder]);
+        Assert.Contains("8684", Engine.Score(lead, Today).Signals.Single(s => s.SignalType == PreSprinklerSignals.TractBuilder).Description);
+        Assert.Equal("8752", PreSprinklerBuilders.Tract(new PreSprinklerLead { Description = "Lot 4 Plot Plans Tract 8752" }));
+        Assert.Null(PreSprinklerBuilders.Tract(new PreSprinklerLead { ProjectName = "Smith - Detached ADU", Description = "Attractive 500 sq ft unit" }));
+    }
+
+    [Fact]
+    public void A_contractor_on_three_or_more_leads_is_a_repeat_builder_matched_by_licence_or_company()
+    {
+        // Same licence on two leads, same company under two spellings on a third: one builder, three permits.
+        var a = Lead(contacts: Builder("Test Builders Inc", "0000001"));
+        var b = Lead(PreSprinklerKind.Adu, contacts: Builder("TEST BUILDERS, INC.", "0000001"));
+        var c = Lead(PreSprinklerKind.Addition, contacts: Builder("Test Builders"));
+        var oneOff = Lead(contacts: Builder("Other Builder LLC", "0000002"));
+        var builders = PreSprinklerBuilders.From([a, b, c, oneOff]);
+
+        Assert.Equal(2, builders.PermitsByContractor(a));   // by licence: a and b
+        Assert.Equal(1, builders.PermitsByContractor(oneOff));
+        var withCompany = Lead(contacts: Builder("Test Builders LLC"));
+        var three = PreSprinklerBuilders.From([a, b, c, withCompany]);
+        Assert.Equal(2, three.PermitsByContractor(c));       // by company: c and withCompany
+
+        var d = Lead(contacts: Builder("Test Builders Inc", "0000001"));
+        var repeat = PreSprinklerBuilders.From([a, b, d, oneOff]);
+        var score = Engine.Score(d, Today, repeat);
+        var signal = score.Signals.Single(s => s.SignalType == PreSprinklerSignals.RepeatBuilder);
+        Assert.Equal(-15, signal.Weight);
+        Assert.Contains("3 building permits", signal.Description);
+        Assert.DoesNotContain(Engine.Score(oneOff, Today, repeat).Signals, s => s.SignalType == PreSprinklerSignals.RepeatBuilder);
+    }
+
+    [Fact]
+    public void A_tract_lot_is_not_also_penalised_as_a_repeat_builder()
+    {
+        var lots = Enumerable.Range(1, 4).Select(i =>
+        {
+            var l = Lead(contacts: Builder("Test Homes LLC", "0000003"));
+            l.ProjectName = $"Test Tract 8684 - (Lot {i}) NSFD";
+            return l;
+        }).ToList();
+        var signals = Engine.Score(lots[0], Today, PreSprinklerBuilders.From(lots)).Signals.Select(s => s.SignalType).ToList();
+        Assert.Contains(PreSprinklerSignals.TractBuilder, signals);
+        Assert.DoesNotContain(PreSprinklerSignals.RepeatBuilder, signals);
+    }
+
+    [Fact]
+    public void The_builder_tag_follows_the_stored_signals()
+    {
+        PreSprinklerSignal S(string type) => new() { Id = Guid.NewGuid(), SignalType = type, Description = "", Weight = 0 };
+        Assert.Equal("Tract builder: likely has sprinkler subs", PreSprinklerLabels.Builder([S(PreSprinklerSignals.TractBuilder)]));
+        Assert.Equal("Repeat builder: likely has sprinkler subs", PreSprinklerLabels.Builder([S(PreSprinklerSignals.RepeatBuilder)]));
+        Assert.Equal("Owner, applicant or architect on the record", PreSprinklerLabels.Builder([S(PreSprinklerSignals.NoContractorOnRecord)]));
+        Assert.Null(PreSprinklerLabels.Builder([S(PreSprinklerSignals.Base)]));
     }
 
     [Fact]

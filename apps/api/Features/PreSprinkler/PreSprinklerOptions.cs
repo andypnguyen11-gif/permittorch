@@ -38,10 +38,15 @@ public sealed class PreSprinklerScoringOptions
         [PreSprinklerSignals.PlanCheck] = 5,
         [PreSprinklerSignals.LicensedBuilderNamed] = 5,
         [PreSprinklerSignals.PhonePresent] = 5,
+        [PreSprinklerSignals.NoContractorOnRecord] = 10,
+        [PreSprinklerSignals.TractBuilder] = -20,
+        [PreSprinklerSignals.RepeatBuilder] = -15,
     };
 
     public int LargeSizeSquareFeet { get; set; } = 1000;
     public int FreshFilingDays { get; set; } = 30;
+    /// <summary>A contractor on at least this many stored leads is a repeat builder.</summary>
+    public int RepeatBuilderMinPermits { get; set; } = 3;
 }
 
 public static class PreSprinklerSignals
@@ -55,4 +60,7 @@ public static class PreSprinklerSignals
     public const string PlanCheck = "PLAN_CHECK";
     public const string LicensedBuilderNamed = "LICENSED_BUILDER_NAMED";
     public const string PhonePresent = "PHONE_PRESENT";
+    public const string NoContractorOnRecord = "NO_CONTRACTOR_ON_RECORD";
+    public const string TractBuilder = "TRACT_BUILDER";
+    public const string RepeatBuilder = "REPEAT_BUILDER";
 }

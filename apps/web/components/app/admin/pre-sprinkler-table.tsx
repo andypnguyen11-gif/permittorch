@@ -28,6 +28,11 @@ function LeadRow({ lead, grouped }: { lead: PreSprinklerLead; grouped: boolean }
         <span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset", KIND_CLASS[lead.kind])}>
           {lead.kindLabel}
         </span>
+        {lead.builderTag && (
+          <p className={cn("mt-1 max-w-40 text-xs", /sprinkler subs/.test(lead.builderTag) ? "text-amber-700" : "text-stone-500")}>
+            {lead.builderTag}
+          </p>
+        )}
       </TableCell>
       <TableCell className="max-w-56 text-sm">
         <p className={cn("font-medium", lead.sprinklerCheckStatus === "NONE_FOUND" ? "text-green-700" : "text-stone-700")}
