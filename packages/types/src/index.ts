@@ -146,3 +146,8 @@ export interface PreSprinklerLead {
   builderTag?: string | null;
 }
 export interface PreSprinklerMarket { slug: string; name: string; }
+
+/** Wire values of the API's FeedbackType (POST /api/feedback). */
+export type FeedbackType = "IDEA" | "PROBLEM" | "DATA_REQUEST" | "OTHER";
+/** The sender is always the signed-in account; the body never names a user. */
+export interface FeedbackInput { type: FeedbackType; message: string; pagePath: string | null; }

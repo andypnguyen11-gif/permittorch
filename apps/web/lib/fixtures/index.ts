@@ -5,7 +5,7 @@
 // NOTE: getMarkets/getMarketStats are intentionally ABSENT — lib/api.ts's
 // mock branch imports mockMarkets/mockMarketStats from ./markets (WS3-owned).
 import type {
-  AccountMe, AdminSource, DigestFrequency, EmailPreferences, LeadDetail, LeadsResponse,
+  AccountMe, AdminSource, DigestFrequency, EmailPreferences, FeedbackInput, LeadDetail, LeadsResponse,
   Market, Paged, PlanTier, PreSprinklerLead, PreSprinklerMarket, Removal, RemovalPreview, RemovalRecord,
   SavedLeadItem, SavedLeadStatus, ScraperRunSummary,
 } from "@permittorch/types";
@@ -66,6 +66,8 @@ export async function getEmailPreferences(): Promise<EmailPreferences> {
 export async function updateEmailPreferences(_frequency: DigestFrequency, _marketSlugs?: string[]): Promise<void> { /* mock no-op */ }
 export async function acceptTerms(_version: string): Promise<void> { /* mock no-op */ }
 // Mock mode accepts the sample-lead form as a no-op success.
+export async function submitFeedback(_input: FeedbackInput): Promise<void> {}
+
 export async function submitSampleLeadRequest(_input: { name: string; email: string; company: string; marketSlug: string }): Promise<void> {}
 export async function createCheckout(_plan: PlanTier, _marketSlugs: string[]): Promise<{ url: string }> { return { url: "#" }; }
 export async function createBillingPortal(): Promise<{ url: string }> { return { url: "#" }; }
