@@ -260,6 +260,20 @@ public class SampleLeadRequest                             // marketing lead mag
     public DateTime? LastSentAt { get; set; }
 }
 
+/// <summary>Feedback a signed-in user sent from the app. Saved before the owner is emailed;
+/// NotifiedAt stays null until that email succeeds, and the hourly retry picks those rows up.</summary>
+public class FeedbackSubmission
+{
+    public Guid Id { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public Guid UserId { get; set; }
+    public AppUser User { get; set; } = null!;
+    public FeedbackType Type { get; set; }
+    public string Message { get; set; } = null!;
+    public string? PagePath { get; set; }
+    public DateTime? NotifiedAt { get; set; }
+}
+
 /// <summary>A building permit for a new home, an ADU or an addition with no fire sprinkler
 /// application found at its address yet. Admin only: these rows never enter permits,
 /// fire_opportunities, digests, market stats or any subscriber read.</summary>

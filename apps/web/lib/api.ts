@@ -4,6 +4,7 @@ import type {
   ContractorStatus,
   DigestFrequency,
   EmailPreferences,
+  FeedbackInput,
   FireCategory,
   LeadDetail,
   LeadsResponse,
@@ -239,6 +240,11 @@ export async function submitSampleLeadRequest(
 ): Promise<void> {
   if (isMock()) return (await fixtures()).submitSampleLeadRequest(input);
   return apiFetch<void>("/api/sample-leads", { method: "POST", body: JSON.stringify(input) });
+}
+
+export async function submitFeedback(input: FeedbackInput, token: string): Promise<void> {
+  if (isMock()) return (await fixtures()).submitFeedback(input);
+  return apiFetch<void>("/api/feedback", { method: "POST", body: JSON.stringify(input) }, token);
 }
 
 // Entitlement comes only from the markets attached to the subscription, so

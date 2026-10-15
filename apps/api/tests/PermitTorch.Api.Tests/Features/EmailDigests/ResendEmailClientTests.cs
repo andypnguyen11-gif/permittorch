@@ -40,4 +40,37 @@ public class ResendEmailClientTests
         Assert.Equal($"<{url}>", headers.GetProperty("List-Unsubscribe").GetString());
         Assert.Equal("List-Unsubscribe=One-Click", headers.GetProperty("List-Unsubscribe-Post").GetString());
     }
+    private static async Task<JsonElement> SendAndCapture(EmailMessage message)
+    {
+        var handler = new CapturingHandler();
+        var client = new ResendEmailClient(new HttpClient(handler),
+            Microsoft.Extensions.Options.Options.Create(new EmailOptions { From = "leads@permittorch.test" }));
+        await client.SendAsync(message, CancellationToken.None);
+        return JsonSerializer.Deserialize<JsonElement>(handler.Body!);
+    }
+
+    [Fact]
+    public async Task Send_without_unsubscribe_url_omits_list_unsubscribe_headers()
+    {
+        var body = await SendAndCapture(new EmailMessage("owner@example.com", "S", "<p/>", "feedback:1"));
+
+        Assert.False(body.TryGetProperty("headers", out _));
+    }
+
+    [Fact]
+    public async Task Send_with_reply_to_posts_reply_to()
+    {
+        var body = await SendAndCapture(new EmailMessage("owner@example.com", "S", "<p/>", "feedback:1",
+            ReplyTo: "user@example.com"));
+
+        Assert.Equal("user@example.com", body.GetProperty("reply_to").GetString());
+    }
+
+    [Fact]
+    public async Task Send_without_reply_to_omits_reply_to()
+    {
+        var body = await SendAndCapture(new EmailMessage("owner@example.com", "S", "<p/>", "feedback:1"));
+
+        Assert.False(body.TryGetProperty("reply_to", out _));
+    }
 }

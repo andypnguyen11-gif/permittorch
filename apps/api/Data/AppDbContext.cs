@@ -22,6 +22,7 @@ public class AppDbContext : DbContext
     public DbSet<EmailPreference> EmailPreferences => Set<EmailPreference>();
     public DbSet<EmailPreferenceMarket> EmailPreferenceMarkets => Set<EmailPreferenceMarket>();
     public DbSet<SampleLeadRequest> SampleLeadRequests => Set<SampleLeadRequest>();
+    public DbSet<FeedbackSubmission> FeedbackSubmissions => Set<FeedbackSubmission>();
     public DbSet<Removal> Removals => Set<Removal>();
     public DbSet<PreSprinklerLead> PreSprinklerLeads => Set<PreSprinklerLead>();
     public DbSet<PreSprinklerContact> PreSprinklerContacts => Set<PreSprinklerContact>();
@@ -120,6 +121,16 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<SampleLeadRequest>(e =>
         {
             e.HasIndex(r => new { r.Email, r.MarketSlug }).IsUnique();
+        });
+
+        modelBuilder.Entity<FeedbackSubmission>(e =>
+        {
+            e.ToTable("feedback");
+            e.Property(f => f.Message).HasMaxLength(5000);
+            e.Property(f => f.PagePath).HasMaxLength(500);
+            e.HasOne(f => f.User).WithMany().HasForeignKey(f => f.UserId).OnDelete(DeleteBehavior.Cascade);
+            // The hourly retry looks only for rows whose email has not gone out yet.
+            e.HasIndex(f => f.CreatedAt).HasFilter("notified_at IS NULL");
         });
 
         modelBuilder.Entity<Removal>(e =>

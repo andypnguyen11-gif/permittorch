@@ -4,6 +4,7 @@ import { Menu } from "lucide-react";
 import type { AccountMe, Market, PlanTier } from "@permittorch/types";
 import { MarketSelect } from "@/components/app/market-select";
 import { Sidebar } from "@/components/app/sidebar";
+import { FeedbackDialog } from "@/components/feedback/feedback-dialog";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
 /** Below the lg breakpoint the sidebar collapses into this slide-over sheet. */
@@ -11,20 +12,26 @@ export function MobileNav({ role, plan, freeAccess = false, markets = [] }: {
   role: AccountMe["role"]; plan?: PlanTier | null; freeAccess?: boolean; markets?: Market[];
 }) {
   const [open, setOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger
-        aria-label="Open navigation"
-        className="flex size-9 items-center justify-center rounded-lg text-stone-600 outline-none hover:bg-stone-100 focus-visible:ring-3 focus-visible:ring-ring/50 lg:hidden"
-      >
-        <Menu className="size-5" aria-hidden />
-      </SheetTrigger>
-      <SheetContent side="left" className="gap-0 p-0 data-[side=left]:w-60 data-[side=left]:sm:max-w-60">
-        <SheetTitle className="sr-only">Navigation</SheetTitle>
-        {/* The top bar's market selector is hidden on small screens; offer it here. */}
-        <Sidebar role={role} plan={plan} freeAccess={freeAccess} onNavigate={() => setOpen(false)}
-          top={<MarketSelect markets={markets} className="w-full" onChanged={() => setOpen(false)} />} />
-      </SheetContent>
-    </Sheet>
+    <>
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetTrigger
+          aria-label="Open navigation"
+          className="flex size-9 items-center justify-center rounded-lg text-stone-600 outline-none hover:bg-stone-100 focus-visible:ring-3 focus-visible:ring-ring/50 lg:hidden"
+        >
+          <Menu className="size-5" aria-hidden />
+        </SheetTrigger>
+        <SheetContent side="left" className="gap-0 p-0 data-[side=left]:w-60 data-[side=left]:sm:max-w-60">
+          <SheetTitle className="sr-only">Navigation</SheetTitle>
+          {/* The top bar's market selector is hidden on small screens; offer it here. */}
+          <Sidebar role={role} plan={plan} freeAccess={freeAccess} onNavigate={() => setOpen(false)}
+            onSendFeedback={() => { setOpen(false); setFeedbackOpen(true); }}
+            top={<MarketSelect markets={markets} className="w-full" onChanged={() => setOpen(false)} />} />
+        </SheetContent>
+      </Sheet>
+      {/* Outside the sheet: closing the menu unmounts its content, and the dialog must stay. */}
+      <FeedbackDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} />
+    </>
   );
 }

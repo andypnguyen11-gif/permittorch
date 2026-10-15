@@ -1,3 +1,5 @@
+using PermitTorch.Api.Features.Feedback;
+
 namespace PermitTorch.Api.Features.EmailDigests;
 
 /// <summary>Digest check (Architecture.md §4.2: in-process IHostedService). First sweep
@@ -34,6 +36,17 @@ public sealed class DigestBackgroundService(
                 catch (Exception exception) when (!stoppingToken.IsCancellationRequested)
                 {
                     logger.LogError(exception, "Digest sweep failed; retrying next hour");
+                }
+                // Separate from digests so a failure in one never skips the other.
+                try
+                {
+                    using var scope = scopeFactory.CreateScope();
+                    await scope.ServiceProvider.GetRequiredService<FeedbackNotifier>()
+                        .RetryPendingAsync(DateTime.UtcNow, stoppingToken);
+                }
+                catch (Exception exception) when (!stoppingToken.IsCancellationRequested)
+                {
+                    logger.LogError(exception, "Feedback retry failed; retrying next hour");
                 }
             }
             while (await timer.WaitForNextTickAsync(stoppingToken));

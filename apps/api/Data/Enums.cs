@@ -50,3 +50,4 @@ public enum SprinklerCheckStatus { NoneFound, Found, Unavailable }
 // reported ok did not list it (issued, closed or aged out of the window).
 public enum PreSprinklerStanding { Open, SprinklerFiled, CheckUnavailable, NoLongerListed }
 public enum PreSprinklerContactRole { Contractor, Applicant, Owner, Architect, Engineer, Other }
+public enum FeedbackType { Idea, Problem, DataRequest, Other }

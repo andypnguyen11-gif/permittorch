@@ -46,4 +46,9 @@ describe("privacy page", () => {
     const { container } = render(<PrivacyPage />);
     expect(container.textContent).toContain(`Version ${TERMS_VERSION}.`);
   });
+  it("says what happens to feedback sent from the app", () => {
+    const { container } = render(<PrivacyPage />);
+    expect(container.textContent).toMatch(
+      /Feedback you send from the app is stored with your account and used only to read and reply to it\./);
+  });
 });

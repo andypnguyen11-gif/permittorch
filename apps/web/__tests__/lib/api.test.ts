@@ -12,6 +12,7 @@ vi.mock("@/lib/fixtures", () => ({
   getLeads: vi.fn(async () => fixtureLeads),
   exportLeadsCsv: vi.fn(async () => ({ blob: new Blob(["Score,Address,City\r\n"]), truncated: false })),
   submitSampleLeadRequest: vi.fn(async () => undefined),
+  submitFeedback: vi.fn(async () => undefined),
 }));
 
 vi.mock("@/lib/fixtures/markets", () => ({
@@ -286,5 +287,43 @@ describe("lib/api email preferences", () => {
     expect(JSON.parse(init.body as string)).toEqual({ frequency: "WEEKLY", marketSlugs: ["dallas-tx"] });
     expect(JSON.parse((fetchMock.mock.calls[1] as unknown as [string, RequestInit])[1].body as string))
       .toEqual({ frequency: "NONE" });
+  });
+  describe("submitFeedback", () => {
+    const input = { type: "DATA_REQUEST" as const, message: "Add Austin", pagePath: "/app/leads" };
+
+    it("resolves in mock mode without calling fetch", async () => {
+      vi.stubEnv("NEXT_PUBLIC_API_MOCK", "1");
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+      const api = await import("@/lib/api");
+
+      await expect(api.submitFeedback(input, "tok")).resolves.toBeUndefined();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("posts the feedback with the bearer token", async () => {
+      vi.stubEnv("NEXT_PUBLIC_API_MOCK", "0");
+      vi.stubEnv("NEXT_PUBLIC_API_URL", "http://api.test");
+      const fetchMock = vi.fn<typeof fetch>(async () => new Response(null, { status: 202 }));
+      vi.stubGlobal("fetch", fetchMock);
+      const api = await import("@/lib/api");
+
+      await expect(api.submitFeedback(input, "tok")).resolves.toBeUndefined();
+
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe("http://api.test/api/feedback");
+      expect(init?.method).toBe("POST");
+      expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer tok");
+      expect(JSON.parse(init?.body as string)).toEqual(input);
+    });
+
+    it("rejects with the status on a rate limit", async () => {
+      vi.stubEnv("NEXT_PUBLIC_API_MOCK", "0");
+      vi.stubEnv("NEXT_PUBLIC_API_URL", "http://api.test");
+      vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: "Too many requests" }), { status: 429 })));
+      const api = await import("@/lib/api");
+
+      await expect(api.submitFeedback(input, "tok")).rejects.toMatchObject({ name: "ApiError", status: 429 });
+    });
   });
 });
