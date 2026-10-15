@@ -180,4 +180,22 @@ public class FeedbackNotifierTests(ApiFactory factory)
         var resent = Assert.Single(retry.Messages, m => m.IdempotencyKey == $"feedback:{row.Id}");
         Assert.Equal(delivered! with { }, resent with { });
     }
+    [Fact]
+    public async Task TrySend_save_failure_after_send_does_not_throw()
+    {
+        // Resend accepts the email, then recording NotifiedAt fails (here: the row is gone).
+        var (row, user) = await SeedAsync(DateTime.UtcNow);
+        var resend = new RecordingResend
+        {
+            OnSend = _ => factory.QueryAsync(db => db.FeedbackSubmissions.Where(f => f.Id == row.Id).ExecuteDeleteAsync()),
+        };
+        var logger = new ListLogger<FeedbackNotifier>();
+
+        var sent = await WithNotifierAsync(resend, (n, db) => TrySend(n, db, row, user), logger: logger);
+
+        Assert.False(sent);
+        Assert.Single(resend.Messages);
+        Assert.Contains(logger.Lines, l => l.Level == LogLevel.Error && l.Text.Contains(row.Id.ToString()));
+        Assert.DoesNotContain(logger.Lines, l => l.Text.Contains(Secret));
+    }
 }

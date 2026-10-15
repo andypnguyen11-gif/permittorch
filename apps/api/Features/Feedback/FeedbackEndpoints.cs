@@ -24,7 +24,8 @@ public static class FeedbackEndpoints
         CurrentUserService currentUser, FeedbackNotifier notifier, CancellationToken ct)
     {
         if (body.Type is not { } type) return ApiErrors.BadRequest("type is required");
-        var message = body.Message?.Trim() ?? "";
+        // Postgres text cannot hold NUL; drop it rather than fail on insert.
+        var message = body.Message?.Replace("\0", "").Trim() ?? "";
         if (message.Length is 0 or > MaxMessageLength)
             return ApiErrors.BadRequest($"message is required (max {MaxMessageLength} characters)");
 
@@ -37,8 +38,9 @@ public static class FeedbackEndpoints
         db.FeedbackSubmissions.Add(feedback);
         await db.SaveChangesAsync(ct);
 
-        // Saved first: a failed email is retried hourly and never fails the request.
-        await notifier.TrySendAsync(feedback, user, ct);
+        // Saved first: a failed email is retried hourly and never fails the request. Not tied to
+        // the request's lifetime, so a closed tab does not cancel the send (HttpClient times out).
+        await notifier.TrySendAsync(feedback, user, CancellationToken.None);
         return Results.Accepted();
     }
 }

@@ -43,8 +43,17 @@ public sealed class FeedbackNotifier(AppDbContext db, ResendEmailClient resend,
             return false;
         }
 
-        feedback.NotifiedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            feedback.NotifiedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            // The email went out; the hourly retry resends under the same key and Resend drops it.
+            logger.LogError(ex, "Feedback {Id} emailed but not recorded; the retry will reconcile it", feedback.Id);
+            return false;
+        }
         return true;
     }
 

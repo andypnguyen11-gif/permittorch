@@ -13,9 +13,11 @@ sealed class RecordingResend() : ResendEmailClient(new HttpClient(),
     public readonly List<(string To, string Subject, string Html)> Sent = [];
     public readonly List<EmailMessage> Messages = [];
     public Func<EmailMessage, Task>? OnSend { get; init; }
+    public readonly List<CancellationToken> Tokens = [];
 
     public override async Task SendAsync(EmailMessage message, CancellationToken ct)
     {
+        Tokens.Add(ct);
         if (OnSend is not null) await OnSend(message);   // may throw to simulate a Resend failure
         Messages.Add(message);
         Sent.Add((message.To, message.Subject, message.Html));

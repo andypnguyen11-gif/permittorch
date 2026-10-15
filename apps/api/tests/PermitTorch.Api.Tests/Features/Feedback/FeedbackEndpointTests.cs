@@ -154,4 +154,27 @@ public sealed class FeedbackEndpointTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.TooManyRequests, sixth.StatusCode);
         Assert.Equal(HttpStatusCode.Accepted, other.StatusCode);
     }
+    [Fact]
+    public async Task Send_on_submit_is_not_cancelled_when_the_client_goes_away()
+    {
+        var sub = NewSub();
+
+        await ClientFor(sub).PostAsync("/api/feedback", Json("""{"type":"IDEA","message":"bye"}"""));
+
+        var row = Assert.Single(await RowsForAsync(sub));
+        var index = _resend.Messages.FindIndex(m => m.IdempotencyKey == $"feedback:{row.Id}");
+        Assert.False(_resend.Tokens[index].CanBeCanceled);
+    }
+
+    [Fact]
+    public async Task Nul_characters_are_removed_from_the_message()
+    {
+        var sub = NewSub();
+
+        var response = await ClientFor(sub).PostAsync("/api/feedback",
+            Json("""{"type":"PROBLEM","message":"bro\u0000ken"}"""));
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        Assert.Equal("broken", Assert.Single(await RowsForAsync(sub)).Message);
+    }
 }
