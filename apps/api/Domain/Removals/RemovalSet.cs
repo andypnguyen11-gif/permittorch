@@ -79,6 +79,11 @@ public sealed class RemovalSet
     public bool IsRemovedEmail(string? email) =>
         RemovalKeys.Email(email) is { } key && _emails.Contains(key);
 
+    /// <summary>Whether a record of this source and id is removed by its own id. Used by feeds
+    /// that store no fingerprint (the pre-sprinkler leads).</summary>
+    public bool IsRemovedRecordId(Guid sourceId, string externalId) =>
+        _records.Contains(RemovalKeys.Record(sourceId, externalId));
+
     /// <summary>Whether the list's record rule says this record is removed: by its own id, or
     /// by fingerprint under the rule ingestion uses for the same case (an address is required,
     /// and the two permit numbers must not disagree). Public so the sweep can ask the same

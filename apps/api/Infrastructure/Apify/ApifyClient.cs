@@ -20,15 +20,36 @@ public sealed class ApifyClient
     private readonly ILogger<ApifyClient> _logger;
     private readonly string _token;
     private readonly string _taskId;
+    private readonly string _taskIdSetting;               // named in the 404 warning
 
+    // The fire feed's client: APIFY_TASK_ID. Resolved by DI as a typed HttpClient.
     public ApifyClient(HttpClient http, IConfiguration configuration, ILogger<ApifyClient> logger)
+        : this(http,
+            configuration["APIFY_TOKEN"] ?? throw new InvalidOperationException("APIFY_TOKEN is not configured"),
+            configuration["APIFY_TASK_ID"] ?? throw new InvalidOperationException("APIFY_TASK_ID is not configured"),
+            "APIFY_TASK_ID", logger)
+    {
+    }
+
+    private ApifyClient(HttpClient http, string token, string taskId, string taskIdSetting,
+        ILogger<ApifyClient> logger)
     {
         _http = http;
         _logger = logger;
-        _token = configuration["APIFY_TOKEN"]
-            ?? throw new InvalidOperationException("APIFY_TOKEN is not configured");
-        _taskId = configuration["APIFY_TASK_ID"]
-            ?? throw new InvalidOperationException("APIFY_TASK_ID is not configured");
+        _token = token;
+        _taskId = taskId;
+        _taskIdSetting = taskIdSetting;
+    }
+
+    /// <summary>A client for another Apify task under the same token, such as the pre-sprinkler
+    /// task. The fire client above is unchanged and keeps reading APIFY_TASK_ID.</summary>
+    public static ApifyClient ForTask(HttpClient http, string? token, string taskId, string taskIdSetting,
+        ILogger<ApifyClient> logger)
+    {
+        if (string.IsNullOrWhiteSpace(token)) throw new InvalidOperationException("APIFY_TOKEN is not configured");
+        if (string.IsNullOrWhiteSpace(taskId))
+            throw new InvalidOperationException($"{taskIdSetting} is not configured");
+        return new ApifyClient(http, token, taskId, taskIdSetting, logger);
     }
 
     // Runs of the dedicated PermitTorch task, newest first. 50 is ample for one daily run plus
@@ -42,7 +63,7 @@ public sealed class ApifyClient
             // A task that exists always has a runs list (possibly empty), so 404 almost always
             // means APIFY_TASK_ID is wrong — surface it instead of silently ingesting nothing.
             _logger.LogWarning(
-                "Apify task runs endpoint returned 404 for task {TaskId}; check APIFY_TASK_ID", _taskId);
+                "Apify task runs endpoint returned 404 for task {TaskId}; check {TaskIdSetting}", _taskId, _taskIdSetting);
             return Array.Empty<ApifyRun>();
         }
         response.EnsureSuccessStatusCode();
@@ -50,13 +71,27 @@ public sealed class ApifyClient
         return envelope?.Data?.Items ?? Array.Empty<ApifyRun>();
     }
 
-    public async Task<IReadOnlyList<RawPermitRecord>> GetDatasetItemsAsync(string datasetId, CancellationToken ct)
+    public Task<IReadOnlyList<RawPermitRecord>> GetDatasetItemsAsync(string datasetId, CancellationToken ct)
+        => GetDatasetItemsAsync<RawPermitRecord>(datasetId, ct);
+
+    // Any dataset item shape; the caller owns the record type (the fire feed's is locked).
+    public async Task<IReadOnlyList<T>> GetDatasetItemsAsync<T>(string datasetId, CancellationToken ct)
     {
         using var response = await SendAsync(
             $"/v2/datasets/{Uri.EscapeDataString(datasetId)}/items?clean=true&format=json", ct);
         response.EnsureSuccessStatusCode();
-        var items = await response.Content.ReadFromJsonAsync<List<RawPermitRecord>>(JsonOptions, ct);
-        return items ?? new List<RawPermitRecord>();
+        var items = await response.Content.ReadFromJsonAsync<List<T>>(JsonOptions, ct);
+        return items ?? new List<T>();
+    }
+
+    // The exact text of one key-value store record, or null when the record does not exist.
+    public async Task<string?> GetKeyValueRecordTextAsync(string keyValueStoreId, string key, CancellationToken ct)
+    {
+        using var response = await SendAsync(
+            $"/v2/key-value-stores/{Uri.EscapeDataString(keyValueStoreId)}/records/{Uri.EscapeDataString(key)}", ct);
+        if (response.StatusCode == HttpStatusCode.NotFound) return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadAsStringAsync(ct);
     }
 
     // Returns the parsed report with RawJson set to the exact response text.

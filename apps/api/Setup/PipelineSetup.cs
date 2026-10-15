@@ -3,8 +3,10 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using PermitTorch.Api.Domain.Scoring;
+using PermitTorch.Api.Features.PreSprinkler;
 using PermitTorch.Api.Infrastructure;
 using PermitTorch.Api.Infrastructure.Apify;
+using PermitTorch.Api.Infrastructure.PreSprinkler;
 using PermitTorch.Api.Jobs;
 
 namespace PermitTorch.Api.Setup;
@@ -31,6 +33,17 @@ public static class PipelineSetup
         services.AddSingleton(sp =>
             new ScoringEngine(sp.GetRequiredService<IOptions<ScoringOptions>>().Value));
 
+        // The admin-only pre-sprinkler feed: its own Apify task, tables, scoring and jobs. Its
+        // ingestion stays off until APIFY_PRESPRINKLER_TASK_ID is set.
+        services.AddHttpClient(ApifyPreSprinklerLeadSource.HttpClientName, client =>
+        {
+            client.BaseAddress = new Uri("https://api.apify.com");
+        });
+        services.AddScoped<IPreSprinklerLeadSource, ApifyPreSprinklerLeadSource>();
+        services.Configure<PreSprinklerScoringOptions>(configuration.GetSection("PreSprinklerScoring"));
+        services.AddSingleton(sp =>
+            new PreSprinklerScoringEngine(sp.GetRequiredService<IOptions<PreSprinklerScoringOptions>>().Value));
+
         // Pipeline:Enabled=false keeps the API serving (and the pipeline services resolvable)
         // without any background ingestion, monitoring, or rescoring — e.g. for a read-only
         // replica or local development without Apify credentials.
@@ -39,6 +52,8 @@ public static class PipelineSetup
             services.AddHostedService<IngestionJob>();
             services.AddHostedService<SourceHealthMonitor>();
             services.AddHostedService<RescoringJob>();
+            services.AddHostedService<PreSprinklerIngestionJob>();
+            services.AddHostedService<PreSprinklerRescoringJob>();
         }
 
         return services;

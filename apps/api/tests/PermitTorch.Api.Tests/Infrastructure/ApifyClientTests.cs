@@ -222,4 +222,44 @@ public class ApifyClientTests
 
         Assert.Null(report);
     }
+
+    [Fact]
+    public async Task ForTask_reads_another_task_and_its_own_item_shape_without_touching_APIFY_TASK_ID()
+    {
+        var handler = new FakeHttpMessageHandler(request => request.RequestUri!.AbsolutePath switch
+        {
+            "/v2/actor-tasks/presprinkler-task/runs" => Json("""{ "data": { "items": [] } }"""),
+            "/v2/datasets/ds-9/items" => Json("""[{ "recordId": "s:BL-1", "kind": "adu" }]"""),
+            "/v2/key-value-stores/kv-9/records/COVERAGE_REPORT" => Json("""{ "ok": true, "sources": [] }"""),
+            _ => new HttpResponseMessage(HttpStatusCode.NotFound),
+        });
+        var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.apify.com") };
+        var client = ApifyClient.ForTask(http, "test-token", "presprinkler-task", "APIFY_PRESPRINKLER_TASK_ID",
+            NullLogger<ApifyClient>.Instance);
+
+        Assert.Empty(await client.GetTaskRunsAsync(CancellationToken.None));
+        var items = await client.GetDatasetItemsAsync<PermitTorch.Api.Infrastructure.PreSprinkler.RawPreSprinklerLead>("ds-9", CancellationToken.None);
+        Assert.Equal("adu", Assert.Single(items).Kind);
+        Assert.Equal("""{ "ok": true, "sources": [] }""",
+            await client.GetKeyValueRecordTextAsync("kv-9", "COVERAGE_REPORT", CancellationToken.None));
+        Assert.Null(await client.GetKeyValueRecordTextAsync("kv-9", "MISSING", CancellationToken.None));
+        Assert.All(handler.Requests, r => Assert.Equal("Bearer test-token", r.Headers.Authorization!.ToString()));
+    }
+
+    [Fact]
+    public async Task ForTask_names_its_own_setting_when_the_task_is_missing()
+    {
+        var handler = new FakeHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
+        var logger = new ListLogger<ApifyClient>();
+        var client = ApifyClient.ForTask(new HttpClient(handler) { BaseAddress = new Uri("https://api.apify.com") },
+            "test-token", "nope", "APIFY_PRESPRINKLER_TASK_ID", logger);
+
+        await client.GetTaskRunsAsync(CancellationToken.None);
+
+        Assert.Contains(logger.Entries, e => e.Message.Contains("APIFY_PRESPRINKLER_TASK_ID"));
+        Assert.Throws<InvalidOperationException>(() => ApifyClient.ForTask(new HttpClient(), "t", " ",
+            "APIFY_PRESPRINKLER_TASK_ID", NullLogger<ApifyClient>.Instance));
+        Assert.Throws<InvalidOperationException>(() => ApifyClient.ForTask(new HttpClient(), null, "task",
+            "APIFY_PRESPRINKLER_TASK_ID", NullLogger<ApifyClient>.Instance));
+    }
 }
