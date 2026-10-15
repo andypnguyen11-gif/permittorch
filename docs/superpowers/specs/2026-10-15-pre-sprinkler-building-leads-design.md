@@ -43,14 +43,17 @@ The fire actor stays untouched: its input schema, dataset schema, registry, clas
 store and pay-per-event charging do not change. The new actor reuses the repo's ACA and EnerGov plumbing.
 
 - **Actor:** `pre-sprinkler-building-leads`, private, no pay-per-event charging. Its config lives in
-  `actors/pre-sprinkler/.actor/` (`actor.json`, input, dataset and output schemas). It uses the repo's
-  Dockerfile through `dockerContextDir` (the plan confirms the exact `actor.json` keys against the Apify CLI
-  before the first push) and starts with `node dist/presprinkler/main.js`.
+  `actors/pre-sprinkler/.actor/` (`actor.json`, input schema, Dockerfile), and it starts with
+  `node dist/presprinkler/main.js`.
+  - *As built:* Apify refuses a Docker context outside the uploaded folder, so `dockerContextDir` cannot
+    point at the repository root. `scripts/push-pre-sprinkler.sh` stages `git archive HEAD` with this
+    actor's `.actor` in place of the fire actor's and pushes from there.
 - **Code:** `src/presprinkler/` holds the entry point, run, classifier, sprinkler check, output schema and
   registry loader.
-- **Registry:** `src/presprinkler/registry.json` is a registry of its own with its own zod schema. It reuses
-  the ACA and EnerGov sub-schemas from `src/types/source.ts` but not the fire superRefine, which forces
-  `sourceIsFireSpecific`.
+- **Sources:** `src/presprinkler/sources.ts` (as built, instead of a `registry.json`). Each building source
+  is an ordinary `SourceInfo`, parsed by the existing schema, so the unchanged ACA and EnerGov adapters run
+  the search. Endpoints and tenants are copied from the same city's fire source, so a portal move is fixed
+  in one place. The fire registry gains no entries.
 - **State:** a named store `pre-sprinkler-leads-state`, never `fire-permit-leads-state`.
 - **Input:**
   - `cities`: any of the four.
@@ -70,6 +73,14 @@ Each source has an `id`, `jurisdictionKey`, portal, and a classifier rule set.
 | `menlo-park-building-permits` | Accela agency `MENLOPARK` (the city, not the fire district), module `Building` | Typed `Building/Permit/NA/NA`, CSV export | Project Name codes `NEW/SFR`, `NEW/ACC (ADU)`, `ADD/SFR` |
 | `hayward-building-permits` | EnerGov tenant `HaywardCAProd` | Pinned building case types (below) | Case type |
 | `san-mateo-building-permits` | EnerGov tenant `SanMateoCAProd` | Pinned building case types (below) | Case type and description |
+
+**Exact record type (as built).** Fremont and Menlo Park keep only rows whose Record Type is exactly
+`Building Permit`. The shared row filter also matches a code followed by a space, so on its own it lets
+`Building Permit Revision` rows through: 17 of 61 rows in a 4-day test.
+
+**Temporary numbers (as built).** Fremont lists online applications still on a temporary number
+(`27TMP-…`, blank status). A search by that number finds no record page, so these rows are held, listed in
+coverage (`heldTemporary`), and not opened. They do not count toward the 800 stop.
 
 EnerGov case types:
 
