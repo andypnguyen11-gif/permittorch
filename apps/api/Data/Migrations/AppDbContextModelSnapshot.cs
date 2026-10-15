@@ -108,6 +108,53 @@ namespace PermitTorch.Api.Data.Migrations
                     b.ToTable("email_preference_markets", (string)null);
                 });
 
+            modelBuilder.Entity("PermitTorch.Api.Data.FeedbackSubmission", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasMaxLength(5000)
+                        .HasColumnType("character varying(5000)")
+                        .HasColumnName("message");
+
+                    b.Property<DateTime?>("NotifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("notified_at");
+
+                    b.Property<string>("PagePath")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("page_path");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("integer")
+                        .HasColumnName("type");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_feedback");
+
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("ix_feedback_created_at")
+                        .HasFilter("notified_at IS NULL");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_feedback_user_id");
+
+                    b.ToTable("feedback", (string)null);
+                });
+
             modelBuilder.Entity("PermitTorch.Api.Data.FireOpportunity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1155,6 +1202,18 @@ namespace PermitTorch.Api.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_email_preference_markets_markets_market_id");
+                });
+
+            modelBuilder.Entity("PermitTorch.Api.Data.FeedbackSubmission", b =>
+                {
+                    b.HasOne("PermitTorch.Api.Data.AppUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_feedback_app_users_user_id");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("PermitTorch.Api.Data.FireOpportunity", b =>
