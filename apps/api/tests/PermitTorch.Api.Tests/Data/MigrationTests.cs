@@ -87,6 +87,7 @@ public class MigrationTests : IAsyncLifetime
                 "MovePermitNamesToTheirRoles", "AddParticipantContact",
                 "RemovePlaceholderOwnersAndTestPermit", "ClearProjectValuesOfZero",
                 "AddTermsAcceptances", "AddRemovals", "AddContractorStatus", "AddLeadStanding", "AddSourcePublishingSettings",
+                "AddPreSprinklerLeads",
             },
             applied.Select(m => m[(m.IndexOf('_') + 1)..]).ToArray());
     }
@@ -581,5 +582,41 @@ public class MigrationTests : IAsyncLifetime
         Assert.Equal(PublishCadence.Daily, source.PublishCadence);
         Assert.Null(source.RecencyFromFirstSeenSince);
         Assert.Null(source.LatestRecordDate);
+    }
+
+    // Every source and run that existed before the pre-sprinkler feed is a fire one.
+    [Fact]
+    public async Task Existing_sources_and_runs_read_as_fire_after_the_pre_sprinkler_migration()
+    {
+        await using var db = CreateContext();
+        var migrator = db.GetService<IMigrator>();
+        await migrator.MigrateAsync("20261009141727_AddSourcePublishingSettings");
+
+        var marketId = Guid.NewGuid();
+        await db.Database.ExecuteSqlAsync(
+            $"INSERT INTO markets (id, name, city, state, slug, active) VALUES ({marketId}, 'Fremont', 'Fremont', 'CA', 'fremont-ca', true)");
+        await db.Database.ExecuteSqlAsync(
+            $"""
+            INSERT INTO sources (id, market_id, name, city, state, portal_type, source_url, jurisdiction, active, records_last_run, health_status, publishes_contractor, publish_cadence)
+            VALUES ({Guid.NewGuid()}, {marketId}, 'Fremont Fire', 'Fremont', 'CA', 'accela', 'https://example.gov', 'fremont-fire-permits', true, 0, 0, false, 0)
+            """);
+        await db.Database.ExecuteSqlAsync(
+            $"""
+            INSERT INTO scraper_runs (id, apify_run_id, status, started_at, records_imported, duplicates_skipped, classified, failures, duration_seconds)
+            VALUES ({Guid.NewGuid()}, 'run-before', 'SUCCEEDED', now(), 0, 0, 0, 0, 0)
+            """);
+
+        await migrator.MigrateAsync();
+
+        Assert.Equal(SourceFeed.Fire, (await db.Sources.AsNoTracking().SingleAsync()).Feed);
+        Assert.Equal(SourceFeed.Fire, (await db.ScraperRuns.AsNoTracking().SingleAsync()).Feed);
+        var indexdefs = await db.Database
+            .SqlQuery<string>($"SELECT indexdef AS \"Value\" FROM pg_indexes WHERE tablename = 'pre_sprinkler_leads'")
+            .ToListAsync();
+        Assert.Contains(indexdefs, d => d.Contains("UNIQUE") && d.Contains("source_id") && d.Contains("external_id"));
+        var jsonb = await db.Database
+            .SqlQuery<string>($"SELECT column_name AS \"Value\" FROM information_schema.columns WHERE table_name = 'pre_sprinkler_leads' AND data_type = 'jsonb'")
+            .ToListAsync();
+        Assert.Equal(new[] { "notes", "sprinkler_matches" }, jsonb.Order().ToArray());
     }
 }

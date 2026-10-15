@@ -28,14 +28,21 @@ public static class AdminEndpoints
         var sources = await db.Sources
             .OrderBy(s => s.Name)
             .Select(s => new AdminSourceDto(s.Id, s.Name, s.City, s.State, s.Active,
-                s.HealthStatus, s.LastSuccessfulRunAt, s.RecordsLastRun))
+                s.HealthStatus, s.LastSuccessfulRunAt, s.RecordsLastRun, s.Feed))
             .ToListAsync(ct);
         return Results.Ok(sources);
     }
 
     private static async Task<IResult> GetScraperRuns(
-        Guid? sourceId, int? page, int? pageSize, AppDbContext db, CancellationToken ct)
+        Guid? sourceId, string? feed, int? page, int? pageSize, AppDbContext db, CancellationToken ct)
     {
+        SourceFeed? feedFilter = null;
+        if (!string.IsNullOrWhiteSpace(feed))
+        {
+            if (!Wire.TryParse<SourceFeed>(feed.Trim(), out var parsed))
+                return ApiErrors.BadRequest("feed must be FIRE or PRE_SPRINKLER");
+            feedFilter = parsed;
+        }
         var currentPage = page ?? 1;
         var currentPageSize = pageSize ?? 25;
         if (currentPage is < 1 or > Leads.LeadFilters.MaxPage)
@@ -44,6 +51,7 @@ public static class AdminEndpoints
 
         var query = db.ScraperRuns.AsQueryable();
         if (sourceId is { } id) query = query.Where(r => r.SourceId == id);
+        if (feedFilter is { } f) query = query.Where(r => r.Feed == f);
 
         var total = await query.CountAsync(ct);
         var items = await query
@@ -51,7 +59,7 @@ public static class AdminEndpoints
             .Skip((currentPage - 1) * currentPageSize)
             .Take(currentPageSize)
             .Select(r => new ScraperRunSummaryDto(r.Id, r.ApifyRunId, r.Status, r.StartedAt,
-                r.FinishedAt, r.RecordsImported, r.DuplicatesSkipped, r.Failures, r.DurationSeconds))
+                r.FinishedAt, r.RecordsImported, r.DuplicatesSkipped, r.Failures, r.DurationSeconds, r.Feed))
             .ToListAsync(ct);
         return Results.Ok(new PagedResponse<ScraperRunSummaryDto>(items, total, currentPage, currentPageSize));
     }

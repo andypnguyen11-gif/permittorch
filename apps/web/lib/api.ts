@@ -11,6 +11,10 @@ import type {
   Paged,
   PermitStatus,
   PlanTier,
+  PreSprinklerKind,
+  PreSprinklerLead,
+  PreSprinklerMarket,
+  PreSprinklerStanding,
   Removal,
   RemovalKind,
   RemovalPreview,
@@ -298,4 +302,52 @@ export async function createRemoval(input: CreateRemovalInput, token: string): P
 export async function undoRemoval(id: string, token: string): Promise<void> {
   if (isMock()) return (await fixtures()).undoRemoval(id);
   return apiFetch<void>(`/api/admin/removals/${encodeURIComponent(id)}`, { method: "DELETE" }, token);
+}
+
+/** Filters of the admin pre-sprinkler list and its CSV. With no standing the API serves OPEN only;
+ * "ALL" shows every standing. */
+export interface PreSprinklerQuery {
+  market?: string; kind?: PreSprinklerKind; standing?: PreSprinklerStanding | "ALL";
+  filedFrom?: string; filedTo?: string; page?: number; pageSize?: number;
+}
+
+function preSprinklerParams(params: PreSprinklerQuery) {
+  return {
+    market: params.market, kind: params.kind, standing: params.standing,
+    filedFrom: params.filedFrom, filedTo: params.filedTo,
+  };
+}
+
+export async function getPreSprinklerLeads(params: PreSprinklerQuery, token: string): Promise<Paged<PreSprinklerLead>> {
+  if (isMock()) return (await fixtures()).getPreSprinklerLeads(params);
+  const qs = buildQuery({ ...preSprinklerParams(params), page: params.page, pageSize: params.pageSize });
+  return apiFetch<Paged<PreSprinklerLead>>(`/api/admin/pre-sprinkler${qs}`, {}, token);
+}
+
+export async function getPreSprinklerMarkets(token: string): Promise<PreSprinklerMarket[]> {
+  if (isMock()) return (await fixtures()).getPreSprinklerMarkets();
+  return apiFetch<PreSprinklerMarket[]>("/api/admin/pre-sprinkler/markets", {}, token);
+}
+
+// Same filters as the list, so the file holds what is on screen (every page of it).
+export async function exportPreSprinklerCsv(params: PreSprinklerQuery, token: string): Promise<LeadsExport> {
+  if (isMock()) return (await fixtures()).exportPreSprinklerCsv(params);
+  const base = resolveApiBaseUrl({
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
+    NODE_ENV: process.env.NODE_ENV,
+  });
+  const res = await fetch(`${base}/api/admin/pre-sprinkler/export.csv${buildQuery(preSprinklerParams(params))}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    let message = `API request failed with status ${res.status}`;
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body.error) message = body.error;
+    } catch {
+      // Non-JSON error body: keep the generic message.
+    }
+    throw new ApiError(message, res.status);
+  }
+  return { blob: await res.blob(), truncated: res.headers.get("X-Truncated") === "true" };
 }

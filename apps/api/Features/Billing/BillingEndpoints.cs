@@ -85,7 +85,7 @@ public static class BillingEndpoints
         var dataCutoff = DateTime.UtcNow - MarketDataWindow;
         var known = await db.Markets
             .Where(m => slugs.Contains(m.Slug) && m.Active)
-            .Select(m => new { m.Slug, m.Name, m.State, HasData = m.Sources.Any(s => s.LastSuccessfulRunAt >= dataCutoff) })
+            .Select(m => new { m.Slug, m.Name, m.State, HasData = m.Sources.Any(s => s.Feed == SourceFeed.Fire && s.LastSuccessfulRunAt >= dataCutoff) })
             .ToListAsync(ct);
         if (known.Count != slugs.Length)
             return ApiErrors.BadRequest("Unknown market selection");

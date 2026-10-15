@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Bell, Bookmark, CreditCard, Database, Globe, LayoutGrid,
+  Bell, Bookmark, CreditCard, Database, Globe, House, LayoutGrid,
   ListChecks, PlayCircle, Sparkles, Users as UsersIcon, User, UserX, type LucideIcon,
 } from "lucide-react";
 import type { AccountMe, PlanTier } from "@permittorch/types";
@@ -22,6 +22,7 @@ const ADMIN_NAV = [
   { href: "/app/admin/sources", label: "Sources", icon: Database },
   { href: "/app/admin/runs", label: "Runs", icon: PlayCircle },
   { href: "/app/admin/removals", label: "Removals", icon: UserX },
+  { href: "/app/admin/pre-sprinkler", label: "Pre-sprinkler", icon: House },
   { href: "/app/admin/users", label: "Users", icon: UsersIcon },
   { href: "/app/admin/subscriptions", label: "Subscriptions", icon: CreditCard },
 ];

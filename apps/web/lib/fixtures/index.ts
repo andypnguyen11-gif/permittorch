@@ -6,14 +6,19 @@
 // mock branch imports mockMarkets/mockMarketStats from ./markets (WS3-owned).
 import type {
   AccountMe, AdminSource, DigestFrequency, LeadDetail, LeadsResponse,
-  Market, Paged, PlanTier, Removal, RemovalPreview, RemovalRecord,
+  Market, Paged, PlanTier, PreSprinklerLead, PreSprinklerMarket, Removal, RemovalPreview, RemovalRecord,
   SavedLeadItem, SavedLeadStatus, ScraperRunSummary,
 } from "@permittorch/types";
-import { ApiError, type CreateRemovalInput, type LeadsExport, type LeadsQuery } from "@/lib/api";
+import {
+  ApiError, type CreateRemovalInput, type LeadsExport, type LeadsQuery, type PreSprinklerQuery,
+} from "@/lib/api";
 import { mockLeads, mockLeadsResponse, mockLeadDetail } from "./leads";
 import { mockSavedLeads } from "./saved";
 import { mockAccountForRole, mockAccountMarkets } from "./account";
-import { mockAdminSources, mockAdminRuns, mockRemovals, mockRemovalPreview, mockRemovalRecords } from "./admin";
+import {
+  mockAdminSources, mockAdminRuns, mockRemovals, mockRemovalPreview, mockRemovalRecords,
+  mockPreSprinklerLeads, mockPreSprinklerMarkets,
+} from "./admin";
 
 // In-memory saved-leads state so optimistic UI flows work in mock dev.
 const savedState: SavedLeadItem[] = [...mockSavedLeads];
@@ -77,10 +82,35 @@ export async function createRemoval(input: CreateRemovalInput): Promise<Removal>
     note: input.note ?? null, recordsAffected: input.confirmedCount, createdAt: new Date().toISOString() };
 }
 export async function undoRemoval(_id: string): Promise<void> { /* mock no-op */ }
+// Mirrors the API's filters closely enough for mock dev: standing defaults to OPEN, "ALL" shows every one.
+function preSprinklerMatches(params: PreSprinklerQuery): PreSprinklerLead[] {
+  const standing = params.standing ?? "OPEN";
+  return mockPreSprinklerLeads
+    .filter((l) => standing === "ALL" || l.standing === standing)
+    .filter((l) => !params.market || l.marketSlug === params.market)
+    .filter((l) => !params.kind || l.kind === params.kind)
+    .filter((l) => !params.filedFrom || (l.filedOn !== null && l.filedOn >= params.filedFrom))
+    .filter((l) => !params.filedTo || (l.filedOn !== null && l.filedOn <= params.filedTo))
+    .sort((a, b) => b.score - a.score);
+}
+export async function getPreSprinklerLeads(params: PreSprinklerQuery): Promise<Paged<PreSprinklerLead>> {
+  const items = preSprinklerMatches(params);
+  return { items, total: items.length, page: 1, pageSize: 100 };
+}
+export async function getPreSprinklerMarkets(): Promise<PreSprinklerMarket[]> { return mockPreSprinklerMarkets; }
+export async function exportPreSprinklerCsv(params: PreSprinklerQuery): Promise<LeadsExport> {
+  const quote = (value: string) => `"${value.replace(/"/g, '""')}"`;
+  const lines = ["City,Address,Building permit #",
+    ...preSprinklerMatches(params).map((l) => `${quote(l.city ?? "")},${quote(l.street ?? "")},${quote(l.permitNumber)}`)];
+  return { blob: new Blob([lines.join("\r\n") + "\r\n"], { type: "text/csv" }), truncated: false };
+}
 
 // Internal fixture exports for app tests.
 export { mockLeads, mockLeadDetails, mockLeadsResponse, mockLeadDetail } from "./leads";
 export { mockSavedLeads } from "./saved";
 export { mockAccountMe, mockAccountMarkets } from "./account";
-export { mockAdminSources, mockAdminRuns, mockRemovals, mockRemovalPreview, mockRemovalRecords } from "./admin";
+export {
+  mockAdminSources, mockAdminRuns, mockRemovals, mockRemovalPreview, mockRemovalRecords,
+  mockPreSprinklerLeads, mockPreSprinklerMarkets,
+} from "./admin";
 export { mockMarkets, mockMarketStats } from "./markets";

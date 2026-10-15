@@ -22,6 +22,9 @@ public class AppDbContext : DbContext
     public DbSet<EmailPreference> EmailPreferences => Set<EmailPreference>();
     public DbSet<SampleLeadRequest> SampleLeadRequests => Set<SampleLeadRequest>();
     public DbSet<Removal> Removals => Set<Removal>();
+    public DbSet<PreSprinklerLead> PreSprinklerLeads => Set<PreSprinklerLead>();
+    public DbSet<PreSprinklerContact> PreSprinklerContacts => Set<PreSprinklerContact>();
+    public DbSet<PreSprinklerSignal> PreSprinklerSignals => Set<PreSprinklerSignal>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
@@ -121,5 +124,17 @@ public class AppDbContext : DbContext
             e.Property(p => p.ContractorWithheld).HasDefaultValue(false);
             e.Property(p => p.ContractorWithheldIsFireTrade).HasDefaultValue(false);
         });
+
+        modelBuilder.Entity<PreSprinklerLead>(e =>
+        {
+            e.HasIndex(l => new { l.SourceId, l.ExternalId }).IsUnique();
+            e.HasOne(l => l.Source).WithMany().HasForeignKey(l => l.SourceId);
+            e.HasOne<ScraperRun>().WithMany().HasForeignKey(l => l.LastRunId);
+            e.HasMany(l => l.Contacts).WithOne().HasForeignKey(c => c.LeadId).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(l => l.Signals).WithOne().HasForeignKey(s => s.LeadId).OnDelete(DeleteBehavior.Cascade);
+            e.Property(l => l.SprinklerMatches).HasColumnType("jsonb");
+            e.Property(l => l.Notes).HasColumnType("jsonb");
+        });
+
     }
 }

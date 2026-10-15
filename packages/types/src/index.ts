@@ -77,9 +77,12 @@ export interface AccountMe {
   /** False until the user agrees to the current terms. The API serves no leads before that. */
   termsAccepted: boolean;
 }
+/** Which product a source or run feeds: fire permits, or the admin-only pre-sprinkler leads. */
+export type SourceFeed = "FIRE" | "PRE_SPRINKLER";
 export interface AdminSource {
   id: string; name: string; city: string; state: string; active: boolean;
   healthStatus: HealthStatus; lastSuccessfulRunAt: string | null; recordsLastRun: number;
+  feed: SourceFeed;
 }
 
 export type RemovalKind = "PHONE" | "EMAIL" | "NAME" | "RECORD";
@@ -100,4 +103,40 @@ export interface RemovalRecord {
 export interface ScraperRunSummary {
   id: string; apifyRunId: string; status: string; startedAt: string; finishedAt: string | null;
   recordsImported: number; duplicatesSkipped: number; failures: number; durationSeconds: number;
+  feed: SourceFeed;
 }
+
+// Admin-only pre-sprinkler leads: building permits for new homes, ADUs and additions with no fire
+// sprinkler application found at the address yet. The labels come from the API.
+export type PreSprinklerKind = "NEW_HOME" | "ADU" | "ADDITION";
+export type SprinklerRequirement = "REQUIRED" | "CONDITIONAL";
+export type SprinklerCheckStatus = "NONE_FOUND" | "FOUND" | "UNAVAILABLE";
+export type PreSprinklerStanding = "OPEN" | "SPRINKLER_FILED" | "CHECK_UNAVAILABLE" | "NO_LONGER_LISTED";
+export type PreSprinklerContactRole = "CONTRACTOR" | "APPLICANT" | "OWNER" | "ARCHITECT" | "ENGINEER" | "OTHER";
+/** A party as the permit record publishes it. */
+export interface PreSprinklerContact {
+  role: PreSprinklerContactRole; roleLabel: string | null; name: string | null; company: string | null;
+  phone: string | null; email: string | null; licenseNumber: string | null;
+}
+export interface SprinklerMatch {
+  permitNumber: string | null; sourceId: string | null; filedDate: string | null; status: string | null;
+}
+export interface PreSprinklerSignal { signalType: string; description: string; weight: number; }
+export interface PreSprinklerLead {
+  id: string; marketSlug: string; marketName: string; sourceId: string;
+  permitNumber: string; permitTypeLabel: string | null;
+  kind: PreSprinklerKind; kindLabel: string;
+  sprinklerRequirement: SprinklerRequirement; requirementLabel: string;
+  status: string | null; filedOn: string | null; description: string | null; projectName: string | null;
+  street: string | null; city: string | null; state: string | null; zip: string | null;
+  squareFeet: number | null; sizeKnown: boolean; valuation: number | null;
+  recordUrl: string | null; portalUrl: string | null;
+  sprinklerCheckStatus: SprinklerCheckStatus; sprinklerLabel: string; sprinklerTooltip: string | null;
+  sprinklerMatches: SprinklerMatch[]; sprinklerCheckedFrom: string | null; sprinklerCheckedAt: string | null;
+  notes: string[]; score: number; standing: PreSprinklerStanding; standingLabel: string;
+  firstSeenAt: string; lastSeenAt: string;
+  contacts: PreSprinklerContact[];
+  /** Detail only. */
+  signals?: PreSprinklerSignal[] | null;
+}
+export interface PreSprinklerMarket { slug: string; name: string; }

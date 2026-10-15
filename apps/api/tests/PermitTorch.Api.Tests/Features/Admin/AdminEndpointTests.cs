@@ -180,4 +180,32 @@ public class AdminEndpointTests(ApiFactory factory) : IAsyncLifetime
         Assert.False(stored.CategoryOverridden);
         Assert.Equal(FireCategory.GeneralFireProtection, stored.Category);
     }
+
+    [Fact]
+    public async Task Runs_show_their_feed_and_filter_by_it()
+    {
+        var preRun = new ScraperRun
+        {
+            Id = Guid.NewGuid(), ApifyRunId = $"run_{Guid.NewGuid():N}", Status = "SUCCEEDED",
+            StartedAt = DateTime.UtcNow.AddMinutes(-30), FinishedAt = DateTime.UtcNow.AddMinutes(-25),
+            RecordsImported = 7, DurationSeconds = 300, Feed = SourceFeed.PreSprinkler,
+        };
+        await factory.SeedAsync(db => db.Add(preRun));
+
+        var pre = JsonSerializer.Deserialize<JsonElement>(await _admin.GetStringAsync(
+            "/api/admin/scraper-runs?feed=PRE_SPRINKLER&pageSize=100"));
+        var items = pre.GetProperty("items").EnumerateArray().ToList();
+        Assert.Contains(items, r => r.GetProperty("apifyRunId").GetString() == preRun.ApifyRunId);
+        Assert.All(items, r => Assert.Equal("PRE_SPRINKLER", r.GetProperty("feed").GetString()));
+
+        var fire = JsonSerializer.Deserialize<JsonElement>(await _admin.GetStringAsync(
+            "/api/admin/scraper-runs?feed=FIRE&pageSize=100"));
+        Assert.DoesNotContain(fire.GetProperty("items").EnumerateArray(),
+            r => r.GetProperty("apifyRunId").GetString() == preRun.ApifyRunId);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _admin.GetAsync("/api/admin/scraper-runs?feed=WATER")).StatusCode);
+
+        var sources = JsonSerializer.Deserialize<JsonElement>(await _admin.GetStringAsync("/api/admin/sources"));
+        Assert.Equal("FIRE", sources.EnumerateArray().Single(x => x.GetProperty("id").GetString() == _source.Id.ToString())
+            .GetProperty("feed").GetString());
+    }
 }

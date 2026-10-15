@@ -6,7 +6,7 @@ import type {
   HealthStatus, LeadDetail, LeadSignal, LeadsResponse, LeadSummary,
   Market, MarketStats, Paged, PermitStatus, PlanTier, Removal,
   RemovalPreview, RemovalRecord, SavedLeadItem,
-  SavedLeadStatus, ScraperRunSummary,
+  SavedLeadStatus, ScraperRunSummary, PreSprinklerLead, PreSprinklerMarket,
 } from "./index";
 
 const category: FireCategory = "FIRE_SPRINKLER";
@@ -83,13 +83,13 @@ const me: AccountMe = {
 
 const adminSource: AdminSource = {
   id: "src_1", name: "Houston", city: "Houston", state: "TX", active: true,
-  healthStatus: health, lastSuccessfulRunAt: null, recordsLastRun: 0,
+  healthStatus: health, lastSuccessfulRunAt: null, recordsLastRun: 0, feed: "FIRE",
 };
 
 const run: ScraperRunSummary = {
   id: "run_1", apifyRunId: "apify_1", status: "SUCCEEDED",
   startedAt: "2026-08-19T00:00:00Z", finishedAt: null,
-  recordsImported: 100, duplicatesSkipped: 5, failures: 0, durationSeconds: 42.5,
+  recordsImported: 100, duplicatesSkipped: 5, failures: 0, durationSeconds: 42.5, feed: "PRE_SPRINKLER",
 };
 
 const removal: Removal = {
@@ -101,6 +101,23 @@ const removalRecord: RemovalRecord = {
   permitId: "per_1", permitNumber: "BLD-1", address: "1 Main St", city: "Mesa", state: "AZ", filedDate: null,
 };
 void removal; void removalPreview; void removalRecord;
+
+const preSprinklerLead: PreSprinklerLead = {
+  id: "psl_1", marketSlug: "hayward-ca", marketName: "Hayward", sourceId: "hayward-building-permits",
+  permitNumber: "BL-1", permitTypeLabel: "Residential - New Single Family",
+  kind: "NEW_HOME", kindLabel: "New home", sprinklerRequirement: "REQUIRED",
+  requirementLabel: "Sprinklers required (new home)", status: "In Review", filedOn: "2026-08-21",
+  description: null, projectName: null, street: "100 Test St", city: "Hayward", state: "CA", zip: "94541",
+  squareFeet: 1480, sizeKnown: true, valuation: null, recordUrl: null, portalUrl: null,
+  sprinklerCheckStatus: "NONE_FOUND", sprinklerLabel: "No sprinkler permit yet", sprinklerTooltip: null,
+  sprinklerMatches: [], sprinklerCheckedFrom: "2026-01-15", sprinklerCheckedAt: "2026-10-15",
+  notes: [], score: 80, standing: "OPEN", standingLabel: "Open",
+  firstSeenAt: "2026-10-15T00:00:00Z", lastSeenAt: "2026-10-15T00:00:00Z",
+  contacts: [{ role: "CONTRACTOR", roleLabel: "Contractor", name: "Test Builder", company: null,
+    phone: "(555) 010-0001", email: "b@example.com", licenseNumber: null }],
+};
+const preSprinklerMarket: PreSprinklerMarket = { slug: "hayward-ca", name: "Hayward" };
+void preSprinklerLead; void preSprinklerMarket;
 
 export type ContractOk = [
   typeof leads, typeof detail, typeof market, typeof stats,

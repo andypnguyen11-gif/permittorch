@@ -63,7 +63,7 @@ public class DevSeederTests : IAsyncLifetime
         var first = await SeedAsync(Config(DevFlags(Identities)));
         var second = await SeedAsync(Config(DevFlags(Identities)));
 
-        Assert.Equal(new DevSeeder.SeedCounts(39, 52, 10, 10), first);
+        Assert.Equal(new DevSeeder.SeedCounts(39, 56, 10, 10), first);
         Assert.Equal(first, second);
 
         await using var db = CreateContext();
@@ -265,7 +265,7 @@ public class DevSeederTests : IAsyncLifetime
         var first = await SeedAsync(Config(Identities));
         var second = await SeedAsync(Config(Identities));
 
-        Assert.Equal(new DevSeeder.SeedCounts(39, 52, 0, 0), first);
+        Assert.Equal(new DevSeeder.SeedCounts(39, 56, 0, 0), first);
         Assert.Equal(first, second);
         await using var db = CreateContext();
         Assert.Equal(0, await db.AppUsers.CountAsync());
@@ -278,7 +278,7 @@ public class DevSeederTests : IAsyncLifetime
         var output = new StringWriter();
         var counts = await SeedAsync(Config(DevFlags(new(Identities) { ["APIFY_TOKEN"] = "" })), "Production", output);
 
-        Assert.Equal(new DevSeeder.SeedCounts(39, 52, 0, 0), counts);
+        Assert.Equal(new DevSeeder.SeedCounts(39, 56, 0, 0), counts);
         await using var db = CreateContext();
         Assert.Equal(0, await db.Permits.CountAsync());
         Assert.Equal(0, await db.FireOpportunities.CountAsync());
@@ -287,7 +287,7 @@ public class DevSeederTests : IAsyncLifetime
         Assert.Equal(0, await db.Subscriptions.CountAsync());
         Assert.Equal(0, await db.SubscriptionMarkets.CountAsync());
         Assert.Equal(39, await db.Markets.CountAsync());
-        Assert.Equal(52, await db.Sources.CountAsync());
+        Assert.Equal(56, await db.Sources.CountAsync());
         var log = output.ToString();
         Assert.Contains($"WARN: {DevSeeder.SampleDataFlag}=true is ignored in Production", log);
         Assert.Contains($"WARN: {DevSeeder.E2EIdentitiesFlag}=true is ignored in Production", log);
@@ -534,5 +534,26 @@ public class DevSeederTests : IAsyncLifetime
             if (File.Exists(candidate)) return candidate;
         }
         throw new FileNotFoundException(relative);
+    }
+
+    [Fact]
+    public async Task The_four_pre_sprinkler_sources_are_seeded_under_their_markets_and_every_other_source_is_fire()
+    {
+        await SeedAsync(Config());
+
+        await using var db = CreateContext();
+        var sources = await db.Sources.Include(s => s.Market).ToListAsync();
+        var preSprinkler = sources.Where(s => s.Feed == SourceFeed.PreSprinkler)
+            .ToDictionary(s => s.Jurisdiction, s => s.Market.Slug);
+        Assert.Equal(new Dictionary<string, string>
+        {
+            ["fremont-building-permits"] = "fremont-ca",
+            ["hayward-building-permits"] = "hayward-ca",
+            ["san-mateo-building-permits"] = "san-mateo-ca",
+            ["menlo-park-building-permits"] = "menlo-park-ca",
+        }, preSprinkler);
+        Assert.Equal(52, sources.Count(s => s.Feed == SourceFeed.Fire));
+        // Not fire-permit sources: never in the fire permit-type configuration.
+        Assert.Empty(preSprinkler.Keys.Intersect(PermitTorch.Api.Infrastructure.Apify.SourcePermitTypes.ListedSourceIds));
     }
 }

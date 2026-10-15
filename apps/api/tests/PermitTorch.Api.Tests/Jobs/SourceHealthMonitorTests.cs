@@ -20,7 +20,7 @@ public class SourceHealthMonitorTests
     public SourceHealthMonitorTests(PostgresFixture fixture) => _fixture = fixture;
 
     private async Task<Source> SeedSourceAsync(HealthStatus health, DateTime? lastSuccessfulRunAt,
-        bool active = true)
+        bool active = true, SourceFeed feed = SourceFeed.Fire)
     {
         await using var db = _fixture.CreateContext();
         var market = new Market
@@ -46,6 +46,7 @@ public class SourceHealthMonitorTests
             HealthStatus = health,
             LastSuccessfulRunAt = lastSuccessfulRunAt,
             RecordsLastRun = 0,
+            Feed = feed,
         };
         db.Add(market);
         db.Add(source);
@@ -170,5 +171,21 @@ public class SourceHealthMonitorTests
 
         Assert.True(transitioned >= 1);
         Assert.Equal(HealthStatus.Warning, await GetHealthAsync(_fixture, neverRan.Id));
+    }
+
+    // The pre-sprinkler task runs weekly: a day-old run is current, a nine-day-old one is stale.
+    [Fact]
+    public async Task CheckOnce_GivesPreSprinklerSourcesAWeeklyClock()
+    {
+        var now = DateTime.UtcNow;
+        var lastWeek = await SeedSourceAsync(HealthStatus.Healthy, now.AddDays(-6), feed: SourceFeed.PreSprinkler);
+        var overdue = await SeedSourceAsync(HealthStatus.Healthy, now.AddDays(-9), feed: SourceFeed.PreSprinkler);
+        var (monitor, sp) = BuildMonitor();
+        await using var _ = sp;
+
+        await monitor.CheckOnceAsync(now, CancellationToken.None);
+
+        Assert.Equal(HealthStatus.Healthy, await GetHealthAsync(_fixture, lastWeek.Id));
+        Assert.Equal(HealthStatus.Stale, await GetHealthAsync(_fixture, overdue.Id));
     }
 }

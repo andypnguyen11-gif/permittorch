@@ -464,6 +464,236 @@ namespace PermitTorch.Api.Data.Migrations
                     b.ToTable("permit_participants", (string)null);
                 });
 
+            modelBuilder.Entity("PermitTorch.Api.Data.PreSprinklerContact", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Company")
+                        .HasColumnType("text")
+                        .HasColumnName("company");
+
+                    b.Property<string>("Email")
+                        .HasColumnType("text")
+                        .HasColumnName("email");
+
+                    b.Property<Guid>("LeadId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("lead_id");
+
+                    b.Property<string>("LicenseNumber")
+                        .HasColumnType("text")
+                        .HasColumnName("license_number");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("text")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Phone")
+                        .HasColumnType("text")
+                        .HasColumnName("phone");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer")
+                        .HasColumnName("position");
+
+                    b.Property<int>("Role")
+                        .HasColumnType("integer")
+                        .HasColumnName("role");
+
+                    b.Property<string>("RoleLabel")
+                        .HasColumnType("text")
+                        .HasColumnName("role_label");
+
+                    b.HasKey("Id")
+                        .HasName("pk_pre_sprinkler_contacts");
+
+                    b.HasIndex("LeadId")
+                        .HasDatabaseName("ix_pre_sprinkler_contacts_lead_id");
+
+                    b.ToTable("pre_sprinkler_contacts", (string)null);
+                });
+
+            modelBuilder.Entity("PermitTorch.Api.Data.PreSprinklerLead", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("City")
+                        .HasColumnType("text")
+                        .HasColumnName("city");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text")
+                        .HasColumnName("description");
+
+                    b.Property<string>("ExternalId")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("external_id");
+
+                    b.Property<DateOnly?>("FiledOn")
+                        .HasColumnType("date")
+                        .HasColumnName("filed_on");
+
+                    b.Property<DateTime>("FirstSeenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("first_seen_at");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer")
+                        .HasColumnName("kind");
+
+                    b.Property<Guid?>("LastRunId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("last_run_id");
+
+                    b.Property<DateTime>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_seen_at");
+
+                    b.Property<int>("LeadScore")
+                        .HasColumnType("integer")
+                        .HasColumnName("lead_score");
+
+                    b.Property<string>("Notes")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("notes");
+
+                    b.Property<string>("PermitNumber")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("permit_number");
+
+                    b.Property<string>("PermitTypeLabel")
+                        .HasColumnType("text")
+                        .HasColumnName("permit_type_label");
+
+                    b.Property<string>("PortalUrl")
+                        .HasColumnType("text")
+                        .HasColumnName("portal_url");
+
+                    b.Property<string>("ProjectName")
+                        .HasColumnType("text")
+                        .HasColumnName("project_name");
+
+                    b.Property<string>("RecordUrl")
+                        .HasColumnType("text")
+                        .HasColumnName("record_url");
+
+                    b.Property<DateTime?>("ScoredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("scored_at");
+
+                    b.Property<bool>("SizeKnown")
+                        .HasColumnType("boolean")
+                        .HasColumnName("size_known");
+
+                    b.Property<Guid>("SourceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("source_id");
+
+                    b.Property<int>("SprinklerCheckStatus")
+                        .HasColumnType("integer")
+                        .HasColumnName("sprinkler_check_status");
+
+                    b.Property<DateOnly?>("SprinklerCheckedAt")
+                        .HasColumnType("date")
+                        .HasColumnName("sprinkler_checked_at");
+
+                    b.Property<DateOnly?>("SprinklerCheckedFrom")
+                        .HasColumnType("date")
+                        .HasColumnName("sprinkler_checked_from");
+
+                    b.Property<string>("SprinklerMatches")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("sprinkler_matches");
+
+                    b.Property<int>("SprinklerRequirement")
+                        .HasColumnType("integer")
+                        .HasColumnName("sprinkler_requirement");
+
+                    b.Property<int?>("SquareFeet")
+                        .HasColumnType("integer")
+                        .HasColumnName("square_feet");
+
+                    b.Property<int>("Standing")
+                        .HasColumnType("integer")
+                        .HasColumnName("standing");
+
+                    b.Property<string>("State")
+                        .HasColumnType("text")
+                        .HasColumnName("state");
+
+                    b.Property<string>("Status")
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Street")
+                        .HasColumnType("text")
+                        .HasColumnName("street");
+
+                    b.Property<decimal?>("Valuation")
+                        .HasColumnType("numeric")
+                        .HasColumnName("valuation");
+
+                    b.Property<string>("Zip")
+                        .HasColumnType("text")
+                        .HasColumnName("zip");
+
+                    b.HasKey("Id")
+                        .HasName("pk_pre_sprinkler_leads");
+
+                    b.HasIndex("LastRunId")
+                        .HasDatabaseName("ix_pre_sprinkler_leads_last_run_id");
+
+                    b.HasIndex("SourceId", "ExternalId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_pre_sprinkler_leads_source_id_external_id");
+
+                    b.ToTable("pre_sprinkler_leads", (string)null);
+                });
+
+            modelBuilder.Entity("PermitTorch.Api.Data.PreSprinklerSignal", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("description");
+
+                    b.Property<Guid>("LeadId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("lead_id");
+
+                    b.Property<string>("SignalType")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("signal_type");
+
+                    b.Property<int>("Weight")
+                        .HasColumnType("integer")
+                        .HasColumnName("weight");
+
+                    b.HasKey("Id")
+                        .HasName("pk_pre_sprinkler_signals");
+
+                    b.HasIndex("LeadId")
+                        .HasDatabaseName("ix_pre_sprinkler_signals_lead_id");
+
+                    b.ToTable("pre_sprinkler_signals", (string)null);
+                });
+
             modelBuilder.Entity("PermitTorch.Api.Data.Removal", b =>
                 {
                     b.Property<Guid>("Id")
@@ -645,6 +875,10 @@ namespace PermitTorch.Api.Data.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("failures");
 
+                    b.Property<int>("Feed")
+                        .HasColumnType("integer")
+                        .HasColumnName("feed");
+
                     b.Property<DateTime?>("FinishedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("finished_at");
@@ -694,6 +928,10 @@ namespace PermitTorch.Api.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("city");
+
+                    b.Property<int>("Feed")
+                        .HasColumnType("integer")
+                        .HasColumnName("feed");
 
                     b.Property<int>("HealthStatus")
                         .HasColumnType("integer")
@@ -927,6 +1165,43 @@ namespace PermitTorch.Api.Data.Migrations
                         .HasConstraintName("fk_permit_participants_permits_permit_id");
                 });
 
+            modelBuilder.Entity("PermitTorch.Api.Data.PreSprinklerContact", b =>
+                {
+                    b.HasOne("PermitTorch.Api.Data.PreSprinklerLead", null)
+                        .WithMany("Contacts")
+                        .HasForeignKey("LeadId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_pre_sprinkler_contacts_pre_sprinkler_leads_lead_id");
+                });
+
+            modelBuilder.Entity("PermitTorch.Api.Data.PreSprinklerLead", b =>
+                {
+                    b.HasOne("PermitTorch.Api.Data.ScraperRun", null)
+                        .WithMany()
+                        .HasForeignKey("LastRunId")
+                        .HasConstraintName("fk_pre_sprinkler_leads_scraper_runs_last_run_id");
+
+                    b.HasOne("PermitTorch.Api.Data.Source", "Source")
+                        .WithMany()
+                        .HasForeignKey("SourceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_pre_sprinkler_leads_sources_source_id");
+
+                    b.Navigation("Source");
+                });
+
+            modelBuilder.Entity("PermitTorch.Api.Data.PreSprinklerSignal", b =>
+                {
+                    b.HasOne("PermitTorch.Api.Data.PreSprinklerLead", null)
+                        .WithMany("Signals")
+                        .HasForeignKey("LeadId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_pre_sprinkler_signals_pre_sprinkler_leads_lead_id");
+                });
+
             modelBuilder.Entity("PermitTorch.Api.Data.SavedLead", b =>
                 {
                     b.HasOne("PermitTorch.Api.Data.FireOpportunity", null)
@@ -1028,6 +1303,13 @@ namespace PermitTorch.Api.Data.Migrations
                     b.Navigation("Opportunity");
 
                     b.Navigation("Participants");
+                });
+
+            modelBuilder.Entity("PermitTorch.Api.Data.PreSprinklerLead", b =>
+                {
+                    b.Navigation("Contacts");
+
+                    b.Navigation("Signals");
                 });
 
             modelBuilder.Entity("PermitTorch.Api.Data.Subscription", b =>

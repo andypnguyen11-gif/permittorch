@@ -34,3 +34,19 @@ public enum LeadStanding
     FireWorkAhead, FireWorkMentioned, FireWorkPermitNoContractor, InspectionOrViolation,
     FireWorkPermitContractorNamed, FireFirmNamed, Closed, NotFireWork,
 }
+// Which product a source or a scraper run feeds. Fire sources feed permits and fire_opportunities;
+// PreSprinkler sources feed the admin-only pre_sprinkler_* tables, and nothing else.
+public enum SourceFeed { Fire, PreSprinkler }
+
+// What a pre-sprinkler building permit is for, as the scraper classified it from the city's record.
+public enum PreSprinklerKind { NewHome, Adu, Addition }
+// California requires a residential sprinkler system in every new one- or two-family home; an ADU
+// or addition needs one only under the city's own rule.
+public enum SprinklerRequirement { Required, Conditional }
+// The scraper's look for a fire sprinkler application at the lead's address. Unavailable: the
+// city's fire permits could not be read, which is never the same as finding none.
+public enum SprinklerCheckStatus { NoneFound, Found, Unavailable }
+// Where a pre-sprinkler lead stands. Open is the default view. NoLongerListed: a run whose source
+// reported ok did not list it (issued, closed or aged out of the window).
+public enum PreSprinklerStanding { Open, SprinklerFiled, CheckUnavailable, NoLongerListed }
+public enum PreSprinklerContactRole { Contractor, Applicant, Owner, Architect, Engineer, Other }
