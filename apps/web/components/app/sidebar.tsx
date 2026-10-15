@@ -1,12 +1,14 @@
 "use client";
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Bell, Bookmark, CreditCard, Database, Globe, House, LayoutGrid,
-  ListChecks, PlayCircle, Sparkles, Users as UsersIcon, User, UserX, type LucideIcon,
+  ListChecks, MessageSquare, PlayCircle, Sparkles, Users as UsersIcon, User, UserX, type LucideIcon,
 } from "lucide-react";
 import type { AccountMe, PlanTier } from "@permittorch/types";
 import { BrandMark } from "@/components/app/brand";
+import { FeedbackDialog } from "@/components/feedback/feedback-dialog";
 import { cn } from "@/lib/utils";
 
 const MAIN_NAV = [
@@ -48,12 +50,15 @@ function NavLink({ href, label, icon: Icon, active, onNavigate }: {
   );
 }
 
-export function Sidebar({ role, plan, freeAccess = false, onNavigate, top }: {
+export function Sidebar({ role, plan, freeAccess = false, onNavigate, onSendFeedback, top }: {
   role: AccountMe["role"];
   plan?: PlanTier | null;
   /** Free during the pilot: everything is included, so there is nothing to upgrade to. */
   freeAccess?: boolean;
   onNavigate?: () => void;
+  /** Given by the phone menu, which must close before the dialog opens; without it the
+   *  sidebar opens the feedback dialog itself. */
+  onSendFeedback?: () => void;
   /** Optional control rendered under the brand (the mobile sheet's market selector). */
   top?: React.ReactNode;
 }) {
@@ -61,6 +66,7 @@ export function Sidebar({ role, plan, freeAccess = false, onNavigate, top }: {
   const isActive = (href: string) =>
     href === "/app" ? pathname === "/app" : pathname === href || pathname.startsWith(`${href}/`);
   const showUpsell = !freeAccess && plan !== undefined && plan !== "TERRITORY";
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   return (
     <aside className="flex h-full w-60 shrink-0 flex-col border-r border-border bg-white">
@@ -90,6 +96,17 @@ export function Sidebar({ role, plan, freeAccess = false, onNavigate, top }: {
           </div>
         )}
       </nav>
+      <div className="px-3 py-2">
+        <button
+          type="button"
+          onClick={onSendFeedback ?? (() => setFeedbackOpen(true))}
+          className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-stone-600 transition-colors outline-none hover:bg-stone-100 hover:text-stone-900 focus-visible:ring-3 focus-visible:ring-ring/50"
+        >
+          <MessageSquare className="size-4 text-stone-400" aria-hidden />
+          Send feedback
+        </button>
+      </div>
+      {!onSendFeedback && <FeedbackDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} />}
       {showUpsell && (
         <div className="m-3 rounded-xl border border-orange-100 [@media(max-height:700px)]:hidden bg-gradient-to-b from-orange-50 to-white p-4">
           <p className="flex items-center gap-1.5 text-sm font-semibold text-stone-900">

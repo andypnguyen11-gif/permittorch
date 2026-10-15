@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 import "./dom-cleanup";
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { Sidebar } from "@/components/app/sidebar";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/app/leads",
 }));
+vi.mock("@/components/app/use-api-token", () => ({ useApiToken: () => async () => "tok" }));
 
 describe("Sidebar", () => {
   it("renders the six member nav items", () => {
@@ -64,5 +65,28 @@ describe("Sidebar extras", () => {
     expect(screen.queryByRole("link", { name: /Upgrade plan/ })).not.toBeInTheDocument();
     rerender(<Sidebar role="MEMBER" plan="PRO" freeAccess />);
     expect(screen.queryByRole("link", { name: /Upgrade plan/ })).not.toBeInTheDocument();
+  });
+  it("puts Send feedback below the main nav for every role", () => {
+    for (const role of ["MEMBER", "ADMIN", "SUPER_ADMIN"] as const) {
+      const { unmount } = render(<Sidebar role={role} />);
+      const button = screen.getByRole("button", { name: "Send feedback" });
+      const lastNav = screen.getByRole("link", { name: "Account" });
+      expect(lastNav.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      unmount();
+    }
+  });
+
+  it("opens the feedback dialog itself when no handler is given", () => {
+    render(<Sidebar role="MEMBER" />);
+    fireEvent.click(screen.getByRole("button", { name: "Send feedback" }));
+    expect(screen.getByRole("dialog", { name: "Send feedback" })).toBeInTheDocument();
+  });
+
+  it("hands Send feedback to the given handler instead of opening its own dialog", () => {
+    const onSendFeedback = vi.fn();
+    render(<Sidebar role="MEMBER" onSendFeedback={onSendFeedback} />);
+    fireEvent.click(screen.getByRole("button", { name: "Send feedback" }));
+    expect(onSendFeedback).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });
