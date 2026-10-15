@@ -5,6 +5,7 @@ using PermitTorch.Api.Features.Billing;
 using PermitTorch.Api.Features.EmailDigests;
 using PermitTorch.Api.Features.Leads;
 using PermitTorch.Api.Features.Markets;
+using PermitTorch.Api.Features.PreSprinkler;
 using PermitTorch.Api.Features.SampleLeads;
 using PermitTorch.Api.Features.SavedLeads;
 
@@ -25,6 +26,7 @@ public static class FeatureEndpoints
         endpoints.MapUnsubscribeEndpoints();
         endpoints.MapAdminEndpoints();
         endpoints.MapRemovalEndpoints();
+        endpoints.MapPreSprinklerEndpoints();
         return endpoints;
     }
 }
