@@ -89,6 +89,25 @@ namespace PermitTorch.Api.Data.Migrations
                     b.ToTable("email_preferences", (string)null);
                 });
 
+            modelBuilder.Entity("PermitTorch.Api.Data.EmailPreferenceMarket", b =>
+                {
+                    b.Property<Guid>("EmailPreferenceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("email_preference_id");
+
+                    b.Property<Guid>("MarketId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("market_id");
+
+                    b.HasKey("EmailPreferenceId", "MarketId")
+                        .HasName("pk_email_preference_markets");
+
+                    b.HasIndex("MarketId")
+                        .HasDatabaseName("ix_email_preference_markets_market_id");
+
+                    b.ToTable("email_preference_markets", (string)null);
+                });
+
             modelBuilder.Entity("PermitTorch.Api.Data.FireOpportunity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1121,6 +1140,23 @@ namespace PermitTorch.Api.Data.Migrations
                         .HasConstraintName("fk_email_preferences_app_users_user_id");
                 });
 
+            modelBuilder.Entity("PermitTorch.Api.Data.EmailPreferenceMarket", b =>
+                {
+                    b.HasOne("PermitTorch.Api.Data.EmailPreference", null)
+                        .WithMany("Markets")
+                        .HasForeignKey("EmailPreferenceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_email_preference_markets_email_preferences_email_preference");
+
+                    b.HasOne("PermitTorch.Api.Data.Market", null)
+                        .WithMany()
+                        .HasForeignKey("MarketId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_email_preference_markets_markets_market_id");
+                });
+
             modelBuilder.Entity("PermitTorch.Api.Data.FireOpportunity", b =>
                 {
                     b.HasOne("PermitTorch.Api.Data.Permit", "Permit")
@@ -1279,6 +1315,11 @@ namespace PermitTorch.Api.Data.Migrations
             modelBuilder.Entity("PermitTorch.Api.Data.AppUser", b =>
                 {
                     b.Navigation("TermsAcceptances");
+                });
+
+            modelBuilder.Entity("PermitTorch.Api.Data.EmailPreference", b =>
+                {
+                    b.Navigation("Markets");
                 });
 
             modelBuilder.Entity("PermitTorch.Api.Data.FireOpportunity", b =>

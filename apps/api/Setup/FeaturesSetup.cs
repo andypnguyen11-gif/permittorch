@@ -71,6 +71,7 @@ public static class FeaturesSetup
         });
         services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, SuperAdminHandler>();
         services.AddScoped<CurrentUserService>();
+        services.Configure<AccessOptions>(configuration.GetSection(AccessOptions.Section));
         services.AddScoped<EntitlementService>();
         services.AddScoped<PermitTorch.Api.Features.Admin.Removals.RemovalService>();
 

@@ -72,7 +72,7 @@ public class PreSprinklerIsolationTests(ApiFactory factory)
         using (var scope = factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            var service = new DigestService(db, new PermitTorch.Api.Features.Auth.EntitlementService(db), resend,
+            var service = new DigestService(db, new PermitTorch.Api.Features.Auth.EntitlementService(db, TestAccess.Paid), resend,
                 new UnsubscribeTokens(Microsoft.Extensions.Options.Options.Create(DigestServiceTests.EmailOptions)),
                 Microsoft.Extensions.Options.Options.Create(DigestServiceTests.EmailOptions),
                 NullLogger<DigestService>.Instance);

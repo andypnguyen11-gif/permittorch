@@ -238,6 +238,15 @@ public class EmailPreference
     public Guid UserId { get; set; }
     public DigestFrequency Frequency { get; set; }
     public DateTime? LastSentAt { get; set; }
+    /// <summary>The markets the user wants in their digest. Always intersected with the
+    /// entitled markets when a digest is built, so a stored choice never widens access.</summary>
+    public List<EmailPreferenceMarket> Markets { get; set; } = new();
+}
+
+public class EmailPreferenceMarket                         // join: digest market choice
+{
+    public Guid EmailPreferenceId { get; set; }
+    public Guid MarketId { get; set; }
 }
 
 public class SampleLeadRequest                             // marketing lead magnet capture

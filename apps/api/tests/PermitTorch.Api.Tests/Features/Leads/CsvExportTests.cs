@@ -58,6 +58,14 @@ public class CsvExportTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task User_without_subscription_gets_403_when_the_free_pilot_is_off()
+    {
+        var sub = $"user_{Guid.NewGuid():N}";
+        var response = await factory.CreateClientFor(sub, $"{sub}@example.com").GetAsync("/api/leads/export.csv");
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Territory_plan_is_allowed_and_starter_gets_403_error_shape()
     {
         var (territory, _) = await SeedUserAsync(PlanTier.Territory);

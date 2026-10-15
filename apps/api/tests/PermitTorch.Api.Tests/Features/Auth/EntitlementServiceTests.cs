@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using PermitTorch.Api.Data;
 using PermitTorch.Api.Features.Auth;
@@ -8,11 +9,11 @@ namespace PermitTorch.Api.Tests.Features.Auth;
 [Collection("api")]
 public class EntitlementServiceTests(ApiFactory factory)
 {
-    private async Task<T> WithServiceAsync<T>(Func<EntitlementService, Task<T>> action)
+    private async Task<T> WithServiceAsync<T>(Func<EntitlementService, Task<T>> action, bool freeForAll = false)
     {
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        return await action(new EntitlementService(db));
+        return await action(new EntitlementService(db, TestAccess.For(freeForAll)));
     }
 
     [Theory]
@@ -100,5 +101,63 @@ public class EntitlementServiceTests(ApiFactory factory)
 
         Assert.Empty(await WithServiceAsync(s => s.GetEntitledMarketIdsAsync(user, CancellationToken.None)));
         Assert.Null(await WithServiceAsync(s => s.GetEntitledPlanAsync(user, CancellationToken.None)));
+    }
+
+    // ── Free pilot (Access:FreeForAll) ──────────────────────────────────────────
+
+    [Fact]
+    public async Task Free_pilot_entitles_a_member_without_subscription_to_every_active_market_and_the_top_plan()
+    {
+        var active = new[] { TestSeed.Market("Freeville"), TestSeed.Market("Opentown", "OK") };
+        var inactive = TestSeed.Market("Dormant", "ND", active: false);
+        var (org, user, pref) = TestSeed.User($"user_{Guid.NewGuid():N}", "free@example.com");
+        await factory.SeedAsync(db => { db.AddRange(active); db.AddRange(inactive, org, user, pref); });
+
+        var marketIds = await WithServiceAsync(s => s.GetEntitledMarketIdsAsync(user, CancellationToken.None), freeForAll: true);
+        var allActive = await factory.QueryAsync(db => db.Markets.Where(m => m.Active).Select(m => m.Id).ToListAsync());
+
+        Assert.Equal(allActive.Order(), marketIds.Order());
+        Assert.All(active, m => Assert.Contains(m.Id, marketIds));
+        Assert.DoesNotContain(inactive.Id, marketIds);
+        Assert.Equal(PlanTier.Territory,
+            await WithServiceAsync(s => s.GetEntitledPlanAsync(user, CancellationToken.None), freeForAll: true));
+        Assert.True(await WithServiceAsync(s => Task.FromResult(s.FreeForAll), freeForAll: true));
+    }
+
+    [Fact]
+    public async Task Without_the_free_pilot_the_same_member_is_entitled_to_nothing()
+    {
+        var market = TestSeed.Market("Paidville");
+        var (org, user, pref) = TestSeed.User($"user_{Guid.NewGuid():N}", "paid@example.com");
+        await factory.SeedAsync(db => db.AddRange(market, org, user, pref));
+
+        Assert.Empty(await WithServiceAsync(s => s.GetEntitledMarketIdsAsync(user, CancellationToken.None)));
+        Assert.Null(await WithServiceAsync(s => s.GetEntitledPlanAsync(user, CancellationToken.None)));
+        Assert.False(await WithServiceAsync(s => Task.FromResult(s.FreeForAll)));
+    }
+
+    [Fact]
+    public async Task Free_pilot_does_not_change_the_display_plan()
+    {
+        var (org, user, pref) = TestSeed.User($"user_{Guid.NewGuid():N}", "freedisplay@example.com");
+        await factory.SeedAsync(db => db.AddRange(org, user, pref));
+
+        Assert.Null(await WithServiceAsync(s => s.GetDisplayPlanAsync(user, CancellationToken.None), freeForAll: true));
+    }
+
+    [Fact]
+    public async Task Free_pilot_leaves_a_super_admin_as_before_including_inactive_markets()
+    {
+        var inactive = TestSeed.Market("Shelved", "WY", active: false);
+        var (org, user, pref) = TestSeed.User($"user_{Guid.NewGuid():N}", "stafffree@example.com", UserRole.SuperAdmin);
+        await factory.SeedAsync(db => db.AddRange(inactive, org, user, pref));
+
+        var free = await WithServiceAsync(s => s.GetEntitledMarketIdsAsync(user, CancellationToken.None), freeForAll: true);
+        var paid = await WithServiceAsync(s => s.GetEntitledMarketIdsAsync(user, CancellationToken.None));
+
+        Assert.Contains(inactive.Id, free);
+        Assert.Equal(paid.Order(), free.Order());
+        Assert.Equal(PlanTier.Territory,
+            await WithServiceAsync(s => s.GetEntitledPlanAsync(user, CancellationToken.None), freeForAll: true));
     }
 }

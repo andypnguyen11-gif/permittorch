@@ -28,6 +28,7 @@ public class AppDbContextModelTests
     [InlineData(typeof(SubscriptionMarket))]
     [InlineData(typeof(SavedLead))]
     [InlineData(typeof(EmailPreference))]
+    [InlineData(typeof(EmailPreferenceMarket))]
     [InlineData(typeof(SampleLeadRequest))]
     [InlineData(typeof(PreSprinklerLead))]
     [InlineData(typeof(PreSprinklerContact))]
@@ -142,6 +143,18 @@ public class AppDbContextModelTests
         Assert.True(emailPrefProp!.IsNullable);
         Assert.NotNull(sampleLeadProp);
         Assert.True(sampleLeadProp!.IsNullable);
+    }
+
+    [Fact]
+    public void EmailPreferenceMarket_is_keyed_by_preference_and_market_and_cascades()
+    {
+        using var db = CreateContext();
+        var entity = db.Model.FindEntityType(typeof(EmailPreferenceMarket))!;
+        Assert.Equal(new[] { "EmailPreferenceId", "MarketId" },
+            entity.FindPrimaryKey()!.Properties.Select(p => p.Name).ToArray());
+        Assert.Equal("email_preference_markets", entity.GetTableName());
+        Assert.All(entity.GetForeignKeys(), fk => Assert.Equal(DeleteBehavior.Cascade, fk.DeleteBehavior));
+        Assert.Equal(2, entity.GetForeignKeys().Count());
     }
 
     [Fact]
