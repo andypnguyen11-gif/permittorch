@@ -11,6 +11,8 @@ public sealed class EmailOptions
     public string ApiPublicUrl { get; set; } = "http://localhost:5000";
     /// <summary>HMAC key for unsubscribe tokens (EMAIL_UNSUBSCRIBE_SECRET).</summary>
     public string UnsubscribeSecret { get; set; } = "";
+    /// <summary>Where new feedback is emailed (FEEDBACK_NOTIFY_EMAIL). Unset: saved, not emailed.</summary>
+    public string FeedbackNotifyEmail { get; set; } = "";
 }
 
 /// <summary>One outgoing email. <paramref name="IdempotencyKey"/> becomes Resend's

@@ -41,6 +41,7 @@ Service settings are applied through the Railway API or the dashboard. They are 
 - `WEB_ORIGIN=https://permittorch.com` (the API allows this one browser origin, so the app must be used on the apex)
 - `API_PUBLIC_URL=https://api.permittorch.com`
 - `EMAIL_FROM=leads@permittorch.dev` (placeholder until Resend is set up)
+- `FEEDBACK_NOTIFY_EMAIL=support@permittorch.com`: in-app feedback is emailed here (Porkbun forwards it to the owner). Unset, feedback is saved but not emailed, and the API logs a warning. Failed sends retry hourly with the digest job, so `Digests__Enabled=false` pauses those retries too.
 - `RAILWAY_DOCKERFILE_PATH=apps/api/Dockerfile`
 - Secrets and IDs: `FIREBASE_PROJECT_ID`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_TERRITORY`, `EMAIL_UNSUBSCRIBE_SECRET`, `RESEND_API_KEY` (digest emails are sent through Resend; unset, digests are skipped), `APIFY_TOKEN`, `APIFY_TASK_ID`.
 - `Access__FreeForAll=true`: the free pilot (see "Free pilot"). Unset or `false`, access comes from paid subscriptions.

@@ -7,6 +7,7 @@ using PermitTorch.Api.Features;
 using PermitTorch.Api.Features.Auth;
 using PermitTorch.Api.Features.Billing;
 using PermitTorch.Api.Features.EmailDigests;
+using PermitTorch.Api.Features.Feedback;
 using PermitTorch.Api.Features.Shared;
 
 namespace PermitTorch.Api.Setup;
@@ -138,6 +139,7 @@ public static class FeaturesSetup
             o.WebOrigin = configuration["WEB_ORIGIN"] ?? "http://localhost:3000";
             o.ApiPublicUrl = configuration["API_PUBLIC_URL"] ?? "http://localhost:5000";
             o.UnsubscribeSecret = configuration["EMAIL_UNSUBSCRIBE_SECRET"] ?? "";
+            o.FeedbackNotifyEmail = configuration["FEEDBACK_NOTIFY_EMAIL"] ?? "";
         });
         services.AddSingleton<UnsubscribeTokens>();
         services.AddHttpClient<ResendEmailClient>(client =>
@@ -146,6 +148,7 @@ public static class FeaturesSetup
                 "Bearer", configuration["RESEND_API_KEY"] ?? "");
         });
         services.AddScoped<DigestService>();
+        services.AddScoped<FeedbackNotifier>();
         services.AddHostedService<DigestBackgroundService>();
 
         return services;
