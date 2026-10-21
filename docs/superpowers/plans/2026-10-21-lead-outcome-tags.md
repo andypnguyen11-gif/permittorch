@@ -20,7 +20,7 @@
 - First seen: `Permit.FirstSeenAt` when `Source.RecencyFromFirstSeenSince` is set and `FirstSeenAt >= RecencyFromFirstSeenSince`; otherwise null. The rescoring job's rolling-window check is not part of this helper.
 - The client never sends a score. Every set and change copies the lead's current `LeadScore` into `score_at_tag`.
 - Tags never change the score, the order, or which leads appear. No reads return another user's tag.
-- Commit messages: imperative, no task numbers, no PR numbers, end with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+- Commit messages: imperative, no task numbers, no PR numbers, no Co-Authored-By or generated-by lines.
 
 ## Review Focus
 
@@ -44,7 +44,7 @@
 
 **Interfaces:**
 - Produces: `public static DateTime? FirstSeen.Of(DateTime firstSeenAt, DateTime? goLiveCutoff)` in namespace `PermitTorch.Api.Domain.Scoring`.
-- Produces: `LeadRow` gains trailing `DateTime? FirstSeenAt`.
+- Produces: `LeadRow` gains trailing `DateTime PermitFirstSeenAt, DateTime? GoLiveCutoff` (plain columns: `o.Permit.FirstSeenAt`, `o.Permit.Source.RecencyFromFirstSeenSince`).
 - Produces: `LeadSummaryDto` gains trailing `DateTime? FirstSeenAt = null, LeadOutcomeKind? MyOutcome = null`. `LeadDetailDto` gains the same two trailing parameters after `Source`. (`LeadOutcomeKind` is created in Task 2; in this task add the enum to `apps/api/Data/Enums.cs` now so the DTO compiles: `public enum LeadOutcomeKind { WorthContacting, AlreadyAwarded, WrongTrade, TooLate }`.)
 - Produces: `LeadQueries.ToSummary(LeadRow row, DateTime nowUtc, LeadOutcomeKind? myOutcome = null)`.
 
@@ -61,7 +61,7 @@ Expected: build error, `FirstSeen` does not exist.
 
 - [ ] **Step 3: Implement**
 
-`FirstSeen.Of` returns `goLiveCutoff is { } c && firstSeenAt >= c ? firstSeenAt : null`. `StoredPermit.ForScoring` sets `AppearedInDataAt = FirstSeen.Of(p.FirstSeenAt, source.RecencyFromFirstSeenSince)`. `ToRow` and the `GetLead` row call `FirstSeen.Of(o.Permit.FirstSeenAt, o.Permit.Source.RecencyFromFirstSeenSince)`; EF evaluates it client-side in the final projection. `ToSummary` passes `row.FirstSeenAt` and `myOutcome` through. `GetLead` passes `summary.FirstSeenAt, summary.MyOutcome` to `LeadDetailDto`. Leave `RescoringJob` line 102 untouched.
+`FirstSeen.Of` returns `goLiveCutoff is { } c && firstSeenAt >= c ? firstSeenAt : null`. `StoredPermit.ForScoring` sets `AppearedInDataAt = FirstSeen.Of(p.FirstSeenAt, source.RecencyFromFirstSeenSince)`. `ToRow` and the `GetLead` row select the two plain columns only; no method call inside any EF projection, because `ToRow` is composed into other queries. `ToSummary` computes `FirstSeen.Of(row.PermitFirstSeenAt, row.GoLiveCutoff)` after the query has returned, and passes `myOutcome` through. `GetLead` passes `summary.FirstSeenAt, summary.MyOutcome` to `LeadDetailDto`. Leave `RescoringJob` line 102 untouched.
 
 - [ ] **Step 4: Run tests**
 
@@ -96,7 +96,7 @@ Expected: PASS.
 - `Delete_clears_the_tag_and_is_204_when_none_exists`: DELETE twice, both 204, no row.
 - `Unknown_or_missing_outcome_is_400`: `{ outcome: "MAYBE" }`, `{}`.
 - `Outside_the_users_markets_is_404`: PUT and DELETE on the foreign lead → 404, no row created.
-- `A_not_fire_work_lead_is_404_and_its_tag_is_kept`: tag, set `Standing = LeadStanding.NotFireWork`, PUT → 404, row still present.
+- `A_not_fire_work_lead_is_404_and_its_tag_is_kept`: tag, set `Standing = LeadStanding.NotFireWork`, PUT → 404 and DELETE → 404, row still present with its original outcome.
 - `Reads_return_only_the_callers_tag`: user A tags `ALREADY_AWARDED`, user B tags nothing. A's `GET /api/leads`, `GET /api/leads/{id}`, and saved list (after saving) show `myOutcome == "ALREADY_AWARDED"`; B's show `myOutcome == null`.
 - `Put_on_an_existing_row_never_conflicts`: seed a `LeadOutcome` row directly, PUT → 200 (covers Review Focus 2's update path).
 
@@ -113,7 +113,7 @@ Config mirrors `SavedLead` plus `.OnDelete(DeleteBehavior.Cascade)` on both FKs 
 
 - [ ] **Step 4: Implement the endpoints**
 
-PUT: parse `body.Outcome` with `Wire.TryParse<LeadOutcomeKind>` → else `ApiErrors.BadRequest("outcome must be WORTH_CONTACTING, ALREADY_AWARDED, WRONG_TRADE or TOO_LATE")`. Load the lead through `LeadQueries.ForEntitledMarkets(db, marketIds).Where(o => o.Id == id).Select(o => (int?)o.LeadScore)`; null → `ApiErrors.NotFound("Lead not found")`. Find the caller's row; update or insert with `ScoreAtTag = score`, `UpdatedAt = now`. On `DbUpdateException` with `PostgresException { SqlState: "23505" }`, clear the tracker, reload the row and apply the update once. DELETE: same entitlement read, then `ExecuteDeleteAsync` on the caller's row, `Results.NoContent()`.
+PUT: parse `body.Outcome` with `Wire.TryParse<LeadOutcomeKind>` → else `ApiErrors.BadRequest("outcome must be WORTH_CONTACTING, ALREADY_AWARDED, WRONG_TRADE or TOO_LATE")`. Load the lead through `LeadQueries.ForEntitledMarkets(db, marketIds).Where(o => o.Id == id).Select(o => (int?)o.LeadScore)`; null → `ApiErrors.NotFound("Lead not found")`. Find the caller's row. Insert sets `Id = Guid.NewGuid()`, `CreatedAt = UpdatedAt = DateTime.UtcNow`; update changes `Outcome`, `ScoreAtTag` and `UpdatedAt` only. Never leave a default `DateTime`, which Npgsql rejects. On `DbUpdateException` with `PostgresException { SqlState: "23505" }`, clear the tracker, reload the row and apply the update once. DELETE: same entitlement read, then `ExecuteDeleteAsync` on the caller's row, `Results.NoContent()`.
 
 - [ ] **Step 5: Fill `MyOutcome` on reads**
 
@@ -138,7 +138,7 @@ Expected: PASS, whole suite.
 - Produces: `public static int OutcomeReport.BandOf(int score)` → `Math.Clamp(score, 0, 100) / 10` capped at 9.
 - Produces: `public static LeadOutcomeReportDto OutcomeReport.Build(IEnumerable<(int ScoreAtTag, LeadOutcomeKind Outcome)> answers)`.
 - Produces DTOs: `public sealed record OutcomeBandDto(int Low, int High, int WorthContacting, int AlreadyAwarded, int WrongTrade, int TooLate, int Total, double? WorthContactingShare);` `public sealed record LeadOutcomeReportDto(IReadOnlyList<OutcomeBandDto> Bands, int MinAnswersPerBand);` Bands are always ten, ordered `Low` 90 down to 0; `High` is 100 for the top band, else `Low + 9`.
-- Route: `GET /api/admin/lead-outcomes?marketId={guid?}`, `RequireAuthorization("SuperAdmin")`.
+- Route: `GET /api/admin/lead-outcomes?marketId={guid?}` on its own `MapGroup("/api/admin").RequireAuthorization("SuperAdmin")`, with no `TermsAcceptedFilter`, like the other admin routes.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -200,7 +200,7 @@ The endpoint queries `db.LeadOutcomes` joined to `AppUsers` where `Role != UserR
 - Consumes: `setLeadOutcome`, `clearLeadOutcome`, `LeadOutcome` (Task 4); `useApiToken`, `reportMutationError` (existing).
 - Produces: `export const OUTCOME_LABELS: Record<LeadOutcome, string>` with the Global Constraints labels in order worth contacting, already awarded, wrong trade, too late. `export function OutcomeControl({ leadId, outcome }: { leadId: string; outcome: LeadOutcome | null })`, a `"use client"` component.
 
-Behaviour: the trigger is the label chip when tagged and a small outlined "Tag" button when not, `aria-label="Lead outcome"`. It opens a shadcn `DropdownMenu` listing the four labels with the current one checked, plus "Clear" when tagged. Choosing the current tag or "Clear" clears it. Updates are optimistic and roll back with `reportMutationError(err, "Could not update the lead tag")`. A ref tracks the latest requested value; a response for an older request is ignored, and a failure reverts to the last confirmed value. The trigger's wrapper is `relative z-10` and calls `e.stopPropagation()` on click, so the stretched link underneath never fires.
+Behaviour: the trigger is the label chip when tagged and a small outlined "Tag" button when not, `aria-label="Lead outcome"`. It opens a shadcn `DropdownMenu` listing the four labels with the current one checked, plus "Clear" when tagged. Choosing the current tag or "Clear" clears it. Updates are optimistic and roll back with `reportMutationError(err, "Could not update the lead tag")`. A ref tracks the latest requested value; a response for an older request is ignored, and a failure reverts to the last confirmed value. The trigger's wrapper is `relative z-[1]` (the sticky header is `z-10` and must paint over it while scrolling) and calls `e.stopPropagation()` on click, so the stretched link underneath never fires.
 
 - [ ] **Step 1: Failing tests** in `outcome-control.test.tsx` (mock `@/lib/api`, `useApiToken`):
   - Untagged shows "Tag"; choosing "Wrong trade" calls `setLeadOutcome(id, "WRONG_TRADE", token)` and shows "Wrong trade".
