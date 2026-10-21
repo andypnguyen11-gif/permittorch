@@ -37,7 +37,7 @@ New table `lead_outcomes`, entity `LeadOutcome`:
 | `id` | uuid | client-generated, like every other entity |
 | `user_id` | uuid | FK `users`, cascade delete |
 | `fire_opportunity_id` | uuid | FK `fire_opportunities`, cascade delete |
-| `outcome` | text enum `LeadOutcomeKind` | `WorthContacting`, `AlreadyAwarded`, `WrongTrade`, `TooLate` |
+| `outcome` | integer enum `LeadOutcomeKind`, like every other enum column; SCREAMING_SNAKE on the wire | `WorthContacting`, `AlreadyAwarded`, `WrongTrade`, `TooLate` |
 | `score_at_tag` | int | the lead's `LeadScore` when the tag was set or last changed |
 | `created_at` | timestamptz | first set |
 | `updated_at` | timestamptz | last changed |
