@@ -202,7 +202,7 @@ export async function unsaveLead(id: string, token: string): Promise<void> {
 }
 
 export async function setLeadOutcome(leadId: string, outcome: LeadOutcome, token: string): Promise<void> {
-  if (isMock()) return (await fixtures()).setLeadOutcome(leadId, outcome);
+  if (isMock()) return (await fixtures()).setLeadOutcome();
   await apiFetch<unknown>(
     `/api/leads/${encodeURIComponent(leadId)}/outcome`,
     { method: "PUT", body: JSON.stringify({ outcome }) },
@@ -211,7 +211,7 @@ export async function setLeadOutcome(leadId: string, outcome: LeadOutcome, token
 }
 
 export async function clearLeadOutcome(leadId: string, token: string): Promise<void> {
-  if (isMock()) return (await fixtures()).clearLeadOutcome(leadId);
+  if (isMock()) return (await fixtures()).clearLeadOutcome();
   return apiFetch<void>(`/api/leads/${encodeURIComponent(leadId)}/outcome`, { method: "DELETE" }, token);
 }
 

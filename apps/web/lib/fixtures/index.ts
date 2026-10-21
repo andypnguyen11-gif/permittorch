@@ -7,7 +7,7 @@
 import type {
   AccountMe, AdminSource, DigestFrequency, EmailPreferences, FeedbackInput, LeadDetail, LeadsResponse,
   Market, Paged, PlanTier, PreSprinklerLead, PreSprinklerMarket, Removal, RemovalPreview, RemovalRecord,
-  SavedLeadItem, SavedLeadStatus, ScraperRunSummary, LeadOutcome, LeadOutcomeReport,
+  SavedLeadItem, SavedLeadStatus, ScraperRunSummary, LeadOutcomeReport,
 } from "@permittorch/types";
 import {
   ApiError, type CreateRemovalInput, type LeadsExport, type LeadsQuery, type PreSprinklerQuery,
@@ -58,8 +58,8 @@ export async function unsaveLead(id: string): Promise<void> {
   if (idx < 0) throw new ApiError("Saved lead not found", 404);
   savedState.splice(idx, 1);
 }
-export async function setLeadOutcome(_leadId: string, _outcome: LeadOutcome): Promise<void> { /* mock no-op */ }
-export async function clearLeadOutcome(_leadId: string): Promise<void> { /* mock no-op */ }
+export async function setLeadOutcome(): Promise<void> { /* mock no-op */ }
+export async function clearLeadOutcome(): Promise<void> { /* mock no-op */ }
 export async function getLeadOutcomeReport(): Promise<LeadOutcomeReport> {
   return {
     minAnswersPerBand: 10,
