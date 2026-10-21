@@ -23,6 +23,11 @@ public static class LeadOutcomeEndpoints
             .AddEndpointFilter<TermsAcceptedFilter>();
         group.MapPut("/{id:guid}/outcome", SetOutcome);
         group.MapDelete("/{id:guid}/outcome", ClearOutcome);
+
+        // Admin routes take no terms filter, like the rest of /api/admin.
+        var admin = endpoints.MapGroup("/api/admin").RequireAuthorization("SuperAdmin");
+        admin.MapGet("/lead-outcomes", async (Guid? marketId, AppDbContext db, CancellationToken ct) =>
+            Results.Ok(await OutcomeReport.ReadAsync(db, marketId, ct)));
         return endpoints;
     }
 
