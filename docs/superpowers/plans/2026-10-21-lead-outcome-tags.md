@@ -25,7 +25,7 @@
 ## Review Focus
 
 1. **Rapid repeat clicks on the tag menu** (two tags chosen before the first call lands): the last choice must win and the label must never show a tag the server rejected. Test in Task 6.
-2. **Two first-time sets racing** (two tabs, same user, same lead): the unique index throws 23505 on the second insert; the endpoint must retry as an update and return 200, never 500. Test in Task 2 by inserting the row directly between the endpoint's read and write is not practical, so the test seeds a row and calls PUT, and the code path catches 23505 and re-applies as update.
+2. **Two first-time sets racing** (two tabs, same user, same lead): the second insert hits the unique index (23505). The endpoint must catch it, reload the row and apply the change as an update, returning 200, never 500. A true race is impractical to stage in a test, so Task 2 tests the update path on a pre-existing row and the catch is reviewed by reading.
 3. **A tagged lead that leaves the user's markets or becomes not-fire-work**: PUT and DELETE return 404; the stored tag remains and is still counted in the report. Test in Tasks 2 and 3.
 4. **Score 100 and score 0** must land in 90–100 and 0–9. Test in Task 3.
 5. **A tag menu inside a stretched-link row**: opening it, picking an item, or pressing Escape must not navigate to the lead. Test in Task 6.
