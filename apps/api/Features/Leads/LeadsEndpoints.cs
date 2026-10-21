@@ -64,7 +64,7 @@ public static class LeadsEndpoints
                 Row = new LeadRow(o.Id, o.LeadScore, o.Category, o.Reason, o.FirstDetectedAt,
                     o.Permit.PermitType, o.Permit.Status, o.Permit.Address, o.Permit.City,
                     o.Permit.State, o.Permit.FiledDate, o.Permit.EstimatedValue, o.Permit.Description,
-                    o.ContractorStatus),
+                    o.ContractorStatus, o.Permit.FirstSeenAt, o.Permit.Source.RecencyFromFirstSeenSince),
                 o.Confidence, o.LastUpdatedAt,
                 Permit = new LeadPermitDto(o.Permit.PermitNumber, o.Permit.Description, o.Permit.Zip,
                     o.Permit.IssuedDate, o.Permit.SquareFootage, o.Permit.OwnerName, o.Permit.ContractorName,
@@ -98,7 +98,8 @@ public static class LeadsEndpoints
             found.Permit, found.Participants, found.Signals,
             new LeadSourceDto(found.SourceName, found.PermitSourceUrl, found.SourceLastCheckedAt,
                 found.PermitRecordUrl, found.PermitRecordUrlKind, found.SourceCadence,
-                found.SourceCadence == PublishCadence.Monthly ? found.SourceDataThrough : null)));
+                found.SourceCadence == PublishCadence.Monthly ? found.SourceDataThrough : null),
+            summary.FirstSeenAt, summary.MyOutcome));
     }
 
     private static async Task<IResult> ExportCsv(

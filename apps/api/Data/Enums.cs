@@ -6,6 +6,8 @@ public enum ParticipantRole { Owner, Applicant, Contractor, GeneralContractor }
 public enum UserRole { Member, Admin, SuperAdmin }          // SuperAdmin = PermitTorch staff
 public enum PlanTier { Starter, Pro, Territory }
 public enum SavedLeadStatus { Saved, Contacted }
+// A user's own judgment of a lead, for checking the score against what contractors find.
+public enum LeadOutcomeKind { WorthContacting, AlreadyAwarded, WrongTrade, TooLate }
 public enum DigestFrequency { None, Daily, Weekly }
 public enum RemovalKind { Phone, Email, Name, Record }
 public enum PermitStatusKind { New, Active, Inspection, Failed, Closed, Unknown }

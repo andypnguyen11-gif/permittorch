@@ -1,6 +1,7 @@
 using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using PermitTorch.Api.Data;
+using PermitTorch.Api.Domain.Scoring;
 using PermitTorch.Api.Features.Shared;
 
 namespace PermitTorch.Api.Features.Leads;
@@ -67,15 +68,20 @@ public static class LeadQueries
     public static readonly Expression<Func<FireOpportunity, LeadRow>> ToRow = o => new LeadRow(
         o.Id, o.LeadScore, o.Category, o.Reason, o.FirstDetectedAt,
         o.Permit.PermitType, o.Permit.Status, o.Permit.Address, o.Permit.City, o.Permit.State,
-        o.Permit.FiledDate, o.Permit.EstimatedValue, o.Permit.Description, o.ContractorStatus);
+        o.Permit.FiledDate, o.Permit.EstimatedValue, o.Permit.Description, o.ContractorStatus,
+        o.Permit.FirstSeenAt, o.Permit.Source.RecencyFromFirstSeenSince);
 
-    public static LeadSummaryDto ToSummary(LeadRow row, DateTime nowUtc) => new(
+    // Plain columns only in ToRow: it is composed into other queries, so the first-seen rule runs
+    // here, after the query has returned.
+    public static LeadSummaryDto ToSummary(LeadRow row, DateTime nowUtc, LeadOutcomeKind? myOutcome = null) => new(
         row.Id, row.Score,
         LeadTitle.From(row.Description, row.PermitType, row.Category),
         row.Address, row.City, row.State, row.Category, row.PermitType, row.Status,
         row.FiledDate, row.EstimatedValue, row.Reason,
         IsNew: row.FirstDetectedAt >= nowUtc.AddHours(-72),
-        ContractorStatus: row.ContractorStatus);
+        ContractorStatus: row.ContractorStatus,
+        FirstSeenAt: FirstSeen.Of(row.PermitFirstSeenAt, row.GoLiveCutoff),
+        MyOutcome: myOutcome);
 
     /// <summary>Freshness of the entitled markets, narrowed to the filtered market when one is
     /// given, so it describes what is on screen. Daily sources give the latest successful run
@@ -110,4 +116,5 @@ public static class LeadQueries
 public sealed record LeadRow(
     Guid Id, int Score, FireCategory Category, string Reason, DateTime FirstDetectedAt,
     string? PermitType, PermitStatusKind Status, string? Address, string City, string State,
-    DateTime? FiledDate, decimal? EstimatedValue, string? Description, ContractorStatus? ContractorStatus);
+    DateTime? FiledDate, decimal? EstimatedValue, string? Description, ContractorStatus? ContractorStatus,
+    DateTime PermitFirstSeenAt = default, DateTime? GoLiveCutoff = null);

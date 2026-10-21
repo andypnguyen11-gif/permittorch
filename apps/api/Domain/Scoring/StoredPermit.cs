@@ -27,8 +27,6 @@ public static class StoredPermit
     public static NormalizedPermit ForScoring(Permit p, Source source) => ToNormalized(p) with
     {
         ContractorNotPublished = !source.PublishesContractor,
-        AppearedInDataAt = source.RecencyFromFirstSeenSince is { } since && p.FirstSeenAt >= since
-            ? p.FirstSeenAt
-            : null,
+        AppearedInDataAt = FirstSeen.Of(p.FirstSeenAt, source.RecencyFromFirstSeenSince),
     };
 }

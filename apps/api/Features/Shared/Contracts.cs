@@ -12,11 +12,14 @@ public sealed record FreshnessDto(DateTime? LastUpdatedAt, IReadOnlyList<Monthly
 public sealed record MonthlyDataDto(string MarketName, DateTime DataThrough);
 
 // ContractorStatus is null for a lead not yet scored by a release that knows it.
+// FirstSeenAt: when PermitTorch first saw the permit, null when that date means nothing (FirstSeen).
+// MyOutcome: the calling user's own tag; never anyone else's.
 public sealed record LeadSummaryDto(
     Guid Id, int Score, string Title, string? Address, string City, string State,
     FireCategory Category, string? PermitType, PermitStatusKind Status,
     DateTime? FiledDate, decimal? EstimatedValue, string Reason, bool IsNew,
-    ContractorStatus? ContractorStatus);
+    ContractorStatus? ContractorStatus,
+    DateTime? FirstSeenAt = null, LeadOutcomeKind? MyOutcome = null);
 
 // LeadsResponse extends Paged<LeadSummary> with freshness (master §7)
 public sealed record LeadsResponseDto(
@@ -53,7 +56,8 @@ public sealed record LeadDetailDto(
     ContractorStatus? ContractorStatus,
     decimal Confidence, DateTime FirstDetectedAt, DateTime LastUpdatedAt,
     LeadPermitDto Permit, IReadOnlyList<ParticipantDto> Participants,
-    IReadOnlyList<LeadSignalDto> Signals, LeadSourceDto Source);
+    IReadOnlyList<LeadSignalDto> Signals, LeadSourceDto Source,
+    DateTime? FirstSeenAt = null, LeadOutcomeKind? MyOutcome = null);
 
 public sealed record MarketDto(Guid Id, string Name, string City, string State, string Slug);
 
