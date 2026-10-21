@@ -193,6 +193,39 @@ describe("lib/api", () => {
     expect(init.method).toBe("DELETE");
   });
 
+  it("sets and clears the caller's lead outcome", async () => {
+    vi.stubEnv("NEXT_PUBLIC_API_MOCK", "0");
+    vi.stubEnv("NEXT_PUBLIC_API_URL", "http://api.test");
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const api = await import("@/lib/api");
+
+    await api.setLeadOutcome("lead_1", "WRONG_TRADE", "tok_123");
+    await api.clearLeadOutcome("lead_1", "tok_123");
+
+    const [putUrl, putInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(putUrl).toBe("http://api.test/api/leads/lead_1/outcome");
+    expect(putInit.method).toBe("PUT");
+    expect(putInit.body).toBe(JSON.stringify({ outcome: "WRONG_TRADE" }));
+    const [deleteUrl, deleteInit] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(deleteUrl).toBe("http://api.test/api/leads/lead_1/outcome");
+    expect(deleteInit.method).toBe("DELETE");
+  });
+
+  it("reads the lead outcome report, optionally for one market", async () => {
+    vi.stubEnv("NEXT_PUBLIC_API_MOCK", "0");
+    vi.stubEnv("NEXT_PUBLIC_API_URL", "http://api.test");
+    const fetchMock = vi.fn<typeof fetch>(async () => Response.json({ bands: [], minAnswersPerBand: 10 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const api = await import("@/lib/api");
+
+    await api.getLeadOutcomeReport("tok_123", "m1");
+    await api.getLeadOutcomeReport("tok_123");
+
+    expect((fetchMock.mock.calls[0] as [string])[0]).toBe("http://api.test/api/admin/lead-outcomes?marketId=m1");
+    expect((fetchMock.mock.calls[1] as [string])[0]).toBe("http://api.test/api/admin/lead-outcomes");
+  });
+
   it("maps setSourceActive to the enable/disable admin routes", async () => {
     vi.stubEnv("NEXT_PUBLIC_API_MOCK", "0");
     vi.stubEnv("NEXT_PUBLIC_API_URL", "http://api.test");

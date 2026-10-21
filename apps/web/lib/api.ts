@@ -22,7 +22,7 @@ import type {
   RemovalPreview,
   RemovalRecord,
   SavedLeadItem,
-  SavedLeadStatus,
+  SavedLeadStatus, LeadOutcome, LeadOutcomeReport,
   ScraperRunSummary,
 } from "@permittorch/types";
 import { resolveApiBaseUrl } from "@/lib/api-base-url";
@@ -201,6 +201,20 @@ export async function unsaveLead(id: string, token: string): Promise<void> {
   return apiFetch<void>(`/api/saved-leads/${encodeURIComponent(id)}`, { method: "DELETE" }, token);
 }
 
+export async function setLeadOutcome(leadId: string, outcome: LeadOutcome, token: string): Promise<void> {
+  if (isMock()) return (await fixtures()).setLeadOutcome(leadId, outcome);
+  await apiFetch<unknown>(
+    `/api/leads/${encodeURIComponent(leadId)}/outcome`,
+    { method: "PUT", body: JSON.stringify({ outcome }) },
+    token,
+  );
+}
+
+export async function clearLeadOutcome(leadId: string, token: string): Promise<void> {
+  if (isMock()) return (await fixtures()).clearLeadOutcome(leadId);
+  return apiFetch<void>(`/api/leads/${encodeURIComponent(leadId)}/outcome`, { method: "DELETE" }, token);
+}
+
 export async function getAccountMarkets(token: string): Promise<Market[]> {
   if (isMock()) return (await fixtures()).getAccountMarkets();
   return apiFetch<Market[]>("/api/account/markets", {}, token);
@@ -289,6 +303,11 @@ export async function setSourceActive(id: string, active: boolean, token: string
 
 export interface CreateRemovalInput {
   kind: RemovalKind; value?: string; permitId?: string; note?: string; confirmedCount: number;
+}
+
+export async function getLeadOutcomeReport(token: string, marketId?: string): Promise<LeadOutcomeReport> {
+  if (isMock()) return (await fixtures()).getLeadOutcomeReport();
+  return apiFetch<LeadOutcomeReport>(`/api/admin/lead-outcomes${buildQuery({ marketId })}`, {}, token);
 }
 
 export async function getRemovals(token: string, page = 1): Promise<Paged<Removal>> {

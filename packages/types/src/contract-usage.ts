@@ -23,6 +23,7 @@ const lead: LeadSummary = {
   filedDate: "2026-08-01T00:00:00Z", estimatedValue: 250000,
   reason: "New commercial build with sprinkler scope", isNew: true,
   contractorStatus: "OTHER_CONTRACTOR_NAMED",
+  firstSeenAt: "2026-08-02T00:00:00Z", myOutcome: "WORTH_CONTACTING",
 };
 
 const signal: LeadSignal = {

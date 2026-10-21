@@ -4,6 +4,8 @@ export type PermitStatus = "NEW" | "ACTIVE" | "INSPECTION" | "FAILED" | "CLOSED"
 export type PlanTier = "STARTER" | "PRO" | "TERRITORY";
 export type DigestFrequency = "NONE" | "DAILY" | "WEEKLY";
 export type SavedLeadStatus = "SAVED" | "CONTACTED";
+/** A user's own judgment of a lead, used to check the score against what contractors find. */
+export type LeadOutcome = "WORTH_CONTACTING" | "ALREADY_AWARDED" | "WRONG_TRADE" | "TOO_LATE";
 export type HealthStatus = "HEALTHY" | "WARNING" | "STALE" | "FAILED" | "DISABLED";
 /** Who the permit names as contractor. FIRE_CONTRACTOR_NAMED: a fire-protection firm, so the
  *  work is most likely awarded. OTHER_CONTRACTOR_NAMED: usually the GC; the fire sub is not
@@ -28,6 +30,11 @@ export interface LeadSummary {
   reason: string; isNew: boolean;   // isNew = firstDetectedAt < 72h ago
   /** Null until a release that knows the status has scored the lead. */
   contractorStatus: ContractorStatus | null;
+  /** When PermitTorch first saw the permit; null when the source has no go-live cutoff or the
+   *  permit came in a backfill, because then the date means nothing. */
+  firstSeenAt: string | null;
+  /** The signed-in user's own tag. Never anyone else's. */
+  myOutcome: LeadOutcome | null;
 }
 export interface LeadsResponse extends Paged<LeadSummary> { freshness: Freshness; }
 
@@ -66,6 +73,15 @@ export interface MarketStats {
   slug: string; totalLast30Days: number;
   byCategory: Record<FireCategory, number>; lastUpdatedAt: string | null;
 }
+/** One ten-point score band of the admin lead tags report. `worthContactingShare` is null below
+ *  `minAnswersPerBand` answers. */
+export interface OutcomeBand {
+  low: number; high: number;
+  worthContacting: number; alreadyAwarded: number; wrongTrade: number; tooLate: number;
+  total: number; worthContactingShare: number | null;
+}
+export interface LeadOutcomeReport { bands: OutcomeBand[]; minAnswersPerBand: number; }
+
 export interface SavedLeadItem { id: string; status: SavedLeadStatus; createdAt: string; lead: LeadSummary; }
 export interface AccountMe {
   /** Internal user id (analytics-safe; never the Firebase uid). */
