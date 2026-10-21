@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using PermitTorch.Api.Data;
 using PermitTorch.Api.Features.Account;
 using PermitTorch.Api.Features.Auth;
+using PermitTorch.Api.Features.LeadOutcomes;
 using PermitTorch.Api.Features.Shared;
 
 namespace PermitTorch.Api.Features.Leads;
@@ -44,7 +45,9 @@ public static class LeadsEndpoints
             .ToListAsync(ct);
 
         var freshness = await LeadQueries.GetFreshnessAsync(db, marketIds, filters.MarketSlug, ct);
-        var items = rows.Select(r => LeadQueries.ToSummary(r, nowUtc)).ToList();
+        var mine = await MyOutcomes.ForAsync(db, user.Id, rows.Select(r => r.Id).ToList(), ct);
+        var items = rows.Select(r => LeadQueries.ToSummary(r, nowUtc,
+            mine.TryGetValue(r.Id, out var o) ? o : null)).ToList();
         return Results.Ok(new LeadsResponseDto(items, total, filters.Page, filters.PageSize,
             freshness));
     }
@@ -89,7 +92,8 @@ public static class LeadsEndpoints
 
         if (found is null) return ApiErrors.NotFound("Lead not found");   // includes "outside entitlement"
 
-        var summary = LeadQueries.ToSummary(found.Row, nowUtc);
+        var mine = await MyOutcomes.ForAsync(db, user.Id, [id], ct);
+        var summary = LeadQueries.ToSummary(found.Row, nowUtc, mine.TryGetValue(id, out var o) ? o : null);
         return Results.Ok(new LeadDetailDto(
             summary.Id, summary.Score, summary.Title, summary.Address, summary.City, summary.State,
             summary.Category, summary.PermitType, summary.Status, summary.FiledDate,

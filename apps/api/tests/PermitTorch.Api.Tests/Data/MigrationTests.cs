@@ -39,6 +39,8 @@ public class MigrationTests : IAsyncLifetime
         Assert.Contains(indexdefs, d => d.Contains("UNIQUE") && d.Contains("app_users") && d.Contains("firebase_uid"));
         Assert.Contains(indexdefs, d => d.Contains("UNIQUE") && d.Contains("markets") && d.Contains("slug"));
         Assert.Contains(indexdefs, d => d.Contains("UNIQUE") && d.Contains("saved_leads") && d.Contains("user_id") && d.Contains("fire_opportunity_id"));
+        Assert.Contains(indexdefs, d => d.Contains("UNIQUE") && d.Contains("lead_outcomes") && d.Contains("user_id") && d.Contains("fire_opportunity_id"));
+        Assert.Contains(indexdefs, d => !d.Contains("UNIQUE") && d.Contains("lead_outcomes") && d.Contains("(fire_opportunity_id)"));
         Assert.Contains(indexdefs, d => d.Contains("UNIQUE") && d.Contains("sample_lead_requests") && d.Contains("email") && d.Contains("market_slug"));
         Assert.Contains(indexdefs, d => d.Contains("UNIQUE") && d.Contains("sources") && d.Contains("jurisdiction"));
         Assert.Contains(indexdefs, d => d.Contains("UNIQUE") && d.Contains("scraper_runs") && d.Contains("apify_run_id"));
@@ -89,7 +91,7 @@ public class MigrationTests : IAsyncLifetime
                 "MovePermitNamesToTheirRoles", "AddParticipantContact",
                 "RemovePlaceholderOwnersAndTestPermit", "ClearProjectValuesOfZero",
                 "AddTermsAcceptances", "AddRemovals", "AddContractorStatus", "AddLeadStanding", "AddSourcePublishingSettings",
-                "AddPreSprinklerLeads", "AddEmailPreferenceMarkets", "AddFeedback",
+                "AddPreSprinklerLeads", "AddEmailPreferenceMarkets", "AddFeedback", "AddLeadOutcomes",
             },
             applied.Select(m => m[(m.IndexOf('_') + 1)..]).ToArray());
     }

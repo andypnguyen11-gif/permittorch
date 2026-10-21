@@ -3,6 +3,7 @@ using Npgsql;
 using PermitTorch.Api.Data;
 using PermitTorch.Api.Features.Account;
 using PermitTorch.Api.Features.Auth;
+using PermitTorch.Api.Features.LeadOutcomes;
 using PermitTorch.Api.Features.Leads;
 using PermitTorch.Api.Features.Shared;
 
@@ -44,10 +45,12 @@ public static class SavedLeadsEndpoints
             .Select(LeadQueries.ToRow)
             .ToDictionaryAsync(r => r.Id, ct);
 
+        var mine = await MyOutcomes.ForAsync(db, user.Id, oppIds, ct);
         var items = saved
             .Where(s => rows.ContainsKey(s.FireOpportunityId))
             .Select(s => new SavedLeadItemDto(s.Id, s.Status, s.CreatedAt,
-                LeadQueries.ToSummary(rows[s.FireOpportunityId], nowUtc)))
+                LeadQueries.ToSummary(rows[s.FireOpportunityId], nowUtc,
+                    mine.TryGetValue(s.FireOpportunityId, out var o) ? o : null)))
             .ToList();
         return Results.Ok(items);
     }

@@ -232,6 +232,19 @@ public class SavedLead
     public DateTime CreatedAt { get; set; }
 }
 
+/// <summary>One user's own judgment of one lead. ScoreAtTag is the lead's score when the tag was
+/// set or last changed, so a later rescore never moves an answer into a different band.</summary>
+public class LeadOutcome
+{
+    public Guid Id { get; set; }
+    public Guid UserId { get; set; }
+    public Guid FireOpportunityId { get; set; }
+    public LeadOutcomeKind Outcome { get; set; }
+    public int ScoreAtTag { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
+}
+
 public class EmailPreference
 {
     public Guid Id { get; set; }
