@@ -10,6 +10,7 @@ import { ContractorStatusBadge } from "@/components/app/contractor-status-badge"
 import { SectionCard } from "@/components/app/section-card";
 import { SignalList } from "@/components/app/lead-detail/signal-list";
 import { SaveButton } from "@/components/app/lead-detail/save-button";
+import { OutcomeControl } from "@/components/app/lead-outcome/outcome-control";
 import { TrackOnMount } from "@/components/app/track-on-mount";
 import { STATUS_LABELS } from "@/components/app/leads/query";
 import {
@@ -105,7 +106,10 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
             <CategoryChip category={lead.category} />
           </div>
         </div>
-        <SaveButton leadId={lead.id} savedId={savedItem?.id ?? null} />
+        <div className="flex items-center gap-2">
+          <OutcomeControl leadId={lead.id} outcome={lead.myOutcome} />
+          <SaveButton leadId={lead.id} savedId={savedItem?.id ?? null} />
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">

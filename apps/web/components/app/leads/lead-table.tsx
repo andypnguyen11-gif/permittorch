@@ -8,6 +8,7 @@ import {
 import { ScoreBadge } from "@/components/app/score-badge";
 import { CategoryIcon } from "@/components/app/category-chip";
 import { ContractorStatusBadge } from "@/components/app/contractor-status-badge";
+import { OutcomeControl } from "@/components/app/lead-outcome/outcome-control";
 import { formatDate, formatRelative, formatValueShort, humanizeMachineString, repeatsTitle } from "@/components/app/format";
 import { cn } from "@/lib/utils";
 
@@ -92,7 +93,12 @@ export function LeadTable({ leads, className, emptyState, compact = false }: {
                   </div>
                 </div>
               </TableCell>
-              <TableCell className="text-center"><ScoreBadge score={lead.score} showLabel /></TableCell>
+              <TableCell className="text-center">
+                <div className="flex flex-col items-center gap-1.5">
+                  <ScoreBadge score={lead.score} showLabel />
+                  <OutcomeControl leadId={lead.id} outcome={lead.myOutcome} />
+                </div>
+              </TableCell>
               <TableCell className="text-sm">
                 <div className="text-stone-800">{lead.address ?? "Address unavailable"}</div>
                 <div className="text-xs text-stone-500">{lead.city}, {lead.state}</div>

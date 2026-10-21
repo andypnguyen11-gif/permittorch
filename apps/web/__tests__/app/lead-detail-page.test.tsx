@@ -156,6 +156,14 @@ describe("/app/leads/[id] page (mock API)", () => {
     expect(screen.queryByText("First discovered")).not.toBeInTheDocument();
   });
 
+  it("shows the user's own tag beside the save button", async () => {
+    const lead = await api.getLead("lead-022", "mock-token");
+    const spy = vi.spyOn(api, "getLead").mockResolvedValueOnce({ ...lead, myOutcome: "TOO_LATE" });
+    await renderPage("lead-022");
+    expect(screen.getByRole("button", { name: "Lead outcome" })).toHaveTextContent("Too late");
+    spy.mockRestore();
+  });
+
   it("a daily source shows no data date", async () => {
     await renderPage("lead-022");
     const source = screen.getByRole("region", { name: "Source" });
