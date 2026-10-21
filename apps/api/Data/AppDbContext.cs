@@ -19,6 +19,7 @@ public class AppDbContext : DbContext
     public DbSet<Subscription> Subscriptions => Set<Subscription>();
     public DbSet<SubscriptionMarket> SubscriptionMarkets => Set<SubscriptionMarket>();
     public DbSet<SavedLead> SavedLeads => Set<SavedLead>();
+    public DbSet<LeadOutcome> LeadOutcomes => Set<LeadOutcome>();
     public DbSet<EmailPreference> EmailPreferences => Set<EmailPreference>();
     public DbSet<EmailPreferenceMarket> EmailPreferenceMarkets => Set<EmailPreferenceMarket>();
     public DbSet<SampleLeadRequest> SampleLeadRequests => Set<SampleLeadRequest>();
@@ -102,6 +103,15 @@ public class AppDbContext : DbContext
             e.HasIndex(sl => new { sl.UserId, sl.FireOpportunityId }).IsUnique();
             e.HasOne<AppUser>().WithMany().HasForeignKey(sl => sl.UserId);
             e.HasOne<FireOpportunity>().WithMany().HasForeignKey(sl => sl.FireOpportunityId);
+        });
+
+        modelBuilder.Entity<LeadOutcome>(e =>
+        {
+            e.HasIndex(x => new { x.UserId, x.FireOpportunityId }).IsUnique();
+            e.HasIndex(x => x.FireOpportunityId);   // the admin report joins tags to leads
+            e.HasOne<AppUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<FireOpportunity>().WithMany().HasForeignKey(x => x.FireOpportunityId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<EmailPreference>(e =>

@@ -4,6 +4,7 @@ using PermitTorch.Api.Features.Admin.Removals;
 using PermitTorch.Api.Features.Billing;
 using PermitTorch.Api.Features.EmailDigests;
 using PermitTorch.Api.Features.Feedback;
+using PermitTorch.Api.Features.LeadOutcomes;
 using PermitTorch.Api.Features.Leads;
 using PermitTorch.Api.Features.Markets;
 using PermitTorch.Api.Features.PreSprinkler;
@@ -19,6 +20,7 @@ public static class FeatureEndpoints
     public static IEndpointRouteBuilder MapFeatureEndpointGroups(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapLeadsEndpoints();
+        endpoints.MapLeadOutcomeEndpoints();
         endpoints.MapMarketsEndpoints();
         endpoints.MapSavedLeadsEndpoints();
         endpoints.MapAccountEndpoints();

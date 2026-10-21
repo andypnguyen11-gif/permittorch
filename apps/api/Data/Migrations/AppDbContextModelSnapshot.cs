@@ -219,6 +219,50 @@ namespace PermitTorch.Api.Data.Migrations
                     b.ToTable("fire_opportunities", (string)null);
                 });
 
+            modelBuilder.Entity("PermitTorch.Api.Data.LeadOutcome", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("FireOpportunityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("fire_opportunity_id");
+
+                    b.Property<int>("Outcome")
+                        .HasColumnType("integer")
+                        .HasColumnName("outcome");
+
+                    b.Property<int>("ScoreAtTag")
+                        .HasColumnType("integer")
+                        .HasColumnName("score_at_tag");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_lead_outcomes");
+
+                    b.HasIndex("FireOpportunityId")
+                        .HasDatabaseName("ix_lead_outcomes_fire_opportunity_id");
+
+                    b.HasIndex("UserId", "FireOpportunityId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_lead_outcomes_user_id_fire_opportunity_id");
+
+                    b.ToTable("lead_outcomes", (string)null);
+                });
+
             modelBuilder.Entity("PermitTorch.Api.Data.LeadSignal", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1226,6 +1270,23 @@ namespace PermitTorch.Api.Data.Migrations
                         .HasConstraintName("fk_fire_opportunities_permits_permit_id");
 
                     b.Navigation("Permit");
+                });
+
+            modelBuilder.Entity("PermitTorch.Api.Data.LeadOutcome", b =>
+                {
+                    b.HasOne("PermitTorch.Api.Data.FireOpportunity", null)
+                        .WithMany()
+                        .HasForeignKey("FireOpportunityId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_lead_outcomes_fire_opportunities_fire_opportunity_id");
+
+                    b.HasOne("PermitTorch.Api.Data.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_lead_outcomes_app_users_user_id");
                 });
 
             modelBuilder.Entity("PermitTorch.Api.Data.LeadSignal", b =>

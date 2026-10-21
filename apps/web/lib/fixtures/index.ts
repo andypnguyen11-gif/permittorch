@@ -7,7 +7,7 @@
 import type {
   AccountMe, AdminSource, DigestFrequency, EmailPreferences, FeedbackInput, LeadDetail, LeadsResponse,
   Market, Paged, PlanTier, PreSprinklerLead, PreSprinklerMarket, Removal, RemovalPreview, RemovalRecord,
-  SavedLeadItem, SavedLeadStatus, ScraperRunSummary,
+  SavedLeadItem, SavedLeadStatus, ScraperRunSummary, LeadOutcomeReport,
 } from "@permittorch/types";
 import {
   ApiError, type CreateRemovalInput, type LeadsExport, type LeadsQuery, type PreSprinklerQuery,
@@ -57,6 +57,17 @@ export async function unsaveLead(id: string): Promise<void> {
   const idx = savedState.findIndex((s) => s.id === id);
   if (idx < 0) throw new ApiError("Saved lead not found", 404);
   savedState.splice(idx, 1);
+}
+export async function setLeadOutcome(): Promise<void> { /* mock no-op */ }
+export async function clearLeadOutcome(): Promise<void> { /* mock no-op */ }
+export async function getLeadOutcomeReport(): Promise<LeadOutcomeReport> {
+  return {
+    minAnswersPerBand: 10,
+    bands: [9, 8, 7, 6, 5, 4, 3, 2, 1, 0].map((b) => ({
+      low: b * 10, high: b === 9 ? 100 : b * 10 + 9,
+      worthContacting: 0, alreadyAwarded: 0, wrongTrade: 0, tooLate: 0, total: 0, worthContactingShare: null,
+    })),
+  };
 }
 export async function getAccountMarkets(): Promise<Market[]> { return [...mockAccountMarkets]; }
 export async function getAccountMe(): Promise<AccountMe> { return mockAccountForRole(); }

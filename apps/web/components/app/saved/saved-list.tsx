@@ -11,6 +11,7 @@ import { ScoreBadge } from "@/components/app/score-badge";
 import { CategoryIcon } from "@/components/app/category-chip";
 import { ContractorStatusBadge } from "@/components/app/contractor-status-badge";
 import { EmptyState } from "@/components/app/leads/lead-table";
+import { OutcomeControl } from "@/components/app/lead-outcome/outcome-control";
 import { formatRelative, formatValueShort } from "@/components/app/format";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -119,6 +120,7 @@ export function SavedList({ initialItems }: { initialItems: SavedLeadItem[] }) {
           {visible.map((item) => (
             <li key={item.id} className="flex flex-wrap items-center gap-4 p-4 hover:bg-stone-50/60">
               <ScoreBadge score={item.lead.score} />
+              <OutcomeControl leadId={item.lead.id} outcome={item.lead.myOutcome} />
               <CategoryIcon category={item.lead.category} className="hidden sm:flex" />
               <div className="min-w-0 flex-1">
                 <Link href={`/app/leads/${item.lead.id}`}

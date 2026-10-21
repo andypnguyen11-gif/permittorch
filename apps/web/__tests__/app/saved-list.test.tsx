@@ -25,7 +25,7 @@ const item: SavedLeadItem = {
     category: "FIRE_SPRINKLER", permitType: "Fire Protection Sprinkler", status: "NEW",
     filedDate: new Date().toISOString(), estimatedValue: 1850000,
     reason: "New commercial warehouse with full sprinkler scope.", isNew: true,
-    contractorStatus: "OTHER_CONTRACTOR_NAMED",
+    contractorStatus: "OTHER_CONTRACTOR_NAMED", firstSeenAt: null, myOutcome: null,
   },
 };
 

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "./dom-cleanup";
 import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import type { LeadSummary } from "@permittorch/types";
 import { LeadTable } from "@/components/app/leads/lead-table";
 import { FreshnessLine } from "@/components/app/leads/freshness-line";
@@ -14,7 +14,7 @@ const lead = (overrides: Partial<LeadSummary>): LeadSummary => ({
   filedDate: new Date(Date.now() - 48 * HOURS).toISOString(),
   estimatedValue: 1850000,
   reason: "Large commercial build-out in west Houston.", isNew: true,
-  contractorStatus: null,
+  contractorStatus: null, firstSeenAt: null, myOutcome: null,
   ...overrides,
 });
 
@@ -37,6 +37,17 @@ describe("LeadTable", () => {
     expect(screen.getByText("2 days ago")).toBeInTheDocument();
     expect(screen.getByText("$1.85M")).toBeInTheDocument();
     expect(screen.getByText("Large commercial build-out in west Houston.")).toBeInTheDocument();
+  });
+
+  it.each([false, true])("adds a 'First seen' line under the filed date when known (compact %s)", (compact) => {
+    render(<LeadTable compact={compact} leads={[
+      lead({ id: "seen", title: "Seen", firstSeenAt: "2026-10-03T14:00:00Z" }),
+      lead({ id: "unseen", title: "Unseen", firstSeenAt: null }),
+    ]} />);
+    const seen = screen.getByRole("link", { name: "Seen" }).closest("tr")!;
+    expect(within(seen).getByText("First seen Oct 3, 2026")).toBeInTheDocument();
+    const unseen = screen.getByRole("link", { name: "Unseen" }).closest("tr")!;
+    expect(within(unseen).queryByText(/First seen/)).not.toBeInTheDocument();
   });
 
   it("shows a New badge only when isNew", () => {

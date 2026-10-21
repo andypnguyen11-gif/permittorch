@@ -34,6 +34,11 @@ describe("Sidebar", () => {
     expect(screen.getByRole("link", { name: "Subscriptions" })).toHaveAttribute("href", "/app/admin/subscriptions");
   });
 
+  it("links super admins to the lead tags report", () => {
+    render(<Sidebar role="SUPER_ADMIN" />);
+    expect(screen.getByRole("link", { name: "Lead tags" })).toHaveAttribute("href", "/app/admin/outcomes");
+  });
+
   it("marks the active route with the orange accent", () => {
     render(<Sidebar role="MEMBER" />);
     const active = screen.getByRole("link", { name: "Leads" });
