@@ -102,6 +102,9 @@ export function LeadTable({ leads, className, emptyState, compact = false }: {
                 {lead.filedDate && (
                   <div className="text-xs text-stone-500">{formatRelative(lead.filedDate)}</div>
                 )}
+                {lead.firstSeenAt && (
+                  <div className="text-xs text-stone-500">{`First seen ${formatDate(lead.firstSeenAt)}`}</div>
+                )}
               </TableCell>
               <TableCell className="text-right text-sm font-semibold tabular-nums text-stone-800">
                 {formatValueShort(lead.estimatedValue)}

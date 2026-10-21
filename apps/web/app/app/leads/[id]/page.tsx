@@ -119,7 +119,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
               <Field label="Classification confidence" value={`${Math.round(lead.confidence * 100)}%`} />
               <Field label="Status"
                 value={permitStatusDisplay(STATUS_LABELS[lead.status], lead.permit.rawStatus)} />
-              <Field label="First discovered" value={formatRelative(lead.firstDetectedAt)} />
+              {lead.firstSeenAt && <Field label="First seen" value={formatDate(lead.firstSeenAt)} />}
               <Field label="Last updated" value={formatRelative(lead.lastUpdatedAt)} />
             </dl>
           </SectionCard>
