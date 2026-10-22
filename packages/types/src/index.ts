@@ -80,7 +80,18 @@ export interface OutcomeBand {
   worthContacting: number; alreadyAwarded: number; wrongTrade: number; tooLate: number;
   total: number; worthContactingShare: number | null;
 }
-export interface LeadOutcomeReport { bands: OutcomeBand[]; minAnswersPerBand: number; }
+/** How old the permit was when it was tagged, from its issue date or else its filing date. */
+export type PermitAgeFilter = "ALL" | "RECENT" | "OLDER";
+/** A scoring version names the rules and weights behind a score; "unversioned" is tags made before versions existed. */
+export interface OutcomeVersion { version: string; answers: number; }
+export interface LeadOutcomeReport {
+  bands: OutcomeBand[]; minAnswersPerBand: number;
+  /** The scoring version these bands count, and the one scoring leads right now. */
+  version: string; currentVersion: string;
+  /** Every version with answers, within the market filter. */
+  versions: OutcomeVersion[];
+  permitAge: PermitAgeFilter;
+}
 
 export interface SavedLeadItem { id: string; status: SavedLeadStatus; createdAt: string; lead: LeadSummary; }
 export interface AccountMe {
