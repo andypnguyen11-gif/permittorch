@@ -144,6 +144,7 @@ public class FireOpportunity
     // knows them has scored the lead.
     public LeadStanding? Standing { get; set; }
     public DateTime? LastActivityOn { get; set; }
+    public string? ScoringVersion { get; set; }             // ScoringEngine.Version that produced LeadScore
     public bool CategoryOverridden { get; set; }           // set by admin reclassification; ingestion keeps Category
     public DateTime FirstDetectedAt { get; set; }
     public DateTime LastUpdatedAt { get; set; }
@@ -241,6 +242,7 @@ public class LeadOutcome
     public Guid FireOpportunityId { get; set; }
     public LeadOutcomeKind Outcome { get; set; }
     public int ScoreAtTag { get; set; }
+    public string? ScoringVersion { get; set; }             // the lead's ScoringVersion when tagged
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }

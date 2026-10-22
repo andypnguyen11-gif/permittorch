@@ -470,6 +470,7 @@ public sealed class IngestionJob : BackgroundService
         opportunity.ContractorStatus = scoreResult.ContractorStatus;
         opportunity.Standing = scoreResult.Standing;
         opportunity.LastActivityOn = scoreResult.LastActivityOn;
+        opportunity.ScoringVersion = scoreResult.ScoringVersion;
         opportunity.LastUpdatedAt = now;
 
         foreach (var signal in scoreResult.Signals)

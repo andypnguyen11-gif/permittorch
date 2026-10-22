@@ -205,6 +205,11 @@ namespace PermitTorch.Api.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("reason");
 
+                    b.Property<string>("ScoringVersion")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("scoring_version");
+
                     b.Property<int?>("Standing")
                         .HasColumnType("integer")
                         .HasColumnName("standing");
@@ -241,6 +246,11 @@ namespace PermitTorch.Api.Data.Migrations
                     b.Property<int>("ScoreAtTag")
                         .HasColumnType("integer")
                         .HasColumnName("score_at_tag");
+
+                    b.Property<string>("ScoringVersion")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("scoring_version");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
