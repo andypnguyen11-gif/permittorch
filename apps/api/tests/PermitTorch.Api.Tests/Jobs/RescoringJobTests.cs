@@ -129,6 +129,24 @@ public class RescoringJobTests
     }
 
     [Fact]
+    public async Task A_lead_whose_score_did_not_change_still_gets_the_current_scoring_version()
+    {
+        var now = DateTime.UtcNow;
+        var id = await SeedScoredOpportunityAsync(now.AddDays(-3), scoredAt: now.AddDays(-1));
+        var (job, sp) = BuildJob();
+        await using var _ = sp;
+        await job.RescoreOnceAsync(now, CancellationToken.None, fullPass: true);
+        // Scored by an older release: identical score, but stored under other weights.
+        await using (var db = _fixture.CreateContext())
+            await db.FireOpportunities.Where(o => o.Id == id)
+                .ExecuteUpdateAsync(s => s.SetProperty(o => o.ScoringVersion, "r0-000000"));
+
+        await job.RescoreOnceAsync(now, CancellationToken.None, fullPass: true);
+
+        Assert.Equal(Engine.Version, (await LoadAsync(id)).Opportunity.ScoringVersion);
+    }
+
+    [Fact]
     public async Task FullPass_HidesLawnSprinkler()
     {
         var now = DateTime.UtcNow;

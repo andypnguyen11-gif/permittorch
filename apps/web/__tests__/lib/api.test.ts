@@ -219,11 +219,14 @@ describe("lib/api", () => {
     vi.stubGlobal("fetch", fetchMock);
     const api = await import("@/lib/api");
 
-    await api.getLeadOutcomeReport("tok_123", "m1");
+    await api.getLeadOutcomeReport("tok_123", { marketId: "m1" });
     await api.getLeadOutcomeReport("tok_123");
+    await api.getLeadOutcomeReport("tok_123", { marketId: "m1", version: "r1-3fa9c2", permitAge: "RECENT" });
 
     expect((fetchMock.mock.calls[0] as [string])[0]).toBe("http://api.test/api/admin/lead-outcomes?marketId=m1");
     expect((fetchMock.mock.calls[1] as [string])[0]).toBe("http://api.test/api/admin/lead-outcomes");
+    expect((fetchMock.mock.calls[2] as [string])[0]).toBe(
+      "http://api.test/api/admin/lead-outcomes?marketId=m1&version=r1-3fa9c2&permitAge=RECENT");
   });
 
   it("maps setSourceActive to the enable/disable admin routes", async () => {

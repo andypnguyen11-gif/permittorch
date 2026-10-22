@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using PermitTorch.Api.Data;
+using PermitTorch.Api.Domain.Scoring;
 using PermitTorch.Api.Features.Account;
 using PermitTorch.Api.Features.Auth;
 using PermitTorch.Api.Features.Leads;
@@ -13,8 +14,8 @@ public sealed record SetLeadOutcomeRequest(string? Outcome);
 public sealed record LeadOutcomeDto(LeadOutcomeKind Outcome, DateTime UpdatedAt);
 
 /// <summary>A user's own tag on a lead: worth contacting, already awarded, wrong trade or too late.
-/// Tags never change the score, the order or which leads appear. The score stored with a tag is
-/// always read here, never taken from the client.</summary>
+/// Tags never change the score, the order or which leads appear. The score stored with a tag, and
+/// the scoring version behind it, are always read here, never taken from the client.</summary>
 public static class LeadOutcomeEndpoints
 {
     public static IEndpointRouteBuilder MapLeadOutcomeEndpoints(this IEndpointRouteBuilder endpoints)
@@ -26,21 +27,38 @@ public static class LeadOutcomeEndpoints
 
         // Admin routes take no terms filter, like the rest of /api/admin.
         var admin = endpoints.MapGroup("/api/admin").RequireAuthorization("SuperAdmin");
-        admin.MapGet("/lead-outcomes", async (Guid? marketId, AppDbContext db, CancellationToken ct) =>
-            Results.Ok(await OutcomeReport.ReadAsync(db, marketId, ct)));
+        admin.MapGet("/lead-outcomes", GetReport);
         return endpoints;
     }
 
-    // The lead's current score, or null when it is outside the user's markets or hidden.
-    private static async Task<int?> EntitledScoreAsync(
+    private sealed record StoredLeadScore(int Score, string? Version);
+
+    // The lead's current score and the scoring version behind it, or null when the lead is
+    // outside the user's markets or hidden.
+    private static async Task<StoredLeadScore?> EntitledScoreAsync(
         Guid id, AppUser user, AppDbContext db, EntitlementService entitlements, CancellationToken ct)
     {
         var marketIds = await entitlements.GetEntitledMarketIdsAsync(user, ct);
         return await LeadQueries.ForEntitledMarkets(db, marketIds)
             .Where(o => o.Id == id)
-            .Select(o => (int?)o.LeadScore)
+            .Select(o => new StoredLeadScore(o.LeadScore, o.ScoringVersion))
             .FirstOrDefaultAsync(ct);
     }
+
+    // version defaults to the running weights; permitAge to ALL.
+    private static async Task<IResult> GetReport(Guid? marketId, string? version, string? permitAge,
+        AppDbContext db, ScoringEngine scoring, CancellationToken ct)
+    {
+        var age = PermitAgeFilter.All;
+        if (permitAge is not null && !Wire.TryParse(permitAge, out age))
+            return ApiErrors.BadRequest("permitAge must be ALL, RECENT or OLDER");
+        if (version is { Length: > MaxVersionLength })
+            return ApiErrors.BadRequest($"version must be at most {MaxVersionLength} characters");
+        return Results.Ok(await OutcomeReport.ReadAsync(
+            db, marketId, version ?? scoring.Version, age, scoring.Version, ct));
+    }
+
+    private const int MaxVersionLength = 32;   // the scoring_version column width
 
     private static async Task<IResult> SetOutcome(
         Guid id, SetLeadOutcomeRequest body, HttpContext http, AppDbContext db,
@@ -57,7 +75,7 @@ public static class LeadOutcomeEndpoints
     }
 
     private static async Task<LeadOutcome> ApplyAsync(
-        AppDbContext db, Guid userId, Guid leadId, LeadOutcomeKind outcome, int score, CancellationToken ct)
+        AppDbContext db, Guid userId, Guid leadId, LeadOutcomeKind outcome, StoredLeadScore score, CancellationToken ct)
     {
         var now = DateTime.UtcNow;
         var row = await db.LeadOutcomes.FirstOrDefaultAsync(o => o.UserId == userId && o.FireOpportunityId == leadId, ct);
@@ -66,7 +84,8 @@ public static class LeadOutcomeEndpoints
             row = new LeadOutcome
             {
                 Id = Guid.NewGuid(), UserId = userId, FireOpportunityId = leadId,
-                Outcome = outcome, ScoreAtTag = score, CreatedAt = now, UpdatedAt = now,
+                Outcome = outcome, ScoreAtTag = score.Score, ScoringVersion = score.Version,
+                CreatedAt = now, UpdatedAt = now,
             };
             db.LeadOutcomes.Add(row);
             try
@@ -82,7 +101,8 @@ public static class LeadOutcomeEndpoints
             }
         }
         row.Outcome = outcome;
-        row.ScoreAtTag = score;
+        row.ScoreAtTag = score.Score;
+        row.ScoringVersion = score.Version;
         row.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
         return row;

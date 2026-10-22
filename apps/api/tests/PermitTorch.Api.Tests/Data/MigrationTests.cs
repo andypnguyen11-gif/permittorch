@@ -91,7 +91,7 @@ public class MigrationTests : IAsyncLifetime
                 "MovePermitNamesToTheirRoles", "AddParticipantContact",
                 "RemovePlaceholderOwnersAndTestPermit", "ClearProjectValuesOfZero",
                 "AddTermsAcceptances", "AddRemovals", "AddContractorStatus", "AddLeadStanding", "AddSourcePublishingSettings",
-                "AddPreSprinklerLeads", "AddEmailPreferenceMarkets", "AddFeedback", "AddLeadOutcomes",
+                "AddPreSprinklerLeads", "AddEmailPreferenceMarkets", "AddFeedback", "AddLeadOutcomes", "AddScoringVersion",
             },
             applied.Select(m => m[(m.IndexOf('_') + 1)..]).ToArray());
     }

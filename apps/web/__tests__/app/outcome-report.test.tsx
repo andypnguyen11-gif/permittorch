@@ -11,7 +11,8 @@ const band = (low: number, o: Partial<OutcomeBand> = {}): OutcomeBand => ({
 });
 
 const report: LeadOutcomeReport = {
-  minAnswersPerBand: 10,
+  minAnswersPerBand: 10, version: "r1-3fa9c2", currentVersion: "r1-3fa9c2", permitAge: "ALL",
+  versions: [{ version: "r1-3fa9c2", answers: 12 }],
   bands: [
     band(90, { worthContacting: 4, alreadyAwarded: 3, wrongTrade: 2, tooLate: 1, total: 10, worthContactingShare: 0.4 }),
     band(80, { worthContacting: 9, total: 9 }),

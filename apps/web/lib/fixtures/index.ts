@@ -62,7 +62,7 @@ export async function setLeadOutcome(): Promise<void> { /* mock no-op */ }
 export async function clearLeadOutcome(): Promise<void> { /* mock no-op */ }
 export async function getLeadOutcomeReport(): Promise<LeadOutcomeReport> {
   return {
-    minAnswersPerBand: 10,
+    minAnswersPerBand: 10, version: "r1-000000", currentVersion: "r1-000000", versions: [], permitAge: "ALL",
     bands: [9, 8, 7, 6, 5, 4, 3, 2, 1, 0].map((b) => ({
       low: b * 10, high: b === 9 ? 100 : b * 10 + 9,
       worthContacting: 0, alreadyAwarded: 0, wrongTrade: 0, tooLate: 0, total: 0, worthContactingShare: null,

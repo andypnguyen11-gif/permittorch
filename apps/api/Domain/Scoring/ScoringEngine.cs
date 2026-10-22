@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.RegularExpressions;
 using PermitTorch.Api.Data;
 using PermitTorch.Api.Domain.Classification;
@@ -31,10 +33,11 @@ public class ScoringOptions
 }
 
 // LOCKED shapes — master plan §5.
-// Standing and LastActivityOn are trailing so the locked positional shape above is unchanged.
+// Standing, LastActivityOn and ScoringVersion are trailing so the locked positional shape above is unchanged.
 public record ScoreResult(int Score, IReadOnlyList<ScoredSignal> Signals, string Reason,
     ContractorStatus ContractorStatus,
-    LeadStanding Standing = LeadStanding.FireWorkMentioned, DateTime? LastActivityOn = null);
+    LeadStanding Standing = LeadStanding.FireWorkMentioned, DateTime? LastActivityOn = null,
+    string? ScoringVersion = null);
 public record ScoredSignal(string SignalType, string Description, int Weight);
 
 // LOCKED entry point — master plan §5. Deterministic; no LLM in the scoring path.
@@ -68,9 +71,30 @@ public class ScoringEngine
     public static readonly TimeSpan RecentInspectionWindow = TimeSpan.FromDays(7);
     public static readonly TimeSpan OldAfter = TimeSpan.FromDays(90);
 
+    // Bump when a code change alters how any lead scores. Weight changes need no bump: they
+    // change the hash half of Version by themselves.
+    public const int RulesRevision = 1;
+
     private readonly ScoringOptions _options;
 
-    public ScoringEngine(ScoringOptions options) => _options = options;
+    /// <summary>Names the rules and weights behind a score, e.g. "r1-3fa9c2", so tags compared
+    /// against scores are never mixed across a reweighting.</summary>
+    public string Version { get; }
+
+    public ScoringEngine(ScoringOptions options)
+    {
+        _options = options;
+        Version = VersionOf(options);
+    }
+
+    private static string VersionOf(ScoringOptions options)
+    {
+        var weights = string.Join(";", options.Weights
+            .Select(w => $"{w.Key.ToUpperInvariant()}={w.Value}")
+            .OrderBy(w => w, StringComparer.Ordinal));
+        var hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(weights)));
+        return $"r{RulesRevision}-{hash[..6]}";
+    }
 
     public ScoreResult Score(NormalizedPermit permit, ClassificationResult classification, DateTime nowUtc)
     {
@@ -135,7 +159,7 @@ public class ScoringEngine
         var activity = LatestActivityWithKind(permit, nowUtc);
         return new ScoreResult(score, signals,
             BuildReason(standing, contractorStatus, reading, classification.Category, permit, activity),
-            contractorStatus, standing, activity?.Date.Date);
+            contractorStatus, standing, activity?.Date.Date, Version);
     }
 
     // Precedence: what the record says outright (unless an admin set the category) beats status,

@@ -61,6 +61,7 @@ public class AppDbContext : DbContext
         {
             e.HasOne(o => o.Permit).WithOne(p => p.Opportunity)
                 .HasForeignKey<FireOpportunity>(o => o.PermitId);
+            e.Property(o => o.ScoringVersion).HasMaxLength(32);
             e.HasMany(o => o.Signals).WithOne().HasForeignKey(s => s.FireOpportunityId);
             e.Property(o => o.CategoryOverridden).HasDefaultValue(false);
             // ContractorStatus is deliberately not indexed: the feed only excludes a status
@@ -109,6 +110,7 @@ public class AppDbContext : DbContext
         {
             e.HasIndex(x => new { x.UserId, x.FireOpportunityId }).IsUnique();
             e.HasIndex(x => x.FireOpportunityId);   // the admin report joins tags to leads
+            e.Property(x => x.ScoringVersion).HasMaxLength(32);
             e.HasOne<AppUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne<FireOpportunity>().WithMany().HasForeignKey(x => x.FireOpportunityId)
                 .OnDelete(DeleteBehavior.Cascade);

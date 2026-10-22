@@ -26,5 +26,6 @@ public static class StoredScore
         opportunity.ContractorStatus = result.ContractorStatus;
         opportunity.Standing = result.Standing;
         opportunity.LastActivityOn = result.LastActivityOn;
+        opportunity.ScoringVersion = result.ScoringVersion;
     }
 }

@@ -32,7 +32,9 @@ public sealed class RescoringJob : BackgroundService
     private readonly TimeSpan _interval;
     // Rescoring:FullPassOnStartup rescores every lead once when the service starts, whatever its
     // dates. Set it for the deploy that changes scoring rules or weights, then remove it: the
-    // windowed pass only revisits leads whose time-based signals can still change.
+    // windowed pass only revisits leads whose time-based signals can still change. A rules change
+    // in code also bumps ScoringEngine.RulesRevision, so each lead's ScoringVersion says which
+    // rules its score came from.
     private bool _fullPassPending;
 
     public RescoringJob(IServiceScopeFactory scopeFactory, ScoringEngine scoringEngine,
@@ -134,7 +136,8 @@ public sealed class RescoringJob : BackgroundService
                     && opportunity.Reason == result.Reason
                     && opportunity.ContractorStatus == result.ContractorStatus
                     && opportunity.Standing == result.Standing
-                    && opportunity.LastActivityOn == result.LastActivityOn)
+                    && opportunity.LastActivityOn == result.LastActivityOn
+                    && opportunity.ScoringVersion == result.ScoringVersion)
                     continue;
 
                 StoredScore.Replace(db, opportunity, result);

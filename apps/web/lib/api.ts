@@ -22,7 +22,7 @@ import type {
   RemovalPreview,
   RemovalRecord,
   SavedLeadItem,
-  SavedLeadStatus, LeadOutcome, LeadOutcomeReport,
+  SavedLeadStatus, LeadOutcome, LeadOutcomeReport, PermitAgeFilter,
   ScraperRunSummary,
 } from "@permittorch/types";
 import { resolveApiBaseUrl } from "@/lib/api-base-url";
@@ -305,9 +305,12 @@ export interface CreateRemovalInput {
   kind: RemovalKind; value?: string; permitId?: string; note?: string; confirmedCount: number;
 }
 
-export async function getLeadOutcomeReport(token: string, marketId?: string): Promise<LeadOutcomeReport> {
+export interface LeadOutcomeReportFilters { marketId?: string; version?: string; permitAge?: PermitAgeFilter; }
+
+export async function getLeadOutcomeReport(token: string, filters: LeadOutcomeReportFilters = {}): Promise<LeadOutcomeReport> {
   if (isMock()) return (await fixtures()).getLeadOutcomeReport();
-  return apiFetch<LeadOutcomeReport>(`/api/admin/lead-outcomes${buildQuery({ marketId })}`, {}, token);
+  const { marketId, version, permitAge } = filters;
+  return apiFetch<LeadOutcomeReport>(`/api/admin/lead-outcomes${buildQuery({ marketId, version, permitAge })}`, {}, token);
 }
 
 export async function getRemovals(token: string, page = 1): Promise<Paged<Removal>> {

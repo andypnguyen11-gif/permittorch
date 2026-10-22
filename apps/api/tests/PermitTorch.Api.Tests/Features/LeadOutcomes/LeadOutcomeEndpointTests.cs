@@ -57,6 +57,18 @@ public class LeadOutcomeEndpointTests(ApiFactory factory) : IAsyncLifetime
         db.FireOpportunities.Where(o => o.Id == leadId).ExecuteUpdateAsync(s => s.SetProperty(o => o.LeadScore, score)));
 
     [Fact]
+    public async Task Put_stores_the_scoring_version_of_the_lead_not_of_the_running_config()
+    {
+        // The lead was last scored under older weights; the tag must say so.
+        await factory.QueryAsync(db => db.FireOpportunities.Where(o => o.Id == _lead.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(o => o.ScoringVersion, "r0-000000")));
+
+        (await Put(_a, _lead.Id, new { outcome = "TOO_LATE" })).EnsureSuccessStatusCode();
+
+        Assert.Equal("r0-000000", Assert.Single(await RowsAsync(_lead.Id)).ScoringVersion);
+    }
+
+    [Fact]
     public async Task Put_sets_then_changes_the_tag_and_stores_the_server_score()
     {
         var first = await Put(_a, _lead.Id, new { outcome = "WRONG_TRADE" });
