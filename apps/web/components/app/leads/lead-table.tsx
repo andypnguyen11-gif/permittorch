@@ -93,7 +93,8 @@ export function LeadTable({ leads, className, emptyState, compact = false }: {
                   </div>
                 </div>
               </TableCell>
-              <TableCell className="text-center">
+              {/* Wide enough for the longest tag, so tagging a lead never shifts the columns. */}
+              <TableCell className="min-w-36 text-center">
                 <div className="flex flex-col items-center gap-1.5">
                   <ScoreBadge score={lead.score} showLabel />
                   <OutcomeControl leadId={lead.id} outcome={lead.myOutcome} />
