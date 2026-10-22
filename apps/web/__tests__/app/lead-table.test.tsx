@@ -64,6 +64,12 @@ describe("LeadTable", () => {
       .toHaveAttribute("href", "/app/leads/lead-9");
   });
 
+  it("reserves room in the score column for the widest tag, so tagging a lead does not shift the table", () => {
+    render(<LeadTable leads={[lead({})]} />);
+    const cell = screen.getByRole("button", { name: "Lead outcome" }).closest("td");
+    expect(cell).toHaveClass("min-w-36");
+  });
+
   it("renders the empty state when no leads match", () => {
     render(<LeadTable leads={[]} />);
     expect(screen.getByText("No leads match these filters")).toBeInTheDocument();
