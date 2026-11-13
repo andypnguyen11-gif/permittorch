@@ -188,6 +188,28 @@ public class PreSprinklerIngestionJobTests(PostgresFixture fixture)
         Assert.Equal(1, await db.PreSprinklerLeads.CountAsync(l => l.SourceId == source.Id));
     }
 
+    // A city can list one permit twice in a run. The second copy replaces contacts the first one
+    // only just added, which once broke the whole run ("Collection was modified").
+    [Fact]
+    public async Task A_permit_listed_twice_in_one_run_is_stored_once_with_the_later_contacts()
+    {
+        var (_, source) = await SeedSourceAsync();
+
+        var run = await IngestAsync(null,
+            Lead(source.Jurisdiction, "BL-TWICE-1", contacts:
+                [Contact("contractor", "Test Builder", phone: "(555) 010-0003"), Contact("owner", "Test Owner")]),
+            Lead(source.Jurisdiction, "BL-TWICE-1", status: "Plan Check", contacts:
+                [Contact("contractor", "Test Builder", phone: "(555) 010-0004")]));
+
+        Assert.Equal("SUCCEEDED", run!.Status);
+        Assert.Equal(1, run.RecordsImported);
+        Assert.Equal(1, run.DuplicatesSkipped);
+        var lead = await LeadAsync(source, "BL-TWICE-1");
+        Assert.Equal("Plan Check", lead!.Status);
+        var contact = Assert.Single(lead.Contacts);
+        Assert.Equal("(555) 010-0004", contact.Phone);
+    }
+
     [Fact]
     public async Task Removed_phone_email_and_name_are_kept_out_of_pre_sprinkler_contacts()
     {

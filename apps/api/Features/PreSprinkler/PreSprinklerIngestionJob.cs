@@ -368,7 +368,9 @@ public sealed class PreSprinklerIngestionJob : BackgroundService
     {
         if (lead.Contacts.Count > 0)
         {
-            db.RemoveRange(lead.Contacts);
+            // A copy: removing a contact this run only just added detaches it, and EF then takes
+            // it out of lead.Contacts while RemoveRange is still walking that collection.
+            db.RemoveRange(lead.Contacts.ToList());
             lead.Contacts.Clear();
         }
         var position = 0;
