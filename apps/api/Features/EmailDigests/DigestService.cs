@@ -176,11 +176,11 @@ public sealed class DigestService(
 
         if (leads.Count == 0)
         {
+            // Nothing was sent, so nothing is recorded as sent: the request stays due and goes
+            // out on the first sweep that finds leads, not a week after it.
             logger.LogInformation(
-                "No sample leads for request {SampleLeadRequestId} in market {MarketSlug}; skipping send",
+                "No sample leads for request {SampleLeadRequestId} in market {MarketSlug}; nothing sent, trying again next sweep",
                 request.Id, request.MarketSlug);
-            request.LastSentAt = nowUtc;
-            await db.SaveChangesAsync(CancellationToken.None);
             return;
         }
 

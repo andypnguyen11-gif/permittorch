@@ -77,6 +77,7 @@ export const REGISTRY_SOURCES: RegistrySource[] = [
   { sourceId: "nashville-building-permits", marketSlug: "nashville-tn", name: "Nashville Building Permits Issued", portalType: "arcgis" },
   { sourceId: "nola-permits", marketSlug: "new-orleans-la", name: "New Orleans Permits", portalType: "socrata" },
   { sourceId: "nyc-dobnow-permits", marketSlug: "new-york-city-ny", name: "NYC DOB NOW Build Approved Permits", portalType: "socrata" },
+  { sourceId: "nyc-dobnow-filings", marketSlug: "new-york-city-ny", name: "NYC DOB NOW Build Job Application Filings (no permit yet)", portalType: "socrata" },
   { sourceId: "omaha-fire-permits", marketSlug: "omaha-ne", name: "Omaha Fire Prevention Records", portalType: "accela" },
   { sourceId: "philly-permits", marketSlug: "philadelphia-pa", name: "Philadelphia L&I Building & Trade Permits", portalType: "carto" },
   { sourceId: "portland-bds-permits", marketSlug: "portland-or", name: "Portland BDS All Permits", portalType: "arcgis" },

@@ -63,7 +63,7 @@ public class DevSeederTests : IAsyncLifetime
         var first = await SeedAsync(Config(DevFlags(Identities)));
         var second = await SeedAsync(Config(DevFlags(Identities)));
 
-        Assert.Equal(new DevSeeder.SeedCounts(39, 56, 10, 10), first);
+        Assert.Equal(new DevSeeder.SeedCounts(39, 57, 10, 10), first);
         Assert.Equal(first, second);
 
         await using var db = CreateContext();
@@ -265,7 +265,7 @@ public class DevSeederTests : IAsyncLifetime
         var first = await SeedAsync(Config(Identities));
         var second = await SeedAsync(Config(Identities));
 
-        Assert.Equal(new DevSeeder.SeedCounts(39, 56, 0, 0), first);
+        Assert.Equal(new DevSeeder.SeedCounts(39, 57, 0, 0), first);
         Assert.Equal(first, second);
         await using var db = CreateContext();
         Assert.Equal(0, await db.AppUsers.CountAsync());
@@ -278,7 +278,7 @@ public class DevSeederTests : IAsyncLifetime
         var output = new StringWriter();
         var counts = await SeedAsync(Config(DevFlags(new(Identities) { ["APIFY_TOKEN"] = "" })), "Production", output);
 
-        Assert.Equal(new DevSeeder.SeedCounts(39, 56, 0, 0), counts);
+        Assert.Equal(new DevSeeder.SeedCounts(39, 57, 0, 0), counts);
         await using var db = CreateContext();
         Assert.Equal(0, await db.Permits.CountAsync());
         Assert.Equal(0, await db.FireOpportunities.CountAsync());
@@ -287,7 +287,7 @@ public class DevSeederTests : IAsyncLifetime
         Assert.Equal(0, await db.Subscriptions.CountAsync());
         Assert.Equal(0, await db.SubscriptionMarkets.CountAsync());
         Assert.Equal(39, await db.Markets.CountAsync());
-        Assert.Equal(56, await db.Sources.CountAsync());
+        Assert.Equal(57, await db.Sources.CountAsync());
         var log = output.ToString();
         Assert.Contains($"WARN: {DevSeeder.SampleDataFlag}=true is ignored in Production", log);
         Assert.Contains($"WARN: {DevSeeder.E2EIdentitiesFlag}=true is ignored in Production", log);
@@ -430,12 +430,30 @@ public class DevSeederTests : IAsyncLifetime
         Assert.Null(source.LastSuccessfulRunAt);
 
         // Every source whose publisher names the contractor keeps the defaults.
-        var withoutContractor = new[] { "nj-ucc-fire-permits" }.Concat(EnerGovSourceIds).Concat(BayAreaSourceIds).ToArray();
+        var withoutContractor = new[] { "nj-ucc-fire-permits", "nyc-dobnow-filings" }
+            .Concat(EnerGovSourceIds).Concat(BayAreaSourceIds).ToArray();
         Assert.All(await db.Sources.Where(s => !withoutContractor.Contains(s.Jurisdiction)).ToListAsync(), s =>
         {
             Assert.True(s.PublishesContractor);
             Assert.Equal(PublishCadence.Daily, s.PublishCadence);
         });
+    }
+
+    // New York's job filings name the design professional who filed and have no contractor
+    // column, so a filing must not earn "no contractor listed" points.
+    [Fact]
+    public async Task New_york_job_filings_are_seeded_beside_the_approved_permits_and_publish_no_contractor()
+    {
+        await SeedAsync(Config());
+
+        await using var db = CreateContext();
+        var filings = await db.Sources.Include(s => s.Market).SingleAsync(s => s.Jurisdiction == "nyc-dobnow-filings");
+        var permits = await db.Sources.SingleAsync(s => s.Jurisdiction == "nyc-dobnow-permits");
+        Assert.Equal(permits.MarketId, filings.MarketId);
+        Assert.Equal("new-york-city-ny", filings.Market.Slug);
+        Assert.Equal(SourceFeed.Fire, filings.Feed);
+        Assert.False(filings.PublishesContractor);
+        Assert.True(permits.PublishesContractor);
     }
 
     private static readonly string[] EnerGovSourceIds =
@@ -552,7 +570,7 @@ public class DevSeederTests : IAsyncLifetime
             ["san-mateo-building-permits"] = "san-mateo-ca",
             ["menlo-park-building-permits"] = "menlo-park-ca",
         }, preSprinkler);
-        Assert.Equal(52, sources.Count(s => s.Feed == SourceFeed.Fire));
+        Assert.Equal(53, sources.Count(s => s.Feed == SourceFeed.Fire));
         // Not fire-permit sources: never in the fire permit-type configuration.
         Assert.Empty(preSprinkler.Keys.Intersect(PermitTorch.Api.Infrastructure.Apify.SourcePermitTypes.ListedSourceIds));
     }

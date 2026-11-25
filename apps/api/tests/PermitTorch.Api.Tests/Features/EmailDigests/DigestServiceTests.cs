@@ -218,8 +218,10 @@ public class DigestServiceTests(ApiFactory factory)
         Assert.DoesNotContain(second.Sent, s => s.To == request.Email);
     }
 
+    // Regression: a request for a market with nothing to send was marked as sent, so the
+    // requester heard nothing and then waited a further week after leads arrived.
     [Fact]
-    public async Task Sample_request_for_market_without_leads_advances_anchor_without_sending()
+    public async Task Sample_request_for_market_without_leads_is_not_marked_sent_and_goes_out_once_leads_arrive()
     {
         var market = TestSeed.Market("Quietville");
         var request = new SampleLeadRequest
@@ -229,11 +231,43 @@ public class DigestServiceTests(ApiFactory factory)
         };
         await factory.SeedAsync(db => db.AddRange(market, request));
 
+        var first = await RunOnceAsync();
+
+        Assert.DoesNotContain(first.Sent, s => s.To == request.Email);
+        var stored = await factory.QueryAsync(db => db.SampleLeadRequests.SingleAsync(r => r.Id == request.Id));
+        Assert.Null(stored.LastSentAt);
+
+        var source = TestSeed.Source(market, Now);
+        var permit = TestSeed.Permit(source);
+        var opportunity = TestSeed.Opportunity(permit, 80);
+        opportunity.Standing = LeadStanding.FireWorkPermitNoContractor;
+        await factory.SeedAsync(db => db.AddRange(source, permit, opportunity));
+
+        var later = Now.AddHours(1);
+        var second = await RunOnceAsync(now: later);
+
+        Assert.Single(second.Sent, s => s.To == request.Email);
+        stored = await factory.QueryAsync(db => db.SampleLeadRequests.SingleAsync(r => r.Id == request.Id));
+        Assert.Equal(later, stored.LastSentAt);
+    }
+
+    [Fact]
+    public async Task Sample_request_that_is_due_with_no_leads_keeps_the_day_of_its_last_email()
+    {
+        var market = TestSeed.Market("Quietville");
+        var lastSent = Now.AddDays(-8);
+        var request = new SampleLeadRequest
+        {
+            Id = Guid.NewGuid(), Name = "Sam", Email = $"quiet{Guid.NewGuid():N}@example.com",
+            Company = "Acme", MarketSlug = market.Slug, CreatedAt = Now.AddDays(-9), LastSentAt = lastSent,
+        };
+        await factory.SeedAsync(db => db.AddRange(market, request));
+
         var resend = await RunOnceAsync();
 
         Assert.DoesNotContain(resend.Sent, s => s.To == request.Email);
         var stored = await factory.QueryAsync(db => db.SampleLeadRequests.SingleAsync(r => r.Id == request.Id));
-        Assert.Equal(Now, stored.LastSentAt);
+        Assert.Equal(lastSent, stored.LastSentAt);
     }
 
     private static Guid OrderedGuid(string prefix) =>
