@@ -24,11 +24,11 @@ afterEach(() => cleanup());
 const REGISTRY_JSON = join(import.meta.dirname, "../../../../docs/superpowers/plans/2026-08-19-permittorch-mvp/scraper-source-registry.json");
 
 describe("source registry", () => {
-  it("has the 32 scraper-supported markets and 44 sources", () => {
+  it("has the 32 scraper-supported markets and 45 sources", () => {
     expect(REGISTRY_MARKETS).toHaveLength(32);
-    expect(REGISTRY_SOURCES).toHaveLength(44);
+    expect(REGISTRY_SOURCES).toHaveLength(45);
     expect(new Set(REGISTRY_MARKETS.map((m) => m.slug)).size).toBe(32);
-    expect(new Set(REGISTRY_SOURCES.map((s) => s.sourceId)).size).toBe(44);
+    expect(new Set(REGISTRY_SOURCES.map((s) => s.sourceId)).size).toBe(45);
   });
 
   it("lists the sources the scraper added under their market", () => {
