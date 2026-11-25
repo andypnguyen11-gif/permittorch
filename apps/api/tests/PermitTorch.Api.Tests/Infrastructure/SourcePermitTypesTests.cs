@@ -66,6 +66,25 @@ public class SourcePermitTypesTests
     }
 
     [Fact]
+    public void NewYorkJobFilings_AreTheFireWorkItself()
+        => Assert.Equal(PermitScope.FireWorkPermit, SourcePermitTypes.Resolve("nyc-dobnow-filings", null));
+
+    [Fact]
+    public void SameJobSources_NamesTheOtherSourcesThatShareItsPermitNumbers()
+    {
+        Assert.Equal(new[] { "nyc-dobnow-permits" }, SourcePermitTypes.SameJobSources("nyc-dobnow-filings"));
+        Assert.Equal(new[] { "nyc-dobnow-filings" }, SourcePermitTypes.SameJobSources("nyc-dobnow-permits"));
+    }
+
+    [Theory]
+    [InlineData("philly-permits")]
+    [InlineData("new-city-permits")]
+    [InlineData(null)]
+    [InlineData(" ")]
+    public void SameJobSources_IsEmptyForASourceThatSharesWithNone(string? sourceId)
+        => Assert.Empty(SourcePermitTypes.SameJobSources(sourceId));
+
+    [Fact]
     public void EverySourceIdInTheList_IsLowercaseKebab()
     {
         var kebab = new Regex("^[a-z0-9]+(-[a-z0-9]+)*$");

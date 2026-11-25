@@ -167,6 +167,15 @@ public sealed class IngestionJob : BackgroundService
                 bySourceId[source.Jurisdiction] = source;
         }
 
+        // The sources that publish the same jobs under the same permit numbers as each source
+        // (configuration; New York's filings and permits). Only sources that have a row count.
+        var sameJobSources = sources.ToDictionary(s => s.Id, s => (IReadOnlyList<Source>)SourcePermitTypes
+            .SameJobSources(s.Jurisdiction)
+            .Select(id => bySourceId.GetValueOrDefault(id))
+            .Where(other => other is not null && other.Feed == SourceFeed.Fire)
+            .Select(other => other!)
+            .ToList());
+
         var counts = new RunCounts();
 
         // Read again every TrackerClearBatchSize records, so a removal made during a long run
@@ -224,8 +233,8 @@ public sealed class IngestionJob : BackgroundService
                 }
 
                 var now = DateTime.UtcNow;
-                var (isNew, isClassified) = await UpsertRecordAsync(db, source, allowed, now,
-                    detectedAt, ct);
+                var (isNew, isClassified) = await UpsertRecordAsync(db, source, sameJobSources[source.Id],
+                    allowed, now, detectedAt, ct);
                 await db.SaveChangesAsync(ct);
                 // Counted only after the save succeeds so a failed record is never also "imported".
                 if (isNew) counts.Imported++; else counts.Duplicates++;
@@ -339,7 +348,8 @@ public sealed class IngestionJob : BackgroundService
         };
 
     private async Task<(bool IsNew, bool IsClassified)> UpsertRecordAsync(AppDbContext db, Source source,
-        NormalizedPermit normalized, DateTime now, DateTime detectedAt, CancellationToken ct)
+        IReadOnlyList<Source> sameJobSources, NormalizedPermit normalized, DateTime now, DateTime detectedAt,
+        CancellationToken ct)
     {
         var permit = await db.Set<Permit>().Include(p => p.Opportunity)
             .FirstOrDefaultAsync(p => p.SourceId == source.Id
@@ -361,6 +371,28 @@ public sealed class IngestionJob : BackgroundService
                 .ThenBy(p => p.Id)
                 .FirstOrDefaultAsync(ct);
             matchedByFingerprint = permit is not null;
+        }
+
+        // The same job, published by another source under the same permit number (New York's
+        // filing, then its permit). The record updates the lead that source made: one job is one
+        // lead, and it stops reading "no contractor" the day a record names one. The stored
+        // permit keeps its own source and record id; it is scored as that source's permit, as
+        // the daily rescoring will score it.
+        var owner = source;
+        if (permit is null && sameJobSources.Count > 0 && !string.IsNullOrWhiteSpace(normalized.PermitNumber))
+        {
+            var otherSourceIds = sameJobSources.Select(s => s.Id).ToList();
+            var permitNumber = normalized.PermitNumber;
+            permit = await db.Set<Permit>().Include(p => p.Opportunity)
+                .Where(p => otherSourceIds.Contains(p.SourceId) && p.PermitNumber == permitNumber)
+                .OrderBy(p => p.CreatedAt)
+                .ThenBy(p => p.Id)
+                .FirstOrDefaultAsync(ct);
+            if (permit is not null)
+            {
+                var permitSourceId = permit.SourceId;
+                owner = sameJobSources.First(s => s.Id == permitSourceId);
+            }
         }
 
         var isNew = permit is null;
@@ -417,14 +449,14 @@ public sealed class IngestionJob : BackgroundService
 
         // Resolved from the merged description, exactly as the rescoring pass resolves it, so a
         // record that arrives without a description never flips a stored permit's scope.
-        permit.Scope = SourcePermitTypes.Resolve(source.Jurisdiction, permit.Description);
+        permit.Scope = SourcePermitTypes.Resolve(owner.Jurisdiction, permit.Description);
 
         await SyncParticipantsAsync(db, permit, normalized, isNew, ct);
 
         // Classified and scored from the stored permit, which holds the merged view: a field
         // this record omitted keeps the value an earlier record supplied. It is also the view the
         // daily rescoring uses, so the two can never disagree about a lead.
-        var merged = StoredPermit.ForScoring(permit, source);
+        var merged = StoredPermit.ForScoring(permit, owner);
 
         // A manual reclassification (admin) is authoritative: keep the stored category and
         // confidence and only rescore against the refreshed permit fields. The classifier never

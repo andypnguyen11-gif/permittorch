@@ -244,6 +244,10 @@ public static class DevSeeder
         ["fremont-fire-permits"] = (false, PublishCadence.Daily),
         ["mpfd-fire-permits"] = (false, PublishCadence.Daily),
         ["santa-clara-fire-permits"] = (false, PublishCadence.Daily),
+        // New York's job filings name the engineer or architect who filed and have no column for
+        // a contractor: one is named only on the work permit, which the approved-permits source
+        // delivers under the same job filing number.
+        ["nyc-dobnow-filings"] = (false, PublishCadence.Daily),
     };
 
     // PortalType is a best-effort label from the scraper README (records carry the authoritative provider in source.provider).
@@ -273,6 +277,7 @@ public static class DevSeeder
         ("nashville-building-permits", "nashville-tn", "Nashville Building Permits Issued", "arcgis"),
         ("nola-permits", "new-orleans-la", "New Orleans Permits", "socrata"),
         ("nyc-dobnow-permits", "new-york-city-ny", "NYC DOB NOW Build Approved Permits", "socrata"),
+        ("nyc-dobnow-filings", "new-york-city-ny", "NYC DOB NOW Build Job Application Filings (no permit yet)", "socrata"),
         ("omaha-fire-permits", "omaha-ne", "Omaha Fire Prevention Records", "accela"),
         ("philly-permits", "philadelphia-pa", "Philadelphia L&I Building & Trade Permits", "carto"),
         ("portland-bds-permits", "portland-or", "Portland BDS All Permits", "arcgis"),
